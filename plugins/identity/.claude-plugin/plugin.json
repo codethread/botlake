@@ -1,0 +1,6 @@
+{
+  "name": "millstrand-identity",
+  "version": "0.1.0",
+  "description": "Native Claude session attribution for Millstrand",
+  "hooks": "./.claude-plugin/hooks.json"
+}

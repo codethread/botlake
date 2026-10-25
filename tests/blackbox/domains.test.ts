@@ -1,0 +1,343 @@
+import { test, expect } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { z } from "zod";
+
+import {
+  Runtime,
+  ManualClock,
+  batteries,
+  identity,
+  kanban,
+  Cron,
+  defineJob,
+  nextFire,
+  type Context,
+  type Spool,
+} from "../../src/index.ts";
+import { rejected } from "./assert.ts";
+
+const strand = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+async function world(
+  spools: Spool[],
+  clock: ManualClock,
+  run: (runtime: Runtime, path: string) => Promise<void>,
+): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "mill-domains-"));
+  const path = join(dir, "world.db");
+  const runtime = new Runtime({ database: path, clock });
+  try {
+    await runtime.start(spools);
+    await run(runtime, path);
+  } finally {
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+test("Kanban preserves ownership evidence and fences generic writes, batch burns, links and stale references", async () => {
+  await world([batteries(), identity(), kanban()], new ManualClock(1000), async (runtime) => {
+    const invoke = (input: unknown): Promise<unknown> => runtime.invoke("kanban", input);
+    const epic = strand.parse(await invoke({ command: "add", title: "Epic", type: "epic" }));
+    const feature = strand.parse(await invoke({ command: "add", title: "Feature", epic: epic.id }));
+    expect(
+      z
+        .array(strand)
+        .parse(await runtime.invoke("ready", { query: "kanban-pending" }))
+        .map((row) => row.id),
+    ).toEqual([feature.id]);
+    const task = strand.parse(
+      await invoke({ command: "task", feature: feature.id, title: "Task" }),
+    );
+    const claim = z
+      .object({ result: z.string(), claim: strand })
+      .parse(
+        await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
+      );
+    expect(
+      z
+        .object({ result: z.string() })
+        .parse(
+          await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
+        ).result,
+    ).toBe("unchanged");
+    expect(() => runtime.graph.update(claim.claim.id, { title: "forged" })).toThrow("immutable");
+    expect(() => runtime.graph.batch({ refs: { claim: claim.claim.id }, burn: ["claim"] })).toThrow(
+      "immutable",
+    );
+    const view = z
+      .object({
+        tasks: z.array(z.object({ status: z.string(), owner: z.object({ source: z.string() }) })),
+      })
+      .parse(await invoke({ command: "card", id: feature.id }));
+    expect(view.tasks[0]?.status).toBe("ready");
+    expect(view.tasks[0]?.owner.source).toBe("inherited");
+    await invoke({ command: "claim", id: task.id, owner: "worker" });
+    expect(
+      z
+        .object({ tasks: z.array(z.object({ status: z.string() })) })
+        .parse(await invoke({ command: "card", id: feature.id })).tasks[0]?.status,
+    ).toBe("doing");
+    await invoke({
+      command: "ref",
+      operation: "add",
+      id: feature.id,
+      url: "https://example.com/a?x=1#b",
+    });
+    expect(
+      (
+        await rejected(
+          invoke({
+            command: "ref",
+            operation: "add",
+            id: feature.id,
+            url: "https://example.com/b",
+            expectedRevision: 1,
+          }),
+        )
+      ).message,
+    ).toContain("Stale");
+    expect(() =>
+      runtime.graph.update(feature.id, {
+        attributes: { "kanban/external-refs": [{ url: "file:///etc/passwd" }] },
+      }),
+    ).toThrow();
+    await invoke({ command: "finish", id: epic.id, outcome: "abandoned" });
+    expect(runtime.graph.show(task.id).attributes["kanban/outcome"]).toBe("unactioned");
+    await invoke({ command: "reopen", id: epic.id });
+    expect(runtime.graph.show(feature.id).state).toBe("active");
+    expect(runtime.graph.show(task.id).state).toBe("active");
+    const native = await runtime.invoke("identity", {
+      command: "startup",
+      harness: "codex",
+      nativeSessionId: "actual",
+    });
+    expect(
+      await runtime.invoke("identity", {
+        command: "startup",
+        harness: "codex",
+        nativeSessionId: "actual",
+      }),
+    ).toEqual({
+      ...z
+        .object({ identity: z.string(), strandId: z.string(), instruction: z.string() })
+        .parse(native),
+      result: "recovered",
+    });
+  });
+});
+
+test("calendar parser handles spring and fall DST and interval jobs retain cadence on restart", async () => {
+  const calendar = { expression: "0 9 * * *", timezone: "Europe/London" };
+  expect(new Date(nextFire(calendar, Date.parse("2026-03-28T09:00:00Z"))).toISOString()).toBe(
+    "2026-03-29T08:00:00.000Z",
+  );
+  expect(new Date(nextFire(calendar, Date.parse("2026-10-24T08:00:00Z"))).toISOString()).toBe(
+    "2026-10-25T09:00:00.000Z",
+  );
+  const clock = new ManualClock(0);
+  const ids: string[] = [];
+  let cron: Cron | undefined;
+  const spool: Spool = {
+    name: "jobs",
+    activate(ctx: Context) {
+      const service = new Cron(
+        ctx,
+        [
+          defineJob({
+            id: "tick",
+            action: "tick",
+            schedule: { everyMs: 1000 },
+            missed: "catch-up",
+            overlap: "queue",
+          }),
+        ],
+        {
+          tick: (_, occurrence) => {
+            ids.push(occurrence.id);
+          },
+        },
+      );
+      cron = service;
+      ctx.resource(service);
+    },
+  };
+  await world([spool], clock, async (runtime, path) => {
+    clock.advance(3500);
+    await runtime.drain();
+    await cron?.drain();
+    expect(ids).toEqual(["tick/1000", "tick/2000", "tick/3000"]);
+    expect(z.array(z.object({ next_at: z.number() })).parse(cron?.status())[0]?.next_at).toBe(4000);
+    await runtime.stop();
+    const second = new Runtime({ database: path, clock });
+    try {
+      await second.start([spool]);
+      expect(z.array(z.object({ next_at: z.number() })).parse(cron?.status())[0]?.next_at).toBe(
+        4000,
+      );
+      clock.advance(4000);
+      await second.drain();
+      await cron?.drain();
+      expect(ids.at(-1)).toBe("tick/4000");
+    } finally {
+      await second.stop();
+    }
+  });
+});
+
+test("cron overlap and retry outcomes retain occurrence IDs and attempt evidence", async () => {
+  const clock = new ManualClock(0);
+  const gate = Promise.withResolvers<void>();
+  let service: Cron | undefined;
+  let attempts = 0;
+  const spool: Spool = {
+    name: "jobs",
+    activate(ctx) {
+      service = new Cron(
+        ctx,
+        [
+          defineJob({
+            id: "blocked",
+            action: "blocked",
+            schedule: { everyMs: 1000 },
+            overlap: "skip",
+          }),
+          defineJob({
+            id: "retry",
+            action: "retry",
+            schedule: { everyMs: 10000 },
+            retry: { attempts: 1, delayMs: 500 },
+          }),
+        ],
+        {
+          blocked: async () => {
+            await gate.promise;
+          },
+          retry: () => {
+            attempts++;
+            if (attempts === 1) throw new Error("first attempt");
+          },
+        },
+      );
+      ctx.resource(service);
+    },
+  };
+  await world([spool], clock, async (runtime) => {
+    clock.advance(1000);
+    await runtime.drain();
+    clock.advance(2000);
+    await runtime.drain();
+    expect(
+      z
+        .array(z.object({ status: z.string() }))
+        .parse(service?.history("blocked"))
+        .map((row) => row.status),
+    ).toEqual(["running", "skipped"]);
+    gate.resolve();
+    await service?.drain();
+    clock.advance(10000);
+    await runtime.drain();
+    await service?.drain();
+    clock.advance(10500);
+    await runtime.drain();
+    await service?.drain();
+    const history = z
+      .array(z.object({ id: z.string(), attempt: z.number(), status: z.string() }))
+      .parse(service?.history("retry"));
+    expect(history).toEqual([{ id: "retry/10000", attempt: 2, status: "succeeded" }]);
+  });
+});
+
+test("missed-run policies tolerate timer jitter and namespaced jobs do not overlap each other", async () => {
+  const clock = new ManualClock(0);
+  const gate = Promise.withResolvers<void>();
+  let service: Cron | undefined;
+  const spool: Spool = {
+    name: "policy",
+    activate(ctx) {
+      service = new Cron(
+        ctx,
+        [
+          defineJob({ id: "foo/bar", action: "block", schedule: { everyMs: 1000 } }),
+          defineJob({ id: "foo", action: "done", schedule: { everyMs: 2000 } }),
+          defineJob({ id: "skip", action: "done", schedule: { everyMs: 1000 }, missed: "skip" }),
+          defineJob({ id: "once", action: "done", schedule: { everyMs: 1000 }, missed: "once" }),
+        ],
+        {
+          block: async () => {
+            await gate.promise;
+          },
+          done: () => null,
+        },
+      );
+      ctx.resource(service);
+    },
+  };
+  await world([spool], clock, async (runtime) => {
+    clock.advance(1001);
+    await runtime.drain();
+    expect(
+      z.array(z.object({ status: z.string() })).parse(service?.history("skip"))[0]?.status,
+    ).toBe("succeeded");
+    clock.advance(3500);
+    await runtime.drain();
+    expect(
+      z.array(z.object({ status: z.string() })).parse(service?.history("foo"))[0]?.status,
+    ).toBe("succeeded");
+    expect(
+      z.array(z.object({ status: z.string() })).parse(service?.history("skip"))[1]?.status,
+    ).toBe("skipped");
+    expect(
+      z
+        .array(z.object({ scheduled_at: z.number() }))
+        .parse(service?.history("once"))
+        .map((row) => row.scheduled_at),
+    ).toEqual([1000, 3000]);
+    gate.resolve();
+    await service?.drain();
+  });
+});
+
+test("Cron recovers an interrupted occurrence with its stable ID and preserved attempt history", async () => {
+  const clock = new ManualClock(0);
+  const seen: string[] = [];
+  let service: Cron | undefined;
+  const spool: Spool = {
+    name: "recovery",
+    activate(ctx) {
+      service = new Cron(
+        ctx,
+        [defineJob({ id: "recover", action: "done", schedule: { everyMs: 1000 } })],
+        {
+          done: (_, occurrence) => {
+            seen.push(occurrence.id);
+          },
+        },
+      );
+      ctx.resource(service);
+    },
+  };
+  await world([spool], clock, async (runtime, path) => {
+    // Durable state left by an interrupted handler, before it could record an outcome.
+    runtime.graph.db
+      .query(
+        "INSERT INTO cron_occurrences(id,job,scheduled_at,status,attempt) VALUES('recover/0','recover',0,'running',1)",
+      )
+      .run();
+    await runtime.stop();
+    const recovered = new Runtime({ database: path, clock });
+    try {
+      await recovered.start([spool]);
+      await service?.drain();
+      expect(seen).toEqual(["recover/0"]);
+      expect(
+        z
+          .array(z.object({ attempt: z.number(), status: z.string() }))
+          .parse(service?.history("recover")),
+      ).toEqual([{ attempt: 2, status: "succeeded" }]);
+    } finally {
+      await recovered.stop();
+    }
+  });
+});

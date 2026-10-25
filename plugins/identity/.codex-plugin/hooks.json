@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\" codex",
+            "timeout": 18,
+            "additionalContextLimit": 4096
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\" codex",
+            "timeout": 18,
+            "additionalContextLimit": 4096
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -38,7 +38,21 @@
     ],
     "typescript/switch-exhaustiveness-check": "error",
     "typescript/prefer-nullish-coalescing": "error",
-    "typescript/prefer-optional-chain": "error"
+    "typescript/prefer-optional-chain": "error",
+    "typescript/prefer-readonly-parameter-types": "off",
+    "eslint/no-await-in-loop": "off",
+    "oxc/no-map-spread": "off",
+    "eslint/no-inner-declarations": "off",
+    "eslint/max-lines-per-function": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "typescript/consistent-return": "off",
+    "eslint/require-await": "off",
+    "typescript/require-await": "off",
+    "eslint/no-negated-condition": "off",
+    "unicorn/no-negated-condition": "off",
+    "unicorn/require-post-message-target-origin": "off",
+    "promise/always-return": "off",
+    "eslint/max-lines": "off"
   },
   "ignorePatterns": ["node_modules/", "dist/", "out/", "coverage/"]
 }

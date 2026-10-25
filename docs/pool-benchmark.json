@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-25",
+  "bun": "1.4.2",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M4",
+  "workspaces": 24,
+  "hostBaselineRssMiB": 33.640625,
+  "hostLoadedRssMiB": 365.234375,
+  "incrementalRssMiBPerWorkspace": 13.81640625,
+  "totalStartupMs": 634.6532910000001,
+  "memberStartupMs": {
+    "median": 25.34987500000011,
+    "p95": 29.600999999999885,
+    "p99": 43.034666000000016,
+    "max": 43.034666000000016
+  },
+  "siblingLatencyMsUnderLoad": {
+    "median": 1.6520410000000538,
+    "p95": 2.8884160000000065,
+    "p99": 23.608584000000064,
+    "max": 23.608584000000064
+  },
+  "siblingEventLoopDelayMsUnderLoad": {
+    "median": 1.2576670000000831,
+    "p95": 1.2637919999999667,
+    "p99": 1.2692089999999894,
+    "max": 1.2692089999999894
+  },
+  "databaseLoadMs": {
+    "median": 16.112707999999998,
+    "p95": 17.307083999999918,
+    "p99": 17.307083999999918,
+    "max": 17.307083999999918
+  },
+  "memberRestartMsUnderLoad": 27.765542000000096,
+  "measurement": "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 sibling probes and a w2 restart. Latency includes local Mill routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers."
+}

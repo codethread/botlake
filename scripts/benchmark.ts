@@ -1,0 +1,95 @@
+import { cpus, platform, arch } from "node:os";
+import { join, resolve } from "node:path";
+
+import { z } from "zod";
+
+import { system, source } from "../tests/blackbox/fixtures/system.ts";
+
+const count = z.coerce
+  .number()
+  .int()
+  .min(4)
+  .max(128)
+  .parse(Bun.argv[2] ?? 24);
+const output = resolve(Bun.argv[3] ?? "docs/pool-benchmark.json");
+const host = await system();
+const statusSchema = z.object({ memory: z.object({ rss: z.number() }) });
+async function invoke(workspace: string, name: string): Promise<unknown> {
+  const wire = await host.wire({
+    protocol_version: 1,
+    request_id: crypto.randomUUID(),
+    operation: "invoke",
+    workspace,
+    payload: { name, input: {} },
+  });
+  return z.object({ ok: z.literal(true), result: z.unknown() }).parse(JSON.parse(wire)).result;
+}
+function distribution(samples: number[]): {
+  median: number;
+  p95: number;
+  p99: number;
+  max: number;
+} {
+  const sorted = samples.toSorted((left, right) => left - right);
+  const at = (percentile: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * percentile))] ?? 0;
+  return { median: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
+}
+try {
+  const baseline = statusSchema.parse(await host.mill(["host-status"])).memory.rss;
+  const startup: number[] = [];
+  const began = performance.now();
+  const spool = `import {defineOp} from ${JSON.stringify(join(source, "src/runtime/ops.ts"))};import {z} from ${JSON.stringify(join(source, "node_modules/zod/index.js"))};export default {name:"benchmark",activate(ctx){ctx.graph.db.run("CREATE TABLE IF NOT EXISTS benchmark(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT OR IGNORE INTO benchmark VALUES(1,0)");ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"load"},handler(){const start=performance.now();const update=ctx.graph.db.query("UPDATE benchmark SET value=value+1 WHERE id=1");ctx.graph.db.transaction(()=>{for(let index=0;index<100000;index++)update.run();}).immediate();return performance.now()-start;}}));ctx.register(defineOp({name:"lag",input:z.object({}),output:z.number(),cli:{description:"event loop delay"},async handler(){const start=performance.now();await new Promise(resolve=>setTimeout(resolve,0));return performance.now()-start;}}));}};`;
+  for (let index = 0; index < count; index++) {
+    const workspace = await host.workspace(`w${index}`, ["batteries", "./benchmark.ts"]);
+    await Bun.write(join(workspace, "benchmark.ts"), spool);
+    const start = performance.now();
+    await host.mill(["up", workspace]);
+    startup.push(performance.now() - start);
+  }
+  const totalStartupMs = performance.now() - began;
+  const rss = statusSchema.parse(await host.mill(["host-status"])).memory.rss;
+  const loadMs: number[] = [];
+  async function loadDatabase(): Promise<void> {
+    for (let index = 0; index < 20; index++)
+      loadMs.push(z.number().parse(await invoke("w0", "load")));
+  }
+  const latency: number[] = [];
+  const delay: number[] = [];
+  async function probeSiblings(): Promise<void> {
+    for (let index = 0; index < 100; index++) {
+      const start = performance.now();
+      delay.push(z.number().parse(await invoke(`w${1 + (index % (count - 1))}`, "lag")));
+      latency.push(performance.now() - start);
+    }
+  }
+  const restartStarted = performance.now();
+  async function restartMember(): Promise<number> {
+    await host.mill(["restart", "w2"]);
+    return performance.now() - restartStarted;
+  }
+  const [, , restartMs] = await Promise.all([loadDatabase(), probeSiblings(), restartMember()]);
+  const report = {
+    date: new Date().toISOString().slice(0, 10),
+    bun: Bun.version,
+    platform: platform(),
+    arch: arch(),
+    cpu: cpus()[0]?.model ?? "unknown",
+    workspaces: count,
+    hostBaselineRssMiB: baseline / 1048576,
+    hostLoadedRssMiB: rss / 1048576,
+    incrementalRssMiBPerWorkspace: (rss - baseline) / count / 1048576,
+    totalStartupMs,
+    memberStartupMs: distribution(startup),
+    siblingLatencyMsUnderLoad: distribution(latency),
+    siblingEventLoopDelayMsUnderLoad: distribution(delay),
+    databaseLoadMs: distribution(loadMs),
+    memberRestartMsUnderLoad: restartMs,
+    measurement:
+      "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 sibling probes and a w2 restart. Latency includes local Mill routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers.",
+  };
+  await Bun.write(output, `${JSON.stringify(report, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+} finally {
+  await host.close();
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@millstrand/identity",
+  "version": "0.1.0",
+  "files": [
+    "client.ts",
+    "hook.ts",
+    "pi.ts",
+    ".codex-plugin",
+    ".claude-plugin"
+  ],
+  "type": "module",
+  "exports": {
+    "./pi": "./pi.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "pi": {
+    "extensions": [
+      "./pi.ts"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "millstrand-identity",
+  "version": "0.1.0",
+  "description": "Native session attribution for Millstrand",
+  "hooks": "./.codex-plugin/hooks.json"
+}
