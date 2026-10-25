@@ -1,0 +1,3 @@
+- Bun typescript project using oxfmt and oxlint.
+- Write unit tests to help shape and validate, delete once finished.
+- Write blackbox tests to verify the system as a user would.
