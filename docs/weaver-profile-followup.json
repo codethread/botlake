@@ -1,0 +1,2172 @@
+{
+  "memory": [
+    {
+      "flavor": "jvm",
+      "weavers": 1,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 2786.9704170007026,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 428.171875,
+            "runtimeCpuSeconds": 9.33,
+            "millRssMiB": 8.609375,
+            "processes": [
+              {
+                "pid": 81877,
+                "ppid": 81874,
+                "rssMiB": 428.171875,
+                "cpuSeconds": 9.33,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 428.171875,
+            "runtimeCpuSeconds": 9.33,
+            "millRssMiB": 8.609375,
+            "processes": [
+              {
+                "pid": 81877,
+                "ppid": 81874,
+                "rssMiB": 428.171875,
+                "cpuSeconds": 9.33,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 428.171875,
+            "runtimeCpuSeconds": 9.34,
+            "millRssMiB": 8.609375,
+            "processes": [
+              {
+                "pid": 81877,
+                "ppid": 81874,
+                "rssMiB": 428.171875,
+                "cpuSeconds": 9.34,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 428.171875,
+            "runtimeCpuSeconds": 9.34,
+            "millRssMiB": 8.609375,
+            "processes": [
+              {
+                "pid": 81877,
+                "ppid": 81874,
+                "rssMiB": 428.171875,
+                "cpuSeconds": 9.34,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 428.171875,
+            "runtimeCpuSeconds": 9.34,
+            "millRssMiB": 8.609375,
+            "processes": [
+              {
+                "pid": 81877,
+                "ppid": 81874,
+                "rssMiB": 428.171875,
+                "cpuSeconds": 9.34,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 428.171875,
+          "p95": 428.171875,
+          "p99": 428.171875,
+          "max": 428.171875
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 8.609375,
+          "p95": 8.609375,
+          "p99": 8.609375,
+          "max": 8.609375
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 1,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 40.519125002902,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 55.890625,
+            "runtimeCpuSeconds": 0.12,
+            "millRssMiB": 6.125,
+            "processes": [
+              {
+                "pid": 82326,
+                "ppid": 82325,
+                "rssMiB": 55.890625,
+                "cpuSeconds": 0.12,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.890625,
+            "runtimeCpuSeconds": 0.12,
+            "millRssMiB": 6.125,
+            "processes": [
+              {
+                "pid": 82326,
+                "ppid": 82325,
+                "rssMiB": 55.890625,
+                "cpuSeconds": 0.12,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.90625,
+            "runtimeCpuSeconds": 0.13,
+            "millRssMiB": 6.125,
+            "processes": [
+              {
+                "pid": 82326,
+                "ppid": 82325,
+                "rssMiB": 55.90625,
+                "cpuSeconds": 0.13,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.90625,
+            "runtimeCpuSeconds": 0.14,
+            "millRssMiB": 6.125,
+            "processes": [
+              {
+                "pid": 82326,
+                "ppid": 82325,
+                "rssMiB": 55.90625,
+                "cpuSeconds": 0.14,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.875,
+            "runtimeCpuSeconds": 0.14,
+            "millRssMiB": 6.125,
+            "processes": [
+              {
+                "pid": 82326,
+                "ppid": 82325,
+                "rssMiB": 55.875,
+                "cpuSeconds": 0.14,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 55.890625,
+          "p95": 55.90625,
+          "p99": 55.90625,
+          "max": 55.90625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.125,
+          "p95": 6.125,
+          "p99": 6.125,
+          "max": 6.125
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 4,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 3580.9194590037805,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 353.015625,
+            "runtimeCpuSeconds": 12.36,
+            "millRssMiB": 8.84375,
+            "processes": [
+              {
+                "pid": 82881,
+                "ppid": 82864,
+                "rssMiB": 353.015625,
+                "cpuSeconds": 12.36,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 353.015625,
+            "runtimeCpuSeconds": 12.37,
+            "millRssMiB": 8.84375,
+            "processes": [
+              {
+                "pid": 82881,
+                "ppid": 82864,
+                "rssMiB": 353.015625,
+                "cpuSeconds": 12.37,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 353.015625,
+            "runtimeCpuSeconds": 12.38,
+            "millRssMiB": 8.84375,
+            "processes": [
+              {
+                "pid": 82881,
+                "ppid": 82864,
+                "rssMiB": 353.015625,
+                "cpuSeconds": 12.38,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 353.015625,
+            "runtimeCpuSeconds": 12.39,
+            "millRssMiB": 8.84375,
+            "processes": [
+              {
+                "pid": 82881,
+                "ppid": 82864,
+                "rssMiB": 353.015625,
+                "cpuSeconds": 12.39,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 353.015625,
+            "runtimeCpuSeconds": 12.4,
+            "millRssMiB": 8.84375,
+            "processes": [
+              {
+                "pid": 82881,
+                "ppid": 82864,
+                "rssMiB": 353.015625,
+                "cpuSeconds": 12.4,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 353.015625,
+          "p95": 353.015625,
+          "p99": 353.015625,
+          "max": 353.015625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 8.84375,
+          "p95": 8.84375,
+          "p99": 8.84375,
+          "max": 8.84375
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 4,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 119.50562499987427,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 98.40625,
+            "runtimeCpuSeconds": 0.31,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 83315,
+                "ppid": 83314,
+                "rssMiB": 98.40625,
+                "cpuSeconds": 0.31,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 98.40625,
+            "runtimeCpuSeconds": 0.32,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 83315,
+                "ppid": 83314,
+                "rssMiB": 98.40625,
+                "cpuSeconds": 0.32,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 98.375,
+            "runtimeCpuSeconds": 0.34,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 83315,
+                "ppid": 83314,
+                "rssMiB": 98.375,
+                "cpuSeconds": 0.34,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 98.375,
+            "runtimeCpuSeconds": 0.35,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 83315,
+                "ppid": 83314,
+                "rssMiB": 98.375,
+                "cpuSeconds": 0.35,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 98.375,
+            "runtimeCpuSeconds": 0.36,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 83315,
+                "ppid": 83314,
+                "rssMiB": 98.375,
+                "cpuSeconds": 0.36,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 98.375,
+          "p95": 98.40625,
+          "p99": 98.40625,
+          "max": 98.40625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.234375,
+          "p95": 6.234375,
+          "p99": 6.234375,
+          "max": 6.234375
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 8,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 3854.173791994981,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 432.671875,
+            "runtimeCpuSeconds": 12.95,
+            "millRssMiB": 9.578125,
+            "processes": [
+              {
+                "pid": 83595,
+                "ppid": 83578,
+                "rssMiB": 432.671875,
+                "cpuSeconds": 12.95,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 432.671875,
+            "runtimeCpuSeconds": 12.97,
+            "millRssMiB": 9.578125,
+            "processes": [
+              {
+                "pid": 83595,
+                "ppid": 83578,
+                "rssMiB": 432.671875,
+                "cpuSeconds": 12.97,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 432.671875,
+            "runtimeCpuSeconds": 12.99,
+            "millRssMiB": 9.578125,
+            "processes": [
+              {
+                "pid": 83595,
+                "ppid": 83578,
+                "rssMiB": 432.671875,
+                "cpuSeconds": 12.99,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 432.671875,
+            "runtimeCpuSeconds": 13.01,
+            "millRssMiB": 9.578125,
+            "processes": [
+              {
+                "pid": 83595,
+                "ppid": 83578,
+                "rssMiB": 432.671875,
+                "cpuSeconds": 13.01,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 432.671875,
+            "runtimeCpuSeconds": 13.03,
+            "millRssMiB": 9.578125,
+            "processes": [
+              {
+                "pid": 83595,
+                "ppid": 83578,
+                "rssMiB": 432.671875,
+                "cpuSeconds": 13.03,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 432.671875,
+          "p95": 432.671875,
+          "p99": 432.671875,
+          "max": 432.671875
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 9.578125,
+          "p95": 9.578125,
+          "p99": 9.578125,
+          "max": 9.578125
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 8,
+      "pooled": true,
+      "repeat": 1,
+      "startupMs": 237.40866700245533,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 152.984375,
+            "runtimeCpuSeconds": 0.53,
+            "millRssMiB": 6.09375,
+            "processes": [
+              {
+                "pid": 84050,
+                "ppid": 84049,
+                "rssMiB": 152.984375,
+                "cpuSeconds": 0.53,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 152.984375,
+            "runtimeCpuSeconds": 0.54,
+            "millRssMiB": 6.09375,
+            "processes": [
+              {
+                "pid": 84050,
+                "ppid": 84049,
+                "rssMiB": 152.984375,
+                "cpuSeconds": 0.54,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.078125,
+            "runtimeCpuSeconds": 0.58,
+            "millRssMiB": 6.09375,
+            "processes": [
+              {
+                "pid": 84050,
+                "ppid": 84049,
+                "rssMiB": 153.078125,
+                "cpuSeconds": 0.58,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.078125,
+            "runtimeCpuSeconds": 0.6,
+            "millRssMiB": 6.09375,
+            "processes": [
+              {
+                "pid": 84050,
+                "ppid": 84049,
+                "rssMiB": 153.078125,
+                "cpuSeconds": 0.6,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.078125,
+            "runtimeCpuSeconds": 0.62,
+            "millRssMiB": 6.09375,
+            "processes": [
+              {
+                "pid": 84050,
+                "ppid": 84049,
+                "rssMiB": 153.078125,
+                "cpuSeconds": 0.62,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 153.078125,
+          "p95": 153.078125,
+          "p99": 153.078125,
+          "max": 153.078125
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.09375,
+          "p95": 6.09375,
+          "p99": 6.09375,
+          "max": 6.09375
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 1,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 33.950749995710794,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 55.578125,
+            "runtimeCpuSeconds": 0.14,
+            "millRssMiB": 6.265625,
+            "processes": [
+              {
+                "pid": 84594,
+                "ppid": 84593,
+                "rssMiB": 55.578125,
+                "cpuSeconds": 0.14,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.578125,
+            "runtimeCpuSeconds": 0.14,
+            "millRssMiB": 6.265625,
+            "processes": [
+              {
+                "pid": 84594,
+                "ppid": 84593,
+                "rssMiB": 55.578125,
+                "cpuSeconds": 0.14,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.59375,
+            "runtimeCpuSeconds": 0.15,
+            "millRssMiB": 6.265625,
+            "processes": [
+              {
+                "pid": 84594,
+                "ppid": 84593,
+                "rssMiB": 55.59375,
+                "cpuSeconds": 0.15,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.59375,
+            "runtimeCpuSeconds": 0.16,
+            "millRssMiB": 6.265625,
+            "processes": [
+              {
+                "pid": 84594,
+                "ppid": 84593,
+                "rssMiB": 55.59375,
+                "cpuSeconds": 0.16,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 55.5625,
+            "runtimeCpuSeconds": 0.16,
+            "millRssMiB": 6.265625,
+            "processes": [
+              {
+                "pid": 84594,
+                "ppid": 84593,
+                "rssMiB": 55.5625,
+                "cpuSeconds": 0.16,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 55.578125,
+          "p95": 55.59375,
+          "p99": 55.59375,
+          "max": 55.59375
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.265625,
+          "p95": 6.265625,
+          "p99": 6.265625,
+          "max": 6.265625
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 1,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 2726.987708003435,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 438.015625,
+            "runtimeCpuSeconds": 9.12,
+            "millRssMiB": 8.4375,
+            "processes": [
+              {
+                "pid": 84855,
+                "ppid": 84851,
+                "rssMiB": 438.015625,
+                "cpuSeconds": 9.12,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 438.015625,
+            "runtimeCpuSeconds": 9.12,
+            "millRssMiB": 8.4375,
+            "processes": [
+              {
+                "pid": 84855,
+                "ppid": 84851,
+                "rssMiB": 438.015625,
+                "cpuSeconds": 9.12,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 438.015625,
+            "runtimeCpuSeconds": 9.12,
+            "millRssMiB": 8.4375,
+            "processes": [
+              {
+                "pid": 84855,
+                "ppid": 84851,
+                "rssMiB": 438.015625,
+                "cpuSeconds": 9.12,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 438.015625,
+            "runtimeCpuSeconds": 9.13,
+            "millRssMiB": 8.4375,
+            "processes": [
+              {
+                "pid": 84855,
+                "ppid": 84851,
+                "rssMiB": 438.015625,
+                "cpuSeconds": 9.13,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 438.015625,
+            "runtimeCpuSeconds": 9.13,
+            "millRssMiB": 8.4375,
+            "processes": [
+              {
+                "pid": 84855,
+                "ppid": 84851,
+                "rssMiB": 438.015625,
+                "cpuSeconds": 9.13,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 438.015625,
+          "p95": 438.015625,
+          "p99": 438.015625,
+          "max": 438.015625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 8.4375,
+          "p95": 8.4375,
+          "p99": 8.4375,
+          "max": 8.4375
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 4,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 113.14841699640965,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 99.140625,
+            "runtimeCpuSeconds": 0.29,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 85204,
+                "ppid": 85203,
+                "rssMiB": 99.140625,
+                "cpuSeconds": 0.29,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 99.140625,
+            "runtimeCpuSeconds": 0.3,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 85204,
+                "ppid": 85203,
+                "rssMiB": 99.140625,
+                "cpuSeconds": 0.3,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 99.125,
+            "runtimeCpuSeconds": 0.32,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 85204,
+                "ppid": 85203,
+                "rssMiB": 99.125,
+                "cpuSeconds": 0.32,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 99.125,
+            "runtimeCpuSeconds": 0.33,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 85204,
+                "ppid": 85203,
+                "rssMiB": 99.125,
+                "cpuSeconds": 0.33,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 99.125,
+            "runtimeCpuSeconds": 0.34,
+            "millRssMiB": 6.234375,
+            "processes": [
+              {
+                "pid": 85204,
+                "ppid": 85203,
+                "rssMiB": 99.125,
+                "cpuSeconds": 0.34,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 99.125,
+          "p95": 99.140625,
+          "p99": 99.140625,
+          "max": 99.140625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.234375,
+          "p95": 6.234375,
+          "p99": 6.234375,
+          "max": 6.234375
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 4,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 3143.1788339978084,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 378.390625,
+            "runtimeCpuSeconds": 10.95,
+            "millRssMiB": 9.0,
+            "processes": [
+              {
+                "pid": 85487,
+                "ppid": 85481,
+                "rssMiB": 378.390625,
+                "cpuSeconds": 10.95,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 378.390625,
+            "runtimeCpuSeconds": 10.96,
+            "millRssMiB": 9.0,
+            "processes": [
+              {
+                "pid": 85487,
+                "ppid": 85481,
+                "rssMiB": 378.390625,
+                "cpuSeconds": 10.96,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 378.390625,
+            "runtimeCpuSeconds": 10.97,
+            "millRssMiB": 9.0,
+            "processes": [
+              {
+                "pid": 85487,
+                "ppid": 85481,
+                "rssMiB": 378.390625,
+                "cpuSeconds": 10.97,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 378.390625,
+            "runtimeCpuSeconds": 10.98,
+            "millRssMiB": 9.0,
+            "processes": [
+              {
+                "pid": 85487,
+                "ppid": 85481,
+                "rssMiB": 378.390625,
+                "cpuSeconds": 10.98,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 378.390625,
+            "runtimeCpuSeconds": 10.99,
+            "millRssMiB": 9.0,
+            "processes": [
+              {
+                "pid": 85487,
+                "ppid": 85481,
+                "rssMiB": 378.390625,
+                "cpuSeconds": 10.99,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 378.390625,
+          "p95": 378.390625,
+          "p99": 378.390625,
+          "max": 378.390625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 9.0,
+          "p95": 9.0,
+          "p99": 9.0,
+          "max": 9.0
+        }
+      }
+    },
+    {
+      "flavor": "ts",
+      "weavers": 8,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 236.35516699869186,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 153.59375,
+            "runtimeCpuSeconds": 0.54,
+            "millRssMiB": 6.328125,
+            "processes": [
+              {
+                "pid": 85915,
+                "ppid": 85914,
+                "rssMiB": 153.59375,
+                "cpuSeconds": 0.54,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.59375,
+            "runtimeCpuSeconds": 0.55,
+            "millRssMiB": 6.328125,
+            "processes": [
+              {
+                "pid": 85915,
+                "ppid": 85914,
+                "rssMiB": 153.59375,
+                "cpuSeconds": 0.55,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.625,
+            "runtimeCpuSeconds": 0.58,
+            "millRssMiB": 6.328125,
+            "processes": [
+              {
+                "pid": 85915,
+                "ppid": 85914,
+                "rssMiB": 153.625,
+                "cpuSeconds": 0.58,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.640625,
+            "runtimeCpuSeconds": 0.6,
+            "millRssMiB": 6.328125,
+            "processes": [
+              {
+                "pid": 85915,
+                "ppid": 85914,
+                "rssMiB": 153.640625,
+                "cpuSeconds": 0.6,
+                "command": "bun"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 153.6875,
+            "runtimeCpuSeconds": 0.62,
+            "millRssMiB": 6.328125,
+            "processes": [
+              {
+                "pid": 85915,
+                "ppid": 85914,
+                "rssMiB": 153.6875,
+                "cpuSeconds": 0.62,
+                "command": "bun"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 153.625,
+          "p95": 153.6875,
+          "p99": 153.6875,
+          "max": 153.6875
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 6.328125,
+          "p95": 6.328125,
+          "p99": 6.328125,
+          "max": 6.328125
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 8,
+      "pooled": true,
+      "repeat": 2,
+      "startupMs": 3590.0966670014895,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 424.390625,
+            "runtimeCpuSeconds": 13.83,
+            "millRssMiB": 9.6875,
+            "processes": [
+              {
+                "pid": 86193,
+                "ppid": 86182,
+                "rssMiB": 424.390625,
+                "cpuSeconds": 13.83,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 424.390625,
+            "runtimeCpuSeconds": 13.85,
+            "millRssMiB": 9.6875,
+            "processes": [
+              {
+                "pid": 86193,
+                "ppid": 86182,
+                "rssMiB": 424.390625,
+                "cpuSeconds": 13.85,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 424.390625,
+            "runtimeCpuSeconds": 13.86,
+            "millRssMiB": 9.6875,
+            "processes": [
+              {
+                "pid": 86193,
+                "ppid": 86182,
+                "rssMiB": 424.390625,
+                "cpuSeconds": 13.86,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 424.390625,
+            "runtimeCpuSeconds": 13.88,
+            "millRssMiB": 9.6875,
+            "processes": [
+              {
+                "pid": 86193,
+                "ppid": 86182,
+                "rssMiB": 424.390625,
+                "cpuSeconds": 13.88,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 424.390625,
+            "runtimeCpuSeconds": 13.9,
+            "millRssMiB": 9.6875,
+            "processes": [
+              {
+                "pid": 86193,
+                "ppid": 86182,
+                "rssMiB": 424.390625,
+                "cpuSeconds": 13.9,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 424.390625,
+          "p95": 424.390625,
+          "p99": 424.390625,
+          "max": 424.390625
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 9.6875,
+          "p95": 9.6875,
+          "p99": 9.6875,
+          "max": 9.6875
+        }
+      }
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 4,
+      "pooled": false,
+      "startupMs": 10282.14808300254,
+      "idle": {
+        "settleSeconds": 10,
+        "samples": [
+          {
+            "runtimeRssMiB": 1102.328125,
+            "runtimeCpuSeconds": 30.17,
+            "millRssMiB": 7.5,
+            "processes": [
+              {
+                "pid": 86584,
+                "ppid": 86527,
+                "rssMiB": 216.765625,
+                "cpuSeconds": 8.64,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86529,
+                "ppid": 86527,
+                "rssMiB": 328.8125,
+                "cpuSeconds": 9.45,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86635,
+                "ppid": 86527,
+                "rssMiB": 264.484375,
+                "cpuSeconds": 6.19,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86687,
+                "ppid": 86527,
+                "rssMiB": 292.265625,
+                "cpuSeconds": 5.89,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 1103.625,
+            "runtimeCpuSeconds": 30.17,
+            "millRssMiB": 7.5,
+            "processes": [
+              {
+                "pid": 86584,
+                "ppid": 86527,
+                "rssMiB": 218.0625,
+                "cpuSeconds": 8.64,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86529,
+                "ppid": 86527,
+                "rssMiB": 328.8125,
+                "cpuSeconds": 9.45,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86635,
+                "ppid": 86527,
+                "rssMiB": 264.484375,
+                "cpuSeconds": 6.19,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86687,
+                "ppid": 86527,
+                "rssMiB": 292.265625,
+                "cpuSeconds": 5.89,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 1103.625,
+            "runtimeCpuSeconds": 30.200000000000003,
+            "millRssMiB": 7.5,
+            "processes": [
+              {
+                "pid": 86584,
+                "ppid": 86527,
+                "rssMiB": 218.0625,
+                "cpuSeconds": 8.65,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86529,
+                "ppid": 86527,
+                "rssMiB": 328.8125,
+                "cpuSeconds": 9.45,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86635,
+                "ppid": 86527,
+                "rssMiB": 264.484375,
+                "cpuSeconds": 6.2,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86687,
+                "ppid": 86527,
+                "rssMiB": 292.265625,
+                "cpuSeconds": 5.9,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 1103.625,
+            "runtimeCpuSeconds": 30.21,
+            "millRssMiB": 7.5,
+            "processes": [
+              {
+                "pid": 86584,
+                "ppid": 86527,
+                "rssMiB": 218.0625,
+                "cpuSeconds": 8.65,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86529,
+                "ppid": 86527,
+                "rssMiB": 328.8125,
+                "cpuSeconds": 9.46,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86635,
+                "ppid": 86527,
+                "rssMiB": 264.484375,
+                "cpuSeconds": 6.2,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86687,
+                "ppid": 86527,
+                "rssMiB": 292.265625,
+                "cpuSeconds": 5.9,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          },
+          {
+            "runtimeRssMiB": 1103.78125,
+            "runtimeCpuSeconds": 30.22,
+            "millRssMiB": 7.5,
+            "processes": [
+              {
+                "pid": 86584,
+                "ppid": 86527,
+                "rssMiB": 218.0625,
+                "cpuSeconds": 8.65,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86529,
+                "ppid": 86527,
+                "rssMiB": 328.8125,
+                "cpuSeconds": 9.46,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86635,
+                "ppid": 86527,
+                "rssMiB": 264.640625,
+                "cpuSeconds": 6.21,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              },
+              {
+                "pid": 86687,
+                "ppid": 86527,
+                "rssMiB": 292.265625,
+                "cpuSeconds": 5.9,
+                "command": "/Users/ct/.local/share/mise/installs/java/temurin-21/bin/java"
+              }
+            ]
+          }
+        ],
+        "runtimeRssMiB": {
+          "n": 5,
+          "median": 1103.625,
+          "p95": 1103.78125,
+          "p99": 1103.78125,
+          "max": 1103.78125
+        },
+        "millRssMiB": {
+          "n": 5,
+          "median": 7.5,
+          "p95": 7.5,
+          "p99": 7.5,
+          "max": 7.5
+        }
+      }
+    }
+  ],
+  "sibling": [
+    {
+      "flavor": "ts",
+      "weavers": 4,
+      "baseline": {
+        "concurrency": 1,
+        "transport": "mill-socket",
+        "seconds": 3.0000904999978957,
+        "opsPerSecond": 5177.510478437533,
+        "latencyMs": {
+          "n": 15533,
+          "median": 0.1709160060272552,
+          "p95": 0.2667090011527762,
+          "p99": 0.6775410001864657,
+          "max": 2.5048750030691735
+        },
+        "meanResponseBytes": 513,
+        "runtimeCpuSeconds": 3.1400000000000006,
+        "clientCpuSeconds": 0.414157,
+        "runtimeRssMiB": 238.578125,
+        "errors": 0
+      },
+      "underLoad": [
+        {
+          "hotClients": 1,
+          "probe": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 3.000097750002169,
+            "opsPerSecond": 5178.164611465999,
+            "latencyMs": {
+              "n": 15535,
+              "median": 0.17008400027407333,
+              "p95": 0.2760839997790754,
+              "p99": 0.6500000017695129,
+              "max": 2.261666006234009
+            },
+            "meanResponseBytes": 513,
+            "runtimeCpuSeconds": 5.890000000000001,
+            "clientCpuSeconds": 0.413406,
+            "runtimeRssMiB": 258.34375,
+            "errors": 0
+          },
+          "load": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 7.116149000001315,
+            "opsPerSecond": 4.918390550843375,
+            "latencyMs": {
+              "n": 35,
+              "median": 205.37583300028928,
+              "p95": 229.08695800288115,
+              "p99": 233.25320800358895,
+              "max": 233.25320800358895
+            },
+            "meanResponseBytes": 984077,
+            "runtimeCpuSeconds": 10.439999999999998,
+            "clientCpuSeconds": 0.13754999999999998,
+            "runtimeRssMiB": 268.375,
+            "errors": 0
+          }
+        },
+        {
+          "hotClients": 8,
+          "probe": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 3.000120667005831,
+            "opsPerSecond": 4995.465737368913,
+            "latencyMs": {
+              "n": 14987,
+              "median": 0.17258400475839153,
+              "p95": 0.3057909998460673,
+              "p99": 0.7384589989669621,
+              "max": 2.5243330019293353
+            },
+            "meanResponseBytes": 513,
+            "runtimeCpuSeconds": 6.030000000000005,
+            "clientCpuSeconds": 0.42047,
+            "runtimeRssMiB": 279.1875,
+            "errors": 0
+          },
+          "load": {
+            "concurrency": 8,
+            "transport": "mill-socket",
+            "seconds": 8.553666792002332,
+            "opsPerSecond": 4.910174901747395,
+            "latencyMs": {
+              "n": 42,
+              "median": 1613.1018749983923,
+              "p95": 1713.1556659951457,
+              "p99": 1735.8951249989332,
+              "max": 1735.8951249989332
+            },
+            "meanResponseBytes": 984077,
+            "runtimeCpuSeconds": 12.370000000000005,
+            "clientCpuSeconds": 0.184066,
+            "runtimeRssMiB": 279.953125,
+            "errors": 0
+          }
+        }
+      ]
+    },
+    {
+      "flavor": "jvm",
+      "weavers": 4,
+      "baseline": {
+        "concurrency": 1,
+        "transport": "mill-socket",
+        "seconds": 3.0000243750037043,
+        "opsPerSecond": 1223.6567244542696,
+        "latencyMs": {
+          "n": 3671,
+          "median": 0.766334000218194,
+          "p95": 1.0383749977336265,
+          "p99": 1.4931250043446198,
+          "max": 3.3414999998058192
+        },
+        "meanResponseBytes": 569,
+        "runtimeCpuSeconds": 3.0299999999999976,
+        "clientCpuSeconds": 0.164205,
+        "runtimeRssMiB": 608.84375,
+        "errors": 0
+      },
+      "underLoad": [
+        {
+          "hotClients": 1,
+          "probe": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 3.0001607919984963,
+            "opsPerSecond": 1197.2691628995199,
+            "latencyMs": {
+              "n": 3592,
+              "median": 0.764145497669233,
+              "p95": 1.073916006134823,
+              "p99": 2.0297079972806387,
+              "max": 11.01237500552088
+            },
+            "meanResponseBytes": 569,
+            "runtimeCpuSeconds": 5.789999999999996,
+            "clientCpuSeconds": 0.175123,
+            "runtimeRssMiB": 706.234375,
+            "errors": 0
+          },
+          "load": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 7.047617958996852,
+            "opsPerSecond": 7.378379518092039,
+            "latencyMs": {
+              "n": 52,
+              "median": 135.04922950232867,
+              "p95": 140.32154199958313,
+              "p99": 143.7058750016149,
+              "max": 143.7058750016149
+            },
+            "meanResponseBytes": 958146,
+            "runtimeCpuSeconds": 9.750000000000004,
+            "clientCpuSeconds": 0.188139,
+            "runtimeRssMiB": 686.515625,
+            "errors": 0
+          }
+        },
+        {
+          "hotClients": 8,
+          "probe": {
+            "concurrency": 1,
+            "transport": "mill-socket",
+            "seconds": 3.001133874997322,
+            "opsPerSecond": 319.21268423950426,
+            "latencyMs": {
+              "n": 958,
+              "median": 2.644166503159795,
+              "p95": 6.4916659976006486,
+              "p99": 11.233916004130151,
+              "max": 43.2292920013424
+            },
+            "meanResponseBytes": 569,
+            "runtimeCpuSeconds": 22.39,
+            "clientCpuSeconds": 0.186648,
+            "runtimeRssMiB": 1481.125,
+            "errors": 0
+          },
+          "load": {
+            "concurrency": 8,
+            "transport": "mill-socket",
+            "seconds": 7.1867784170026425,
+            "opsPerSecond": 34.50781220877438,
+            "latencyMs": {
+              "n": 248,
+              "median": 222.371291496529,
+              "p95": 316.364792000968,
+              "p99": 414.133624995884,
+              "max": 447.53933399624657
+            },
+            "meanResponseBytes": 958146,
+            "runtimeCpuSeconds": 51.61,
+            "clientCpuSeconds": 1.744805,
+            "runtimeRssMiB": 1297.484375,
+            "errors": 0
+          }
+        }
+      ]
+    }
+  ],
+  "cliUnderLoad": [
+    {
+      "flavor": "ts",
+      "name": "show",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 3.009661957999924,
+      "opsPerSecond": 644.5906640256802,
+      "latencyMs": {
+        "n": 1940,
+        "median": 12.204667000332847,
+        "p95": 15.415291993122082,
+        "p99": 17.007291004119907,
+        "max": 21.231999999145046
+      },
+      "meanResponseBytes": 493,
+      "runtimeCpuSeconds": 1.3599999999999994,
+      "clientCpuSeconds": 2.5914409999999997,
+      "runtimeRssMiB": 280.15625,
+      "errors": 0
+    },
+    {
+      "flavor": "ts",
+      "name": "update",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 3.0082483330043033,
+      "opsPerSecond": 605.3356632899346,
+      "latencyMs": {
+        "n": 1821,
+        "median": 12.957625003764406,
+        "p95": 16.478166995511856,
+        "p99": 18.497375000151806,
+        "max": 25.912332996085752
+      },
+      "meanResponseBytes": 508.9275123558484,
+      "runtimeCpuSeconds": 2.0,
+      "clientCpuSeconds": 2.508825,
+      "runtimeRssMiB": 280.484375,
+      "errors": 0
+    },
+    {
+      "flavor": "ts",
+      "name": "complex",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 4.553932625000016,
+      "opsPerSecond": 5.050579772246833,
+      "latencyMs": {
+        "n": 23,
+        "median": 1566.1359580044518,
+        "p95": 1600.1292090004426,
+        "p99": 1611.62762499589,
+        "max": 1611.62762499589
+      },
+      "meanResponseBytes": 984056,
+      "runtimeCpuSeconds": 5.219999999999999,
+      "clientCpuSeconds": 0.12220499999999998,
+      "runtimeRssMiB": 284.75,
+      "errors": 0
+    },
+    {
+      "flavor": "jvm",
+      "name": "show",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 3.015765707998071,
+      "opsPerSecond": 439.6893288107009,
+      "latencyMs": {
+        "n": 1326,
+        "median": 17.452479001804022,
+        "p95": 24.532750001526438,
+        "p99": 31.48325000074692,
+        "max": 68.1434169964632
+      },
+      "meanResponseBytes": 480,
+      "runtimeCpuSeconds": 3.0100000000000193,
+      "clientCpuSeconds": 1.931623,
+      "runtimeRssMiB": 1619.90625,
+      "errors": 0
+    },
+    {
+      "flavor": "jvm",
+      "name": "update",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 3.0112659580045147,
+      "opsPerSecond": 465.9169995498274,
+      "latencyMs": {
+        "n": 1403,
+        "median": 15.977625000232365,
+        "p95": 24.45404199534096,
+        "p99": 38.832582999020815,
+        "max": 77.27225000417093
+      },
+      "meanResponseBytes": 489.248039914469,
+      "runtimeCpuSeconds": 4.659999999999997,
+      "clientCpuSeconds": 2.027071,
+      "runtimeRssMiB": 1636.015625,
+      "errors": 0
+    },
+    {
+      "flavor": "jvm",
+      "name": "complex",
+      "concurrency": 8,
+      "transport": "cli",
+      "seconds": 3.086539707997872,
+      "opsPerSecond": 31.102791177850023,
+      "latencyMs": {
+        "n": 96,
+        "median": 255.69985400215955,
+        "p95": 282.49879099894315,
+        "p99": 287.4076250009239,
+        "max": 287.4076250009239
+      },
+      "meanResponseBytes": 958056,
+      "runtimeCpuSeconds": 18.939999999999998,
+      "clientCpuSeconds": 0.779144,
+      "runtimeRssMiB": 1646.078125,
+      "errors": 0
+    }
+  ],
+  "profiles": {
+    "tsDatabaseCopy": "/tmp/msp-xy4lumyu/ts-diagnostic.db",
+    "jvmFlags": "95437:\n-XX:CICompilerCount=4 -XX:ConcGCThreads=2 -XX:G1ConcRefinementThreads=9 -XX:G1EagerReclaimRemSetThreshold=16 -XX:G1HeapRegionSize=2097152 -XX:G1RemSetArrayOfCardsEntries=16 -XX:G1RemSetHowlMaxNumBuckets=8 -XX:G1RemSetHowlNumBuckets=8 -XX:GCDrainStackTargetSize=64 -XX:InitialHeapSize=268435456 -XX:MarkStackSize=4194304 -XX:MaxHeapSize=4294967296 -XX:MaxNewSize=2575302656 -XX:MinHeapDeltaBytes=2097152 -XX:MinHeapSize=8388608 -XX:NonNMethodCodeHeapSize=5839564 -XX:NonProfiledCodeHeapSize=122909338 -XX:-OmitStackTraceInFastThrow -XX:ProfiledCodeHeapSize=122909338 -XX:ReservedCodeCacheSize=251658240 -XX:+SegmentedCodeCache -XX:SoftMaxHeapSize=4294967296 -XX:+UseCompressedOops -XX:+UseG1GC -XX:-UseNUMA -XX:-UseNUMAInterleaving \n",
+    "jvmVersion": "95437:\nOpenJDK 64-Bit Server VM version 21.0.12.1+1-LTS\nJDK 21.0.12.1\n",
+    "jvmRecording": "/tmp/msp-xy4lumyu/jvm-complex.jfr",
+    "tsHotpaths": [
+      {
+        "sqlite": {
+          "version": "3.51.0"
+        },
+        "journal": {
+          "journal_mode": "wal"
+        },
+        "synchronous": {
+          "synchronous": 1
+        },
+        "cache": {
+          "cache_size": 2000
+        },
+        "mmap": {
+          "mmap_size": 0
+        }
+      },
+      {
+        "name": "list500",
+        "rows": 500,
+        "sql": "SELECT s.id FROM strands s WHERE EXISTS (SELECT 1 FROM attributes a1 WHERE a1.strand_id=s.id AND a1.archived=0 AND a1.key=? AND json_extract(a1.value, ?) < ?) ORDER BY s.created_at,s.id LIMIT ?",
+        "bindings": ["ordinal", "$", 500],
+        "plan": [
+          {
+            "id": 4,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN s"
+          },
+          {
+            "id": 7,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 1"
+          },
+          {
+            "id": 12,
+            "parent": 7,
+            "notused": 39,
+            "detail": "SEARCH a1 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 40,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      {
+        "name": "list500:prepared-id-query",
+        "n": 60,
+        "medianMs": 33.66487499999994
+      },
+      {
+        "name": "list500:graph-list",
+        "n": 33,
+        "medianMs": 61.086207999999715
+      },
+      {
+        "name": "list500:runtime-invoke",
+        "n": 29,
+        "medianMs": 68.36200000000008
+      },
+      {
+        "name": "list500:json-stringify-result",
+        "n": 29552,
+        "medianMs": 0.0647079999998823
+      },
+      {
+        "name": "selective",
+        "rows": 1251,
+        "sql": "SELECT s.id FROM strands s WHERE (s.state = ? AND EXISTS (SELECT 1 FROM attributes a1 WHERE a1.strand_id=s.id AND a1.archived=0 AND a1.key=? AND json_extract(a1.value, ?) = ?)) ORDER BY s.created_at,s.id LIMIT ?",
+        "bindings": ["active", "owner", "$", "agent-7"],
+        "plan": [
+          {
+            "id": 4,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN s"
+          },
+          {
+            "id": 9,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 1"
+          },
+          {
+            "id": 14,
+            "parent": 9,
+            "notused": 39,
+            "detail": "SEARCH a1 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 42,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      {
+        "name": "selective:prepared-id-query",
+        "n": 67,
+        "medianMs": 30.003959000001487
+      },
+      {
+        "name": "selective:graph-list",
+        "n": 20,
+        "medianMs": 100.2482089999994
+      },
+      {
+        "name": "selective:runtime-invoke",
+        "n": 18,
+        "medianMs": 110.54000000000087
+      },
+      {
+        "name": "selective:json-stringify-result",
+        "n": 9933,
+        "medianMs": 0.1755830000001879
+      },
+      {
+        "name": "complex",
+        "rows": 2000,
+        "sql": "SELECT s.id FROM strands s WHERE (s.state = ? AND EXISTS (SELECT 1 FROM attributes a1 WHERE a1.strand_id=s.id AND a1.archived=0 AND a1.key=? AND json_extract(a1.value, ?) = ?) AND EXISTS (SELECT 1 FROM attributes a2 WHERE a2.strand_id=s.id AND a2.archived=0 AND a2.key=? AND json_extract(a2.value, ?) >= ?) AND EXISTS (SELECT 1 FROM attributes a3 WHERE a3.strand_id=s.id AND a3.archived=0 AND a3.key=? AND json_extract(a3.value, ?) >= ?) AND (EXISTS (SELECT 1 FROM attributes a4 WHERE a4.strand_id=s.id AND a4.archived=0 AND a4.key=? AND json_extract(a4.value, ?) = ?) OR EXISTS (SELECT 1 FROM attributes a5 WHERE a5.strand_id=s.id AND a5.archived=0 AND a5.key=? AND json_extract(a5.value, ?) = ?))) ORDER BY s.created_at,s.id LIMIT ?",
+        "bindings": [
+          "active",
+          "kind",
+          "$",
+          "task",
+          "priority",
+          "$",
+          3,
+          "meta",
+          "$.\"score\"",
+          60,
+          "team",
+          "$",
+          "team-2",
+          "team",
+          "$",
+          "team-5"
+        ],
+        "plan": [
+          {
+            "id": 4,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN s"
+          },
+          {
+            "id": 9,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 1"
+          },
+          {
+            "id": 14,
+            "parent": 9,
+            "notused": 39,
+            "detail": "SEARCH a1 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 33,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 2"
+          },
+          {
+            "id": 38,
+            "parent": 33,
+            "notused": 39,
+            "detail": "SEARCH a2 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 57,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 3"
+          },
+          {
+            "id": 62,
+            "parent": 57,
+            "notused": 39,
+            "detail": "SEARCH a3 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 81,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 4"
+          },
+          {
+            "id": 86,
+            "parent": 81,
+            "notused": 39,
+            "detail": "SEARCH a4 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 105,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 5"
+          },
+          {
+            "id": 110,
+            "parent": 105,
+            "notused": 39,
+            "detail": "SEARCH a5 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 138,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      {
+        "name": "complex:prepared-id-query",
+        "n": 36,
+        "medianMs": 56.878624999997555
+      },
+      {
+        "name": "complex:graph-list",
+        "n": 12,
+        "medianMs": 165.32074999999895
+      },
+      {
+        "name": "complex:runtime-invoke",
+        "n": 11,
+        "medianMs": 181.47941699999865
+      },
+      {
+        "name": "complex:json-stringify-result",
+        "n": 6675,
+        "medianMs": 0.27420899999924586
+      },
+      {
+        "name": "edge",
+        "rows": 312,
+        "sql": "SELECT s.id FROM strands s WHERE (s.state = ? AND EXISTS (SELECT 1 FROM edges e1 JOIN strands s1 ON s1.id=e1.to_id WHERE e1.from_id=s.id AND e1.relation=? AND (s1.state = ? AND EXISTS (SELECT 1 FROM attributes a2 WHERE a2.strand_id=s1.id AND a2.archived=0 AND a2.key=? AND json_extract(a2.value, ?) = ?)))) ORDER BY s.created_at,s.id LIMIT ?",
+        "bindings": ["active", "ref", "closed", "owner", "$", "agent-0"],
+        "plan": [
+          {
+            "id": 4,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN s"
+          },
+          {
+            "id": 9,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 2"
+          },
+          {
+            "id": 15,
+            "parent": 9,
+            "notused": 56,
+            "detail": "SEARCH e1 USING COVERING INDEX sqlite_autoindex_edges_1 (from_id=?)"
+          },
+          {
+            "id": 22,
+            "parent": 9,
+            "notused": 46,
+            "detail": "SEARCH s1 USING INDEX sqlite_autoindex_strands_1 (id=?)"
+          },
+          {
+            "id": 30,
+            "parent": 9,
+            "notused": 0,
+            "detail": "CORRELATED SCALAR SUBQUERY 1"
+          },
+          {
+            "id": 35,
+            "parent": 30,
+            "notused": 39,
+            "detail": "SEARCH a2 USING INDEX sqlite_autoindex_attributes_1 (strand_id=? AND key=?)"
+          },
+          {
+            "id": 68,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      {
+        "name": "edge:prepared-id-query",
+        "n": 53,
+        "medianMs": 38.28616700000566
+      },
+      {
+        "name": "edge:graph-list",
+        "n": 37,
+        "medianMs": 54.08350000000064
+      },
+      {
+        "name": "edge:runtime-invoke",
+        "n": 35,
+        "medianMs": 57.52524999999878
+      },
+      {
+        "name": "edge:json-stringify-result",
+        "n": 44399,
+        "medianMs": 0.04316699999617413
+      }
+    ],
+    "tsRecording": "/tmp/msp-xy4lumyu/ts-hotpaths.cpuprofile",
+    "jvmSqlite": {
+      "version": "3.53.2",
+      "journal_mode": "wal",
+      "synchronous": 2,
+      "cache_size": -20000,
+      "mmap_size": 268435456,
+      "measurement": "Queried a fresh next.jdbc connection created by canonical millstrand.core.db/datasource."
+    }
+  },
+  "artifacts": "/tmp/msp-xy4lumyu",
+  "durability": [
+    {
+      "name": "update",
+      "synchronous": "normal",
+      "concurrency": 1,
+      "transport": "mill-socket",
+      "seconds": 3.000073999995948,
+      "opsPerSecond": 2391.2743485692986,
+      "latencyMs": {
+        "n": 7174,
+        "median": 0.345437500072876,
+        "p95": 0.8951249983510934,
+        "p99": 1.2831670028390363,
+        "max": 8.542875002603978
+      },
+      "meanResponseBytes": 534.7201003624199,
+      "runtimeCpuSeconds": 3.2699999999999996,
+      "clientCpuSeconds": 0.26032900000000003,
+      "runtimeRssMiB": 114.203125,
+      "errors": 0
+    },
+    {
+      "name": "update",
+      "synchronous": "normal",
+      "concurrency": 8,
+      "transport": "mill-socket",
+      "seconds": 3.0020679169974755,
+      "opsPerSecond": 3614.841602535645,
+      "latencyMs": {
+        "n": 10852,
+        "median": 1.9386249987292103,
+        "p95": 3.0051670037209988,
+        "p99": 5.974375002551824,
+        "max": 11.672166998323519
+      },
+      "meanResponseBytes": 531.3447290821969,
+      "runtimeCpuSeconds": 4.0600000000000005,
+      "clientCpuSeconds": 0.49450999999999995,
+      "runtimeRssMiB": 136.984375,
+      "errors": 0
+    },
+    {
+      "name": "add",
+      "synchronous": "normal",
+      "concurrency": 1,
+      "transport": "mill-socket",
+      "seconds": 3.000208292003663,
+      "opsPerSecond": 3297.437723363216,
+      "latencyMs": {
+        "n": 9893,
+        "median": 0.2340829960303381,
+        "p95": 0.480332993902266,
+        "p99": 1.73033399914857,
+        "max": 5.853666996699758
+      },
+      "meanResponseBytes": 433,
+      "runtimeCpuSeconds": 2.619999999999999,
+      "clientCpuSeconds": 0.278396,
+      "runtimeRssMiB": 154.203125,
+      "errors": 0
+    },
+    {
+      "name": "add",
+      "synchronous": "normal",
+      "concurrency": 8,
+      "transport": "mill-socket",
+      "seconds": 3.00183104199823,
+      "opsPerSecond": 4176.78404433243,
+      "latencyMs": {
+        "n": 12538,
+        "median": 1.2616250023711473,
+        "p95": 6.940040999324992,
+        "p99": 8.138292003422976,
+        "max": 12.687957998423371
+      },
+      "meanResponseBytes": 433,
+      "runtimeCpuSeconds": 3.6500000000000004,
+      "clientCpuSeconds": 0.726847,
+      "runtimeRssMiB": 156.78125,
+      "errors": 0
+    },
+    {
+      "name": "update",
+      "synchronous": "full",
+      "concurrency": 1,
+      "transport": "mill-socket",
+      "seconds": 3.000242417001573,
+      "opsPerSecond": 2439.4695437025957,
+      "latencyMs": {
+        "n": 7319,
+        "median": 0.3453329991316423,
+        "p95": 0.8737919997656718,
+        "p99": 1.3050409979769029,
+        "max": 6.498875001852866
+      },
+      "meanResponseBytes": 534.7256455799973,
+      "runtimeCpuSeconds": 3.2699999999999996,
+      "clientCpuSeconds": 0.22961700000000002,
+      "runtimeRssMiB": 118.765625,
+      "errors": 0
+    },
+    {
+      "name": "update",
+      "synchronous": "full",
+      "concurrency": 8,
+      "transport": "mill-socket",
+      "seconds": 3.002039833001618,
+      "opsPerSecond": 3348.056841054775,
+      "latencyMs": {
+        "n": 10051,
+        "median": 2.210416001616977,
+        "p95": 3.26091699389508,
+        "p99": 5.330584004695993,
+        "max": 19.38483299454674
+      },
+      "meanResponseBytes": 531.2225649189136,
+      "runtimeCpuSeconds": 3.8500000000000005,
+      "clientCpuSeconds": 0.479906,
+      "runtimeRssMiB": 130.453125,
+      "errors": 0
+    },
+    {
+      "name": "add",
+      "synchronous": "full",
+      "concurrency": 1,
+      "transport": "mill-socket",
+      "seconds": 3.0002113329974236,
+      "opsPerSecond": 2885.796711976968,
+      "latencyMs": {
+        "n": 8658,
+        "median": 0.2762079966487363,
+        "p95": 0.6115840005804785,
+        "p99": 2.158750001399312,
+        "max": 6.939874998352025
+      },
+      "meanResponseBytes": 433,
+      "runtimeCpuSeconds": 2.6000000000000005,
+      "clientCpuSeconds": 0.25816,
+      "runtimeRssMiB": 145.59375,
+      "errors": 0
+    },
+    {
+      "name": "add",
+      "synchronous": "full",
+      "concurrency": 8,
+      "transport": "mill-socket",
+      "seconds": 3.0026889170039794,
+      "opsPerSecond": 3779.945346894208,
+      "latencyMs": {
+        "n": 11350,
+        "median": 1.4962089990149252,
+        "p95": 7.3047919941018336,
+        "p99": 8.72137500118697,
+        "max": 17.510708996269386
+      },
+      "meanResponseBytes": 433,
+      "runtimeCpuSeconds": 3.26,
+      "clientCpuSeconds": 0.552684,
+      "runtimeRssMiB": 149.328125,
+      "errors": 0
+    }
+  ]
+}
