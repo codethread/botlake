@@ -8,6 +8,7 @@
         "@millstrand/core": "workspace:*",
         "@millstrand/spool-batteries": "workspace:*",
         "@millstrand/spool-cron": "workspace:*",
+        "@millstrand/spool-flags": "workspace:*",
         "@millstrand/spool-harnesses": "workspace:*",
         "@millstrand/spool-identity": "workspace:*",
         "@millstrand/spool-kanban": "workspace:*",
@@ -28,6 +29,7 @@
         "@millstrand/core": "workspace:*",
         "@millstrand/spool-batteries": "workspace:*",
         "@millstrand/spool-cron": "workspace:*",
+        "@millstrand/spool-flags": "workspace:*",
         "@millstrand/spool-harnesses": "workspace:*",
         "@millstrand/spool-identity": "workspace:*",
         "@millstrand/spool-kanban": "workspace:*",
@@ -70,6 +72,16 @@
         "@millstrand/core": "workspace:^",
       },
     },
+    "spools/flags": {
+      "name": "@millstrand/spool-flags",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+      },
+    },
     "spools/harnesses": {
       "name": "@millstrand/spool-harnesses",
       "version": "0.1.0",
@@ -79,6 +91,7 @@
       },
       "peerDependencies": {
         "@millstrand/core": "workspace:^",
+        "@millstrand/spool-flags": "workspace:^",
         "@millstrand/spool-identity": "workspace:^",
       },
     },
@@ -114,6 +127,8 @@
     "@millstrand/spool-batteries": ["@millstrand/spool-batteries@workspace:spools/batteries"],
 
     "@millstrand/spool-cron": ["@millstrand/spool-cron@workspace:spools/cron"],
+
+    "@millstrand/spool-flags": ["@millstrand/spool-flags@workspace:spools/flags"],
 
     "@millstrand/spool-harnesses": ["@millstrand/spool-harnesses@workspace:spools/harnesses"],
 

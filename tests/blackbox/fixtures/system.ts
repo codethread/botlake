@@ -58,7 +58,7 @@ export async function system(): Promise<{
   }
   const core = await pack("packages/core", "core");
   const packages: Record<string, string> = { "@millstrand/core": core };
-  for (const name of ["batteries", "identity", "kanban", "cron", "harnesses"])
+  for (const name of ["batteries", "identity", "kanban", "cron", "flags", "harnesses"])
     packages[`@millstrand/spool-${name}`] = await pack(`spools/${name}`, name);
   packages["@millstrand/identity"] = await pack("plugins/identity", "native-identity");
   const engine = join(dir, "engine");

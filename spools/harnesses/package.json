@@ -19,6 +19,7 @@
   },
   "peerDependencies": {
     "@millstrand/core": "workspace:^",
+    "@millstrand/spool-flags": "workspace:^",
     "@millstrand/spool-identity": "workspace:^"
   }
 }

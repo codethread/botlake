@@ -1,23 +1,59 @@
 # @millstrand/spool-harnesses
 
-Tracked agent runs, providers, aliases, assignment/review, resume/retry and custody reconciliation. Install the `@millstrand/core` and `@millstrand/spool-identity` peers; explicitly select Identity alongside this spool. Mill supplies process custody.
+Tracked headless agent runs, providers, documented aliases, assignment/review, resume/retry and custody reconciliation. Install the `@millstrand/core`, `@millstrand/spool-identity` and `@millstrand/spool-flags` peers; explicitly select Identity and Flags alongside this spool. Mill supplies process custody.
 
-Select `"@millstrand/spool-harnesses"` for defaults. For configuration, select a local module instead:
+Select `"@millstrand/spool-harnesses"` for Codex, Pi, Claude and Cursor defaults. For configuration, select a local module instead:
 
 ```ts
-import { harnesses, harnessConfigSchema } from "@millstrand/spool-harnesses";
+import { harnesses } from "@millstrand/spool-harnesses";
 
-import config from "./harnesses.json";
-
-export default harnesses(harnessConfigSchema.parse(config));
+export default harnesses({
+  aliases: {
+    sol: {
+      doc: "Complex implementation and debugging.",
+      parent: "pi",
+      model: "openai-codex/gpt-5.6-sol",
+      effort: "low",
+      when: "model/openai",
+    },
+    opus: {
+      doc: "Greenfield features, API design and critical review.",
+      parent: "claude",
+      model: "opus",
+      when: "model/anthropic",
+    },
+    reviewer: ["sol", "opus"],
+  },
+});
 ```
 
-```json
-{ "aliases": { "worker": { "provider": "codex" } }, "reviewers": {} }
+In a separate selected Flags module, configure defaults with `flags({ "model/openai": true, "model/anthropic": true })`. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `harness/NAME` flag is explicitly false.
+
+## Catalog and routing
+
+- `parent` names a provider or alias. Nearest child model/effort/fast/extraArgs settings replace their parent's; `systemPrompts` accumulate parent-first. A concrete `provider` descriptor also works.
+- An alias can be a descriptor, another seat's name, or a nonempty ordered array of either. The first candidate whose condition and parent chain are available wins. Missing parents, cycles and disabled flags produce visible unavailability reasons. Fallback selects before launch; it is not a retry after execution failure or an installed-model probe.
+- `when` accepts a flag name or nested expressions such as `["and", "model/openai", ["not", "maintenance"]]`; `or` is also supported. Provider flags apply through every alias chain.
+- `doc` explains when to use a seat. Names inherit their selected parent's docs; use full candidate descriptors to document role-specific choices, e.g. `reviewer: [{ doc: "Prefer Sol for review.", parent: "sol" }, { doc: "Fallback review.", parent: "opus" }]`.
+- Accepted runs freeze their resolved settings. Flag changes affect new starts and review selections, not queued/running runs, retries or native resumes. Exact request replay returns its original accepted run even if the alias is now disabled.
+
+```sh
+strand agent catalog                  # Docs, effective settings and availability, including disabled seats.
+strand agent catalog reviewer         # Full candidates, settings and unavailability reasons.
+strand flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
+strand agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
+strand agent show RUN_ID
+strand flag set harness/claude false  # Keep Claude registered, but unavailable for new selection.
 ```
 
-`harnesses()` includes Codex, Pi, Claude and Cursor, and also accepts custom providers. `provider`, provider types, `Harnesses`, `harnessConfigSchema` and `harnessConfigJsonSchema()` are public exports. Core knows nothing about this configuration.
+`agent list` lists runs, unlike the canonical CLI. A seat named `reviewer` is not a configured `agent review` lens, and `tui` does not enable interactive launch. Reviewer lenses have their own `seats`, `prompt`, optional `labels` and `paths`; seat selection respects alias availability, then executable availability.
 
-Cursor bundles a session-start plugin that binds the run’s native identity and injects policy context on new and resumed sessions. Its model selector combines `model`, optional `effort`, and optional `fast`. The hook uses Cursor’s documented [sessionStart contract](https://cursor.com/docs/hooks).
+`harnesses()` accepts custom implementations of the four provider names. Pass `providers: [provider("codex"), provider("pi")]` to register only those two. `harnessConfigSchema` and `harnessConfigJsonSchema()` describe aliases/reviewers; `Seat`, `Alias`, `Condition`, `Reviewer`, `HarnessConfig`, `HarnessOptions`, `Harnesses` and provider types are public. Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require Weaver restart.
 
-Codex/Claude/Pi native adapters are separately delivered as `@millstrand/identity`. Nothing installs into user profiles automatically. Native sessions do not grant custody; successful processes do not automatically close their tasks.
+Canonical caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.
+
+## Native integration
+
+Cursor bundles a session-start plugin that binds the run's native identity and injects policy context on new and resumed sessions. Its model selector combines `model`, optional `effort`, and optional `fast`. The hook uses Cursor's documented [sessionStart contract](https://cursor.com/docs/hooks).
+
+Codex/Claude/Pi native adapters are separately delivered as `@millstrand/identity`. Use this port's adapters, not canonical Millhouse plugins. Nothing installs into user profiles automatically. Native sessions do not grant custody; successful processes do not automatically close their tasks.

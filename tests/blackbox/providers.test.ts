@@ -13,6 +13,7 @@ test("native providers preserve complete evidence on interrupted output and requ
   try {
     const workspace = await host.workspace("providers", [
       "@millstrand/spool-identity",
+      "@millstrand/spool-flags",
       "./providers.ts",
     ]);
     const executable = join(workspace, "native-cli");

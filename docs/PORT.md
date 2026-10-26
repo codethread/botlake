@@ -9,6 +9,19 @@ Fresh databases only. Core and domain spools are separate Bun workspace packages
 - Runtime limits: deadlines signal cancellation cooperatively; wake delivery and crash-recovered Cron actions are at least once. Consumers deduplicate external effects using occurrence IDs. Mill custody lasts for the daemon lifetime; automatic adoption covers Bun host/member failure, not a killed/replaced Mill daemon.
 - Excluded: Workflow/adapters, unselected Millhouse domains, JVM/nREPL, owner partitions, generic middleware, migration, hot reload and Rust/Wasm.
 
+## Harnesses parity
+
+The headless execution path and declarative catalog are implemented, not the full canonical Millhouse API:
+
+- `provider(name)` supplies `prepare(ProviderRun)` / `finish(...)` adapters for Codex, Pi, Claude and Cursor. `harnesses({ providers, aliases, reviewers })` selects them at activation. Aliases support docs, parent inheritance, accumulated system prompts, flag expressions and ordered fallback candidates. Catalog inspection includes disabled seats and reasons.
+- Runtime booleans belong to the independent Flags spool, not Harnesses. Consumers explicitly select it and configure defaults separately. `strand flag list|get|set|unset` changes workspace-local values until restart. Provider flags default enabled; unset custom condition flags are false. Accepted settings remain frozen across flags, retry and resume.
+- Still missing: caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary provider overlay attributes and per-run model/effort/extra-argv/system-prompt overrides. The local catalog does not enforce canonical allow/deny policy.
+- CLI differs: `agent catalog [NAME]` inspects seats, `agent list` lists runs, and `agent start --seat ... --target ...` handles launch/assignment. No canonical `agent run`, `assign`, `config`, `reviewers` or managed interactive `agent` bin. Review uses a simpler Git diff/lens selection surface; Workflow remains excluded.
+- Provider parity is partial: Codex passes effort through rather than mapping canonical `low` to `light`, and canonical default approval-bypass argv are not installed. This port reserves managed identities before launch, whereas current canonical Codex/Pi attach identities at native startup. Use this port's plugins, not canonical Millhouse plugins.
+- The private workspace uses the reference model/effort settings, DeepSeek→Luna `grunt` routing and disabled-by-default Claude/Cursor. Its `reviewer` uses Sol→Opus rather than the reference's Terra-only selection. Additional model-family flags allow family-wide routing changes. `tui` remains headless; `reviewer` does not create a review lens.
+
+Provider verification uses deterministic subprocess fixtures, not live model accounts. Matching model names and argv does not establish installed CLI/model availability.
+
 ## Verification
 
 Blackbox contracts exercise graph/query invariants (including missing-value negation), rollback, immutable archival, guards, async Zod/Valibot validation, lifecycle cleanup, durable wakes, Cron policies/DST/recovery, and Kanban ownership. Process tests install packed packages in disposable workspaces and cover named routing, dependency isolation, planned/unexpected host recovery and custody adoption, native hooks, Harnesses, peer links and wire behavior. The completion checkpoint is tracked in [port progress](PORT-PROGRESS.md).

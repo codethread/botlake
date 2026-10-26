@@ -14,35 +14,15 @@ import {
   type ProcessSpec,
   type Spool,
 } from "@millstrand/core";
+import { getFlag } from "@millstrand/spool-flags";
 import { nativeStartup, reserveIdentity } from "@millstrand/spool-identity";
 import { z } from "zod";
 
+import { Catalog, harnessConfigSchema, seatSchema, type HarnessConfig } from "./catalog.ts";
 import { provider, type Provider, type ProviderRun } from "./providers.ts";
 
 const text = z.string().min(1);
-const seatSchema = z.strictObject({
-  provider: z.enum(["codex", "pi", "claude", "cursor"]),
-  model: text.optional(),
-  effort: text.optional(),
-  fast: z.boolean().optional(),
-  extraArgs: z.array(z.string()).default([]),
-  systemPrompts: z.array(text).default([]),
-});
-export type Seat = z.input<typeof seatSchema>;
-const reviewerSchema = z.strictObject({
-  seats: z.array(text).min(1),
-  prompt: text,
-  labels: z.array(text).optional(),
-  paths: z.array(text).optional(),
-});
-export type Reviewer = z.input<typeof reviewerSchema>;
-export const harnessConfigSchema = z.strictObject({
-  aliases: z.record(text, seatSchema).default({}),
-  reviewers: z.record(text, reviewerSchema).default({}),
-});
-export function harnessConfigJsonSchema(): unknown {
-  return z.toJSONSchema(harnessConfigSchema, { io: "input" });
-}
+export type HarnessOptions = HarnessConfig & { providers?: Provider[] };
 const startSchema = z.strictObject({
   seat: text,
   cwd: text,
@@ -69,16 +49,12 @@ function fingerprint(value: unknown): string {
 export class Harnesses {
   private readonly authority = Symbol("harnesses");
   private readonly providers = new Map<string, Provider>();
-  private readonly seats = new Map<string, z.output<typeof seatSchema>>();
+  private readonly seats: Catalog;
   private readonly configuration: z.output<typeof harnessConfigSchema>;
   private reconcileTask: Promise<void> | undefined;
   constructor(
     private readonly ctx: Context,
-    options: {
-      providers?: Provider[];
-      aliases?: Record<string, Seat>;
-      reviewers?: Record<string, Reviewer>;
-    } = {},
+    options: HarnessOptions = {},
   ) {
     this.configuration = harnessConfigSchema.parse({
       aliases: options.aliases,
@@ -93,15 +69,12 @@ export class Harnesses {
       if (this.providers.has(entry.name))
         throw new Fault("collision", `Duplicate provider: ${entry.name}`);
       this.providers.set(entry.name, entry);
-      this.seats.set(entry.name, seatSchema.parse({ provider: entry.name }));
     }
-    for (const [name, value] of Object.entries(this.configuration.aliases)) {
-      if (this.seats.has(name)) throw new Fault("collision", `Duplicate alias: ${name}`);
-      const seat = seatSchema.parse(value);
-      if (!this.providers.has(seat.provider))
-        throw new Fault("dependency", `Unknown provider: ${seat.provider}`);
-      this.seats.set(name, seat);
-    }
+    this.seats = new Catalog(
+      [...this.providers.values()].map((entry) => entry.name),
+      this.configuration.aliases,
+      (name) => getFlag(ctx, name),
+    );
     ctx.graph.protect((changes, token) => {
       if (token === this.authority) return;
       for (const change of changes) {
@@ -150,12 +123,6 @@ export class Harnesses {
   private create(raw: StartRun, parent?: Strand): Strand {
     const input = startSchema.parse(raw);
     const cwd = realpathSync(input.cwd);
-    const seat =
-      parent === undefined
-        ? requireValue(this.seats.get(input.seat), `Unknown seat: ${input.seat}`)
-        : seatSchema.parse(parent.attributes["harness/settings"]);
-    if (!this.providers.has(seat.provider))
-      throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
     const request = Object.fromEntries(
       Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
     );
@@ -175,6 +142,12 @@ export class Harnesses {
           return existing;
         }
       }
+      const seat =
+        parent === undefined
+          ? this.seats.resolve(input.seat)
+          : seatSchema.parse(parent.attributes["harness/settings"]);
+      if (!this.providers.has(seat.provider))
+        throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
       if (input.target !== undefined) {
         if (this.ctx.graph.show(input.target).state !== "active")
           throw new Fault("assignment", "Assignment target must be active");
@@ -652,8 +625,9 @@ export class Harnesses {
       return { result: "skipped", reason: "no-matching-reviewers", runs: [] };
     const selected = candidates.map(([name, reviewer]) => {
       const seat = reviewer.seats.find((candidate) => {
-        const configured = this.seats.get(candidate);
-        if (configured === undefined) return false;
+        const resolved = this.seats.availability(candidate);
+        if (!resolved.available) return false;
+        const configured = resolved.settings;
         const backend = requireValue(
           this.providers.get(configured.provider),
           "Reviewer provider unavailable",
@@ -690,10 +664,11 @@ export class Harnesses {
     await this.reconcile();
     return { result: "started", runs };
   }
-  catalog(): unknown {
+  catalog(name?: string): unknown {
+    if (name !== undefined) return this.seats.show(name);
     return {
       providers: [...this.providers.keys()],
-      aliases: Object.fromEntries(this.seats),
+      aliases: this.seats.list(),
       reviewers: this.configuration.reviewers,
     };
   }
@@ -711,16 +686,10 @@ export class Harnesses {
     await this.reconcileTask;
   }
 }
-export function harnesses(
-  options: {
-    providers?: Provider[];
-    aliases?: Record<string, Seat>;
-    reviewers?: Record<string, Reviewer>;
-  } = {},
-): Spool {
+export function harnesses(options: HarnessOptions = {}): Spool {
   return {
     name: "harnesses",
-    requires: ["identity"],
+    requires: ["identity", "flags"],
     activate(ctx) {
       const service = new Harnesses(ctx, options);
       for (const state of ["ready", "running", "stopped", "failed"])
@@ -733,7 +702,7 @@ export function harnesses(
         startSchema.extend({ command: z.literal("start") }),
         z.strictObject({ command: z.literal("list") }),
         z.strictObject({ command: z.literal("show"), id: text }),
-        z.strictObject({ command: z.literal("catalog") }),
+        z.strictObject({ command: z.literal("catalog"), name: text.optional() }),
         z.strictObject({ command: z.literal("reconcile") }),
         z.strictObject({ command: z.literal("cancel"), id: text }),
         z.strictObject({ command: z.literal("retry"), id: text }),
@@ -767,15 +736,23 @@ export function harnesses(
         defineOp({
           name: "agent",
           primer:
-            "Inspect catalog for providers and aliases. Start a tracked run with a seat, working directory and prompt; native identity startup binds the observed session. Inspect show or reconcile before retrying a failed attempt or resuming a settled session. Process completion and task completion are separate; external sessions carry no stop authority.",
+            "Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set harness/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native startup binds its session. Accepted settings are frozen across flag changes, retry and resume. Inspect show or reconcile before continuing. Process completion does not complete tasks; external sessions carry no stop authority.",
           input,
           output: z.json(),
           cli: {
             description: "Tracked agent runs and native registration",
-            examples: ["strand agent catalog", "strand agent list", "strand agent show RUN_ID"],
+            examples: [
+              "strand agent catalog",
+              "strand agent catalog reviewer",
+              "strand agent list",
+              "strand agent show RUN_ID",
+            ],
             commands: {
               list: { description: "Runs" },
-              catalog: { description: "Providers and aliases" },
+              catalog: {
+                description: "Seat docs and availability; name expands candidates and settings",
+                positionals: [{ name: "name", type: "string" }],
+              },
               reconcile: { description: "Reconcile custody" },
               show: {
                 description: "Run",
@@ -852,7 +829,7 @@ export function harnesses(
                 result = ctx.graph.show(value.id);
                 break;
               case "catalog":
-                result = service.catalog();
+                result = service.catalog(value.name);
                 break;
               case "reconcile":
                 await service.reconcile();
@@ -891,5 +868,7 @@ export function harnesses(
 
 export default harnesses();
 
+export { harnessConfigSchema, harnessConfigJsonSchema } from "./catalog.ts";
+export type { Seat, Alias, Condition, Reviewer, HarnessConfig } from "./catalog.ts";
 export { provider } from "./providers.ts";
 export type { Provider, ProviderRun, LaunchPlan, Outcome } from "./providers.ts";

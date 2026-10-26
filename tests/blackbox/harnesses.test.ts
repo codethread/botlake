@@ -17,6 +17,7 @@ test("Harnesses publishes, binds actual native sessions, fences writes, reconcil
     const workspace = await host.workspace("agents", [
       "@millstrand/spool-batteries",
       "@millstrand/spool-identity",
+      "@millstrand/spool-flags",
       "./providers.ts",
       "@millstrand/spool-kanban",
     ]);

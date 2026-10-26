@@ -66,6 +66,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
 
     const agents = await host.workspace("configured", [
       "@millstrand/spool-identity",
+      "@millstrand/spool-flags",
       "./agents.ts",
       "@millstrand/spool-cron",
     ]);

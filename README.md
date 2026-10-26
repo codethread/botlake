@@ -9,17 +9,31 @@ A Bun workspace monorepo: a graph/weaver runtime, independently installable spoo
 | [`@millstrand/core`](packages/core/README.md) | Graph, operations, activation, events, durable wakes, workers | None |
 | [`@millstrand/spool-batteries`](spools/batteries/README.md) | Everyday graph commands | None |
 | [`@millstrand/spool-identity`](spools/identity/README.md) | Native session identity and attribution | None |
-| [`@millstrand/spool-harnesses`](spools/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity |
+| [`@millstrand/spool-flags`](spools/flags/README.md) | Workspace-local runtime booleans shared by spools | None |
+| [`@millstrand/spool-harnesses`](spools/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity, Flags |
 | [`@millstrand/spool-kanban`](spools/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
 | [`@millstrand/spool-cron`](spools/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
-Core does not import or install spools. Spools import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each spool; Identity is also a peer of Harnesses and Kanban. Installation does not imply activation.
+Core does not import or install spools. Spools import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each spool; Identity is also a peer of Harnesses and Kanban; Flags is a peer of Harnesses. Installation does not imply activation.
 
-Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core and Identity to their tarball paths as well as listing them in `dependencies`.
+Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core, Identity and Flags to their tarball paths as well as listing them in `dependencies`.
 
 ## Run from this checkout
 
 This repo's private `.millstrand` Bun workspace uses `workspace:*` dependencies and selects all shipped spools for dogfooding. One root `bun install` links everything; it is not part of any public package's exports. From the repo, use `./out/mill weaver start` and `./out/strand help` after starting Mill; workspace discovery works from subdirectories too. The local SQLite database is ignored by Git. Harnesses starts no agents automatically, and Cron has no jobs until configured.
+
+[Local agents](.millstrand/agents.ts) define documented Millhouse model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.millstrand/flags.ts) enable the model families and gate DeepSeek with `seat/allow-china`; Claude/Cursor remain registered but disabled. Nothing launches on activation. Managed launches, including `tui`, are headless. Install the [port's native identity adapter](plugins/identity/README.md) before launching; canonical Millhouse plugins speak a different API.
+
+```sh
+./out/mill weaver restart # Reload a running workspace after configuration edits.
+./out/strand agent catalog
+./out/strand agent catalog reviewer
+./out/strand flag set seat/allow-china false # grunt now selects Luna.
+./out/strand agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do not edit files."
+./out/strand agent show RUN_ID
+```
+
+Flags are workspace-local and reset to configured defaults on Weaver restart. They affect new seat selection, not already accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](spools/harnesses/README.md#catalog-and-routing) and [remaining port gaps](docs/PORT.md#harnesses-parity).
 
 ```sh
 bun install
@@ -97,4 +111,4 @@ bun scripts/schema.ts workspace
 bun scripts/benchmark.ts 24
 ```
 
-Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job` or `harnesses`; each schema is owned by its package. [Port scope and limitations](docs/PORT.md), [progress](docs/PORT-PROGRESS.md), [pool measurements](docs/pool-benchmark.json).
+Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `harnesses` or `flags`; each schema is owned by its package. [Port scope and limitations](docs/PORT.md), [progress](docs/PORT-PROGRESS.md), [pool measurements](docs/pool-benchmark.json).

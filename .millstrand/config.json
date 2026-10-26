@@ -3,7 +3,8 @@
   "spools": [
     "@millstrand/spool-batteries",
     "@millstrand/spool-identity",
-    "@millstrand/spool-harnesses",
+    "./.millstrand/flags.ts",
+    "./.millstrand/agents.ts",
     "@millstrand/spool-kanban",
     "@millstrand/spool-cron"
   ]
