@@ -15,7 +15,7 @@ try {
 }
 ```
 
-Spools default-export `{ name, requires?, activate(ctx) }`. `activate` registers operations, queries, guards, subscriptions and resources using the explicit context. Dependencies name other selected spools; they never auto-activate. Resource startup follows registration/validation; failed startup and shutdown dispose started resources.
+Spools default-export `{ name, requires?, activate(ctx) }`. `activate` registers operations, queries, guards, subscriptions and resources using the explicit context. Dependencies name other selected spools; they never auto-activate. Activation follows prerequisite order; duplicate, missing or cyclic selections fail before activation. Resource startup follows registration/validation; failed startup and shutdown dispose started resources.
 
 Use `isFault(error)` to recognize core faults across separately installed package copies.
 

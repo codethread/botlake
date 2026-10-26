@@ -12,6 +12,7 @@ import {
   type Spool,
 } from "@millstrand/core";
 import { attribute, attribution } from "@millstrand/spool-identity";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 function compare(left: string, right: string, fallback: number): number {
@@ -24,7 +25,7 @@ const priority = z.enum(["p1", "p2", "p3", "p4"]);
 const refsSchema = z
   .array(
     z.strictObject({
-      url: z.url().refine((value) => ["http:", "https:"].includes(new URL(value).protocol)),
+      url: z.url({ protocol: /^https?$/u }),
       label: z.string().optional(),
     }),
   )
@@ -653,13 +654,25 @@ export function kanban(): Spool {
           label: z.string().optional(),
           expectedRevision: z.number().int().positive().optional(),
         }),
-        z.strictObject({
-          command: z.literal("link"),
-          operation: z.enum(["attach", "add", "refresh"]),
-          workspace: text.optional(),
-          id: text.optional(),
-          title: text.optional(),
-        }),
+        z.discriminatedUnion("operation", [
+          z.strictObject({
+            command: z.literal("link"),
+            operation: z.literal("attach"),
+            workspace: text,
+            id: text,
+          }),
+          z.strictObject({
+            command: z.literal("link"),
+            operation: z.literal("add"),
+            workspace: text,
+            title: text,
+          }),
+          z.strictObject({
+            command: z.literal("link"),
+            operation: z.literal("refresh"),
+            id: text.optional(),
+          }),
+        ]),
         z.strictObject({ command: z.literal("priority"), id: text, priority }),
         z.strictObject({ command: z.literal("label"), id: text, labels: z.array(text) }),
       ]);
@@ -805,78 +818,54 @@ export function kanban(): Spool {
               },
             },
           },
-          async handler(value) {
-            let result: unknown;
-            switch (value.command) {
-              case "add": {
+          async handler(commandInput) {
+            const result = await match(commandInput)
+              .with({ command: "add" }, (value) => {
                 const { command: _, ...request } = value;
-                result = board.add(request);
-                break;
-              }
-              case "claim": {
+                return board.add(request);
+              })
+              .with({ command: "claim" }, (value) => {
                 const { command: _, ...request } = value;
-                result = board.claim(request);
-                break;
-              }
-              case "board":
-                result = await board.board(value.labels);
-                break;
-              case "card":
-                result = await board.card(value.id);
-                break;
-              case "next":
-                result = board.next();
-                break;
-              case "task":
-                result = board.task(value.feature, value.title, value.dependencies);
-                break;
-              case "finish":
-                result = board.finish(value.id, value.outcome);
-                break;
-              case "reopen":
-                result = board.reopen(value.id);
-                break;
-              case "note": {
+                return board.claim(request);
+              })
+              .with({ command: "board" }, ({ labels }) => board.board(labels))
+              .with({ command: "card" }, ({ id }) => board.card(id))
+              .with({ command: "next" }, () => board.next())
+              .with({ command: "task" }, ({ feature, title, dependencies }) =>
+                board.task(feature, title, dependencies),
+              )
+              .with({ command: "finish" }, ({ id, outcome }) => board.finish(id, outcome))
+              .with({ command: "reopen" }, ({ id }) => board.reopen(id))
+              .with({ command: "note" }, (value) => {
                 const attrs: Attributes = {};
                 if (value.byIdentity !== undefined)
                   attrs["identity/by-identity"] = value.byIdentity;
                 if (value.kind !== undefined) attrs["note/kind"] = value.kind;
-                result = board.note(value.id, value.text, attrs);
-                break;
-              }
-              case "ref":
-                result = board.references(
+                return board.note(value.id, value.text, attrs);
+              })
+              .with({ command: "ref" }, (value) =>
+                board.references(
                   value.id,
                   value.operation,
                   value.url,
                   value.label,
                   value.expectedRevision,
-                );
-                break;
-              case "priority":
-                result = board.annotate(value.id, { "kanban/priority": value.priority });
-                break;
-              case "label":
-                result = board.annotate(value.id, { "kanban/labels": value.labels });
-                break;
-              case "link": {
-                if (value.operation === "refresh") result = await board.refresh(value.id);
-                else {
-                  const workspace = requireValue(value.workspace, "Link workspace required");
-                  result =
-                    value.operation === "add"
-                      ? await board.addLink(
-                          workspace,
-                          requireValue(value.title, "Link title required"),
-                        )
-                      : await board.attach(
-                          workspace,
-                          requireValue(value.id, "Downstream card required"),
-                        );
-                }
-                break;
-              }
-            }
+                ),
+              )
+              .with({ command: "priority" }, ({ id, priority: level }) =>
+                board.annotate(id, { "kanban/priority": level }),
+              )
+              .with({ command: "label" }, ({ id, labels }) =>
+                board.annotate(id, { "kanban/labels": labels }),
+              )
+              .with({ command: "link", operation: "refresh" }, ({ id }) => board.refresh(id))
+              .with({ command: "link", operation: "add" }, ({ workspace, title }) =>
+                board.addLink(workspace, title),
+              )
+              .with({ command: "link", operation: "attach" }, ({ workspace, id }) =>
+                board.attach(workspace, id),
+              )
+              .exhaustive();
             return z.json().parse(result);
           },
         }),

@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { z } from "zod";
 
-import type { Spool } from "./runtime.ts";
+import type { Spool } from "./context.ts";
 
 export const workspaceSchema = z.strictObject({
   name: z

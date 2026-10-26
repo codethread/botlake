@@ -13,9 +13,9 @@ export type {
   ProcessFact,
   ProcessSpec,
   Peers,
-} from "./runtime/runtime.ts";
+} from "./runtime/context.ts";
 export { defineOp } from "./runtime/ops.ts";
-export type { Op, Invocation } from "./runtime/ops.ts";
+export type { Op, Invocation } from "./runtime/context.ts";
 export type { Command } from "./runtime/cli.ts";
 export type { Bin } from "./runtime/bins.ts";
 export { ManualClock, systemClock } from "./runtime/clock.ts";

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { Fault } from "../core/json.ts";
-import type { Processes, ProcessFact, ProcessSpec, Peers } from "./runtime.ts";
+import type { Processes, ProcessFact, ProcessSpec, Peers } from "./context.ts";
 
 export const factSchema = z.object({
   handle: z.string(),

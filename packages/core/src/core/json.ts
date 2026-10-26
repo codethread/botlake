@@ -1,3 +1,4 @@
+import stringify from "fast-json-stable-stringify";
 import { z } from "zod";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -53,15 +54,5 @@ export function requireValue<T>(value: T | null | undefined, message: string): T
 }
 
 export function canonical(value: Json): string {
-  function sorted(item: Json): Json {
-    if (Array.isArray(item)) return item.map((entry) => sorted(entry));
-    if (item !== null && typeof item === "object")
-      return Object.fromEntries(
-        Object.entries(item)
-          .toSorted(([left], [right]) => (left === right ? 0 : left < right ? -1 : 1))
-          .map(([key, entry]) => [key, sorted(entry)]),
-      );
-    return item;
-  }
-  return encode(sorted(value));
+  return stringify(z.json().parse(value));
 }

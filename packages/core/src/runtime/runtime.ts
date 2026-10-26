@@ -1,59 +1,15 @@
+import { DepGraph, DepGraphCycleError } from "dependency-graph";
 import { z } from "zod";
 
-import { Fault, requireValue, type Json } from "../core/json.ts";
+import { Fault, requireValue } from "../core/json.ts";
 import { namedQuerySchema, type NamedQuery } from "../core/query.ts";
 import { Graph, type GraphEvent } from "../core/store.ts";
-import { Bins, type Bin } from "./bins.ts";
+import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
-import type { factSchema } from "./custody.ts";
-import type { Invocation, Op } from "./ops.ts";
+import type { Context, Invocation, Op, Peers, Processes, Resource, Spool } from "./context.ts";
 import { Scheduler } from "./scheduler.ts";
 
-export interface ProcessSpec {
-  owner: string;
-  key: string;
-  command: string[];
-  cwd?: string | undefined;
-  env?: Record<string, string> | undefined;
-  stdin?: string | undefined;
-}
-export type ProcessFact = z.infer<typeof factSchema>;
-export interface Processes {
-  launch(spec: ProcessSpec): Promise<ProcessFact>;
-  get(handle: string): Promise<ProcessFact>;
-  listOwned(owner: string): Promise<ProcessFact[]>;
-  cancel(handle: string, owner: string, key: string): Promise<ProcessFact>;
-  acknowledge(handle: string, owner: string, key: string): Promise<void>;
-}
-export interface Peers {
-  resolve(workspace: string): Promise<{ path: string; name: string }>;
-  call(workspace: string, op: string, input: Json): Promise<unknown>;
-}
-export interface Resource {
-  start(): void | Promise<void>;
-  stop(): void | Promise<void>;
-}
-export interface Spool {
-  name: string;
-  requires?: string[];
-  activate(ctx: Context): void | Promise<void>;
-}
-export interface Context {
-  workspace: string;
-  graph: Graph;
-  clock: Clock;
-  scheduler: Scheduler;
-  processes: Processes;
-  peers: Peers;
-  register(op: Op): void;
-  registerQuery(name: string, query: NamedQuery): void;
-  namedQuery(name: string): NamedQuery | undefined;
-  queryCatalog(): Record<string, NamedQuery>;
-  resource(resource: Resource): void;
-  subscribe(handler: (event: GraphEvent) => Promise<void> | void): void;
-  bin(name: string, bin: Bin): void;
-}
 const unavailable: Processes = {
   launch: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
   get: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
@@ -139,34 +95,30 @@ export class Runtime {
   async start(spools: Spool[]): Promise<void> {
     this.collecting();
     try {
-      const selected = new Set<string>();
+      const selected = new DepGraph<Spool>();
       for (const spool of spools) {
-        if (selected.has(spool.name))
+        if (selected.hasNode(spool.name))
           throw new Fault("collision", `Duplicate spool: ${spool.name}`);
-        selected.add(spool.name);
+        selected.addNode(spool.name, spool);
       }
       for (const spool of spools)
-        for (const dependency of spool.requires ?? [])
-          if (!selected.has(dependency))
+        for (const dependency of spool.requires ?? []) {
+          if (!selected.hasNode(dependency))
             throw new Fault(
               "dependency",
               `${spool.name} requires explicitly selected ${dependency}`,
             );
-      const visiting = new Set<string>();
-      const ordered = new Map<string, Spool>();
-      const byName = new Map(spools.map((spool) => [spool.name, spool]));
-      function visit(spool: Spool): void {
-        if (ordered.has(spool.name)) return;
-        if (visiting.has(spool.name))
-          throw new Fault("dependency", `Spool dependency cycle: ${spool.name}`);
-        visiting.add(spool.name);
-        for (const dependency of spool.requires ?? [])
-          visit(requireValue(byName.get(dependency), `Unknown spool: ${dependency}`));
-        visiting.delete(spool.name);
-        ordered.set(spool.name, spool);
+          selected.addDependency(spool.name, dependency);
+        }
+      let ordered: string[];
+      try {
+        ordered = selected.overallOrder();
+      } catch (error) {
+        if (error instanceof DepGraphCycleError)
+          throw new Fault("dependency", `Spool dependency cycle: ${error.cyclePath.join(" -> ")}`);
+        throw error;
       }
-      for (const spool of spools) visit(spool);
-      for (const spool of ordered.values()) await spool.activate(this.context);
+      for (const name of ordered) await selected.getNodeData(name).activate(this.context);
       for (const op of this.ops.values())
         for (const dependency of op.dependencies)
           if (!this.ops.has(dependency) && !metaOps.has(dependency))
@@ -371,12 +323,9 @@ export class Runtime {
   }
 }
 function zStringArray(input: unknown): string[] {
-  if (!Array.isArray(input) || input.some((value: unknown) => typeof value !== "string"))
-    throw new Fault("argv", "Expected string argv");
-  return input.map((value: unknown) => {
-    if (typeof value !== "string") throw new Fault("argv", "Expected string argument");
-    return value;
-  });
+  const parsed = z.array(z.string()).safeParse(input);
+  if (!parsed.success) throw new Fault("argv", "Expected string argv");
+  return parsed.data;
 }
 export function isStream(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;

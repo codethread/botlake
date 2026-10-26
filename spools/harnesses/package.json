@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@millstrand/identity": "workspace:^",
+    "ts-pattern": "^5.9.2",
     "zod": "^4.6.7"
   },
   "peerDependencies": {

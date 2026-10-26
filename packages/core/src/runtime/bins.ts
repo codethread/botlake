@@ -5,7 +5,8 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { Fault } from "../core/json.ts";
-import { defineOp, type Op } from "./ops.ts";
+import type { Op } from "./context.ts";
+import { defineOp } from "./ops.ts";
 
 const absolutePath = z.string().min(1).refine(isAbsolute, "Expected an absolute path");
 const environment = z.record(z.string().regex(/^[^=\0]+$/u), z.string());

@@ -16,6 +16,7 @@ import {
 } from "@millstrand/core";
 import { getFlag } from "@millstrand/spool-flags";
 import { nativeStartup, reserveIdentity } from "@millstrand/spool-identity";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { Catalog, harnessConfigSchema, seatSchema, type HarnessConfig } from "./catalog.ts";
@@ -813,51 +814,38 @@ export function harnesses(options: HarnessOptions = {}): Spool {
             },
           },
           async handler(value) {
-            let result: unknown;
-            switch (value.command) {
-              case "start": {
-                const { command: _, ...request } = value;
-                result = service.start(request);
+            const result = await match(value)
+              .with({ command: "start" }, async (commandInput) => {
+                const { command: _, ...request } = commandInput;
+                const run = service.start(request);
                 await service.reconcile();
-                result = ctx.graph.show(z.object({ id: text }).parse(result).id);
-                break;
-              }
-              case "list":
-                result = service.runs();
-                break;
-              case "show":
-                result = ctx.graph.show(value.id);
-                break;
-              case "catalog":
-                result = service.catalog(value.name);
-                break;
-              case "reconcile":
+                return ctx.graph.show(run.id);
+              })
+              .with({ command: "list" }, () => service.runs())
+              .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
+              .with({ command: "catalog" }, ({ name }) => service.catalog(name))
+              .with({ command: "reconcile" }, async () => {
                 await service.reconcile();
-                result = service.runs();
-                break;
-              case "cancel":
-                result = await service.cancel(value.id);
-                break;
-              case "retry":
-                result = service.retry(value.id);
+                return service.runs();
+              })
+              .with({ command: "cancel" }, ({ id }) => service.cancel(id))
+              .with({ command: "retry" }, async ({ id }) => {
+                const run = service.retry(id);
                 await service.reconcile();
-                break;
-              case "resume":
-                result = service.resume(value.id, value.prompt, value.requestId);
+                return run;
+              })
+              .with({ command: "resume" }, async ({ id, prompt, requestId }) => {
+                const run = service.resume(id, prompt, requestId);
                 await service.reconcile();
-                break;
-              case "acknowledge":
-                result = await service.acknowledge(value.id);
-                break;
-              case "review":
-                result = await service.review(value);
-                break;
-              case "native": {
-                const { command: _, ...request } = value;
-                result = service.native(request);
-                break;
-              }
-            }
+                return run;
+              })
+              .with({ command: "acknowledge" }, ({ id }) => service.acknowledge(id))
+              .with({ command: "review" }, (request) => service.review(request))
+              .with({ command: "native" }, (commandInput) => {
+                const { command: _, ...request } = commandInput;
+                return service.native(request);
+              })
+              .exhaustive();
             return z.json().parse(result);
           },
         }),

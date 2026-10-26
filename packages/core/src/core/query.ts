@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from "bun:sqlite";
 
+import { match, P } from "ts-pattern";
 import { z } from "zod";
 
 import { Fault, type Json } from "./json.ts";
@@ -59,14 +60,16 @@ export function compileQuery(
   function negate(sql: string, negated: boolean): string {
     return negated ? `(NOT (${sql}))` : sql;
   }
-  function visit(node: Predicate, alias: string, inEdge: boolean, negated = false): string {
-    switch (node.op) {
-      case "and":
-      case "or":
-        return `(${node.args.map((arg) => visit(arg, alias, inEdge, negated)).join((node.op === "and") !== negated ? " AND " : " OR ")})`;
-      case "not":
-        return visit(node.arg, alias, inEdge, !negated);
-      case "edge": {
+  function visit(predicate: Predicate, alias: string, inEdge: boolean, negated = false): string {
+    return match(predicate)
+      .returnType<string>()
+      .with(
+        { op: P.union("and", "or") },
+        (node) =>
+          `(${node.args.map((arg) => visit(arg, alias, inEdge, negated)).join((node.op === "and") !== negated ? " AND " : " OR ")})`,
+      )
+      .with({ op: "not" }, ({ arg }) => visit(arg, alias, inEdge, !negated))
+      .with({ op: "edge" }, (node) => {
         if (inEdge) throw new Fault("query", "Nested edge predicates are not supported");
         const edge = `e${++counter}`;
         const endpoint = `s${counter}`;
@@ -78,16 +81,8 @@ export function compileQuery(
           `EXISTS (SELECT 1 FROM edges ${edge} JOIN strands ${endpoint} ON ${endpoint}.id=${edge}.${to} WHERE ${edge}.${from}=${alias}.id AND ${edge}.relation=${rel} AND ${where})`,
           negated,
         );
-      }
-      case "exists":
-      case "missing":
-      case "=":
-      case "!=":
-      case "<":
-      case "<=":
-      case ">":
-      case ">=":
-      case "in": {
+      })
+      .with({ op: P.union("exists", "missing", "=", "!=", "<", "<=", ">", ">=", "in") }, (node) => {
         let prefix = "";
         let suffix = "";
         let expression: string;
@@ -124,8 +119,8 @@ export function compileQuery(
           return `${prefix}${negate(`${expression} IN (${value.map((entry) => bind(entry)).join(",")})`, negated)}${suffix}`;
         }
         return `${prefix}${negate(`${expression} ${node.op === "!=" ? "<>" : node.op} ${bind(value)}`, negated)}${suffix}`;
-      }
-    }
+      })
+      .exhaustive();
   }
   const sql = visit(predicateSchema.parse(input), "s", false);
   return { sql, bindings };

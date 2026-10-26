@@ -1,4 +1,5 @@
 import { Fault } from "@millstrand/core";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 const text = z.string().trim().min(1);
@@ -99,14 +100,12 @@ export class Catalog {
   }
   private condition(value: Condition): boolean {
     if (typeof value === "string") return this.flag(value) === true;
-    switch (value[0]) {
-      case "and":
-        return value.slice(1).every((part) => this.condition(part));
-      case "or":
-        return value.slice(1).some((part) => this.condition(part));
-      case "not":
-        return !this.condition(value[1]);
-    }
+    const [operator, first, ...rest] = value;
+    return match(operator)
+      .with("and", () => [first, ...rest].every((part) => this.condition(part)))
+      .with("or", () => [first, ...rest].some((part) => this.condition(part)))
+      .with("not", () => !this.condition(first))
+      .exhaustive();
   }
   availability(name: string, seen: Set<string> = new Set()): Resolution {
     const candidates = this.aliases.get(name);

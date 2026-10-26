@@ -2,28 +2,9 @@ import type { StandardSchemaV1, StandardJSONSchemaV1 } from "@standard-schema/sp
 
 import { encode, Fault } from "../core/json.ts";
 import type { Command } from "./cli.ts";
+import type { Context, Invocation, Op } from "./context.ts";
 import { isStream } from "./runtime.ts";
-import type { Context } from "./runtime.ts";
 
-export interface Invocation {
-  signal: AbortSignal;
-  requestId: string;
-  deadline: number;
-  cwd: string;
-  worktreeRoot?: string | undefined;
-  gitCommonDir?: string | undefined;
-  terminal: { isTTY: boolean; columns: number | null };
-}
-export interface Op {
-  name: string;
-  cli: Command;
-  about?: string | undefined;
-  primer?: string | undefined;
-  dependencies: string[];
-  stream: boolean;
-  invoke(input: unknown, ctx: Context, request: Invocation): Promise<unknown>;
-  jsonSchema?: (() => unknown) | undefined;
-}
 export async function validate<S extends StandardSchemaV1>(
   schema: S,
   value: unknown,
