@@ -33,7 +33,7 @@ export async function nativeProject(cwd: string): Promise<string | null> {
 export async function strand(workspace: string, op: string, input: unknown): Promise<unknown> {
   const { stdout } = await execute(
     process.env["MILLSTRAND_STRAND_BIN"] ?? "strand",
-    ["--workspace", workspace, op, "--payload", JSON.stringify(input)],
+    ["--workspace", workspace, "--input", JSON.stringify(input), op],
     { timeout: 8000, maxBuffer: 1024 * 1024 },
   );
   return JSON.parse(stdout);

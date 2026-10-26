@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import { system, source } from "./fixtures/system.ts";
+import { system } from "./fixtures/system.ts";
 
 const row = z.object({
   id: z.string(),
@@ -15,24 +15,24 @@ test("Harnesses publishes, binds actual native sessions, fences writes, reconcil
   const host = await system();
   try {
     const workspace = await host.workspace("agents", [
-      "batteries",
-      "identity",
+      "@millstrand/spool-batteries",
+      "@millstrand/spool-identity",
       "./providers.ts",
-      "kanban",
+      "@millstrand/spool-kanban",
     ]);
     const childPath = join(workspace, "child.ts");
     await Bun.write(
       childPath,
       `import {spawnSync} from "node:child_process"; import {existsSync,writeFileSync} from "node:fs";
 const session=process.env.MILLSTRAND_SESSION_ID; const prompt=process.env.TEST_PROMPT; const marker=${JSON.stringify(join(workspace, "attempted"))}; const skip=prompt==="retry"&&existsSync(marker);
-if(!skip){const reply=spawnSync("bun",[${JSON.stringify(join(source, "plugins/identity/hook.ts"))},"codex"],{encoding:"utf8",input:JSON.stringify({hook_event_name:"SessionStart",session_id:session,cwd:process.cwd(),source:"startup"})});if(reply.status!==0||!JSON.parse(reply.stdout).hookSpecificOutput)throw new Error(reply.stderr+reply.stdout);}
+if(!skip){const reply=spawnSync("bun",[${JSON.stringify(join(workspace, "node_modules/@millstrand/identity/hook.ts"))},"codex"],{encoding:"utf8",input:JSON.stringify({hook_event_name:"SessionStart",session_id:session,cwd:process.cwd(),source:"startup"})});if(reply.status!==0||!JSON.parse(reply.stdout).hookSpecificOutput)throw new Error(reply.stderr+reply.stdout);}
 if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify({type:"thread.started",thread_id:session}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"done"}}));if(prompt==="retry"&&!skip){writeFileSync(marker,"attempted");console.log(JSON.stringify({type:"turn.failed",error:{message:"first failure"}}));process.exitCode=1;}else console.log(JSON.stringify({type:"turn.completed"}));}`,
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from ${JSON.stringify(join(source, "src/index.ts"))};const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{MILLSTRAND_SESSION_ID:run.sessionId,TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}},reviewers:{code:{seats:["missing","worker"],prompt:"Review changes",labels:["code"],paths:["*.ts"]}}});`,
+      `import {harnesses,provider} from "@millstrand/spool-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{MILLSTRAND_SESSION_ID:run.sessionId,TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}},reviewers:{code:{seats:["missing","worker"],prompt:"Review changes",labels:["code"],paths:["*.ts"]}}});`,
     );
-    await host.mill(["up", workspace]);
+    await host.mill(["weaver", "start", "--workspace", workspace]);
     const target = row.parse(
       await host.strand("agents", "kanban", { command: "add", title: "Work" }),
     );

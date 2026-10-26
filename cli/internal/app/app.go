@@ -14,7 +14,9 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -47,9 +49,11 @@ type Daemon struct {
 	custodies              map[string]*process.Custody
 	host                   *exec.Cmd
 	hostDone               chan struct{}
+	hostReady              bool
+	hostError              string
 	stopping               bool
 	listener               net.Listener
-	home, repo, hostSocket string
+	home, core, hostSocket string
 }
 
 func Home() string {
@@ -62,12 +66,12 @@ func Home() string {
 	}
 	return filepath.Join(home, ".millstrand-ts")
 }
-func Repo() string {
-	if path := os.Getenv("MILLSTRAND_SOURCE"); path != "" {
+func Core() string {
+	if path := os.Getenv("MILLSTRAND_CORE"); path != "" {
 		return path
 	}
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../.."))
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../../packages/core"))
 }
 func socket() string { return filepath.Join(Home(), "mill.sock") }
 func canonical(path string) (string, error) {
@@ -121,7 +125,7 @@ func (d *Daemon) control(action, workspace string) error {
 }
 func (d *Daemon) bootHost() error {
 	_ = os.Remove(d.hostSocket)
-	cmd := exec.Command("bun", filepath.Join(d.repo, "src/runtime/host.ts"), d.hostSocket, socket())
+	cmd := exec.Command("bun", filepath.Join(d.core, "src/runtime/host.ts"), d.hostSocket, socket())
 	log, err := os.OpenFile(filepath.Join(d.home, "host.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -129,12 +133,14 @@ func (d *Daemon) bootHost() error {
 	defer log.Close()
 	cmd.Stdout = log
 	cmd.Stderr = log
-	cmd.Dir = d.repo
+	cmd.Dir = d.core
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	d.mu.Lock()
 	d.host = cmd
+	d.hostReady = false
+	d.hostError = ""
 	d.hostDone = make(chan struct{})
 	done := d.hostDone
 	d.mu.Unlock()
@@ -142,9 +148,12 @@ func (d *Daemon) bootHost() error {
 		_ = cmd.Wait()
 		close(done)
 		d.mu.Lock()
-		stopping := d.stopping
+		recover := !d.stopping && d.host == cmd && d.hostReady
+		if d.host == cmd {
+			d.hostReady = false
+		}
 		d.mu.Unlock()
-		if !stopping {
+		if recover {
 			go d.recoverHost(cmd)
 		}
 	}()
@@ -156,6 +165,15 @@ func (d *Daemon) bootHost() error {
 		default:
 		}
 		if err := d.control("status", ""); err == nil {
+			d.mu.Lock()
+			select {
+			case <-done:
+				d.mu.Unlock()
+				return errors.New("Bun host exited during startup; inspect host.log")
+			default:
+			}
+			d.hostReady = true
+			d.mu.Unlock()
 			return nil
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -171,24 +189,91 @@ func (d *Daemon) recoverHost(previous *exec.Cmd) {
 		d.mu.Unlock()
 		return
 	}
-	members := make([]Member, 0, len(d.members))
-	for _, member := range d.members {
-		members = append(members, member)
-	}
 	d.mu.Unlock()
-	if err := d.bootHost(); err != nil {
+	if err := d.restoreHost(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return
 	}
-	for _, member := range members {
-		if err := d.control("start", member.Path); err != nil {
-			fmt.Fprintf(os.Stderr, "recover %s: %v\n", member.Path, err)
+}
+
+// Re-read every member before publishing any replacement routes. Config changes
+// may rename workspaces, including introducing collisions across the pool.
+func (d *Daemon) restoreHost() error {
+	d.mu.Lock()
+	paths := make([]string, 0, len(d.members))
+	for path := range d.members {
+		paths = append(paths, path)
+	}
+	d.members = map[string]Member{}
+	d.mu.Unlock()
+	sort.Strings(paths)
+	err := d.bootHost()
+	if err == nil {
+		candidates := make([]Member, 0, len(paths))
+		names := map[string]int{}
+		for _, path := range paths {
+			member, readErr := readMember(path)
+			if readErr != nil {
+				err = errors.Join(err, fmt.Errorf("recover %s: %w", path, readErr))
+				continue
+			}
+			candidates = append(candidates, member)
+			names[member.Name]++
+		}
+		for _, member := range candidates {
+			if names[member.Name] > 1 {
+				err = errors.Join(err, fmt.Errorf("duplicate workspace name: %s", member.Name))
+				continue
+			}
+			if startErr := d.control("start", member.Path); startErr != nil {
+				err = errors.Join(err, fmt.Errorf("recover %s: %w", member.Path, startErr))
+				continue
+			}
 			d.mu.Lock()
-			delete(d.members, member.Path)
+			d.members[member.Path] = member
 			d.mu.Unlock()
 		}
 	}
+	d.mu.Lock()
+	if err != nil {
+		d.hostError = err.Error()
+	}
+	d.mu.Unlock()
+	return err
 }
+
+var workspaceName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+
+func readMember(path string) (Member, error) {
+	raw, err := os.ReadFile(filepath.Join(path, ".millstrand/config.json"))
+	if err != nil {
+		return Member{}, err
+	}
+	var config struct {
+		Name   *string  `json:"name"`
+		Spools []string `json:"spools"`
+	}
+	if err := decode(raw, &config); err != nil {
+		return Member{}, err
+	}
+	name := filepath.Base(path)
+	if config.Name != nil {
+		name = *config.Name
+	}
+	if !workspaceName.MatchString(name) {
+		return Member{}, fmt.Errorf("invalid workspace name %q; set name in .millstrand/config.json to a letter followed by letters, digits, underscores or hyphens", name)
+	}
+	return Member{Path: path, Name: name}, nil
+}
+
+func (d *Daemon) checkName(member Member) error {
+	for path, existing := range d.members {
+		if path != member.Path && member.Name == existing.Name {
+			return fmt.Errorf("duplicate workspace name: %s", member.Name)
+		}
+	}
+	return nil
+}
+
 func (d *Daemon) resolve(target, cwd string) (Member, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -219,29 +304,20 @@ func (d *Daemon) up(target string) (Member, error) {
 	if err != nil {
 		return Member{}, err
 	}
-	raw, err := os.ReadFile(filepath.Join(path, ".millstrand/config.json"))
-	if err != nil {
-		return Member{}, err
-	}
-	var config struct {
-		Name      string          `json:"name"`
-		Spools    []string        `json:"spools"`
-		Harnesses json.RawMessage `json:"harnesses"`
-	}
-	if err := decode(raw, &config); err != nil {
-		return Member{}, err
-	}
-	member := Member{Path: path, Name: config.Name}
 	d.mu.Lock()
-	if _, ok := d.members[path]; ok {
+	if member, ok := d.members[path]; ok {
 		d.mu.Unlock()
 		return member, nil
 	}
-	for _, existing := range d.members {
-		if member.Name != "" && member.Name == existing.Name {
-			d.mu.Unlock()
-			return Member{}, fmt.Errorf("duplicate workspace name: %s", member.Name)
-		}
+	d.mu.Unlock()
+	member, err := readMember(path)
+	if err != nil {
+		return Member{}, err
+	}
+	d.mu.Lock()
+	if err := d.checkName(member); err != nil {
+		d.mu.Unlock()
+		return Member{}, err
 	}
 	if _, ok := d.custodies[path]; !ok {
 		custody, err := process.NewCustody(filepath.Join(d.home, "processes", fmt.Sprintf("%x", sha256.Sum256([]byte(path)))))
@@ -349,10 +425,21 @@ func (d *Daemon) handle(conn net.Conn) {
 		return
 	}
 	switch req.Operation {
+	case "weaver-resolve":
+		member, err := d.resolve(req.Workspace, req.CWD)
+		if err != nil {
+			encode(conn, errFrame(err))
+		} else {
+			encode(conn, Frame{OK: true, Result: member})
+		}
 	case "invoke":
 		var payload map[string]any
 		if err := json.Unmarshal(req.Payload, &payload); err != nil {
 			encode(conn, errFrame(err))
+			return
+		}
+		if payload == nil {
+			encode(conn, errFrame(errors.New("invoke payload must be an object")))
 			return
 		}
 		target := req.Workspace
@@ -374,8 +461,11 @@ func (d *Daemon) handle(conn net.Conn) {
 		defer response.Close()
 		go func() { _, _ = io.Copy(io.Discard, conn); _ = response.Close() }()
 		_, _ = io.Copy(conn, response)
-	case "up":
+	case "weaver-start":
 		target := req.Workspace
+		if member, err := d.resolve(target, req.CWD); err == nil {
+			target = member.Path
+		}
 		if !filepath.IsAbs(target) && req.CWD != "" {
 			target = filepath.Join(req.CWD, target)
 		}
@@ -385,39 +475,25 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: member})
 		}
-	case "restart", "down":
+	case "weaver-restart", "weaver-stop":
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
-		if err == nil && req.Operation == "restart" {
-			var config struct {
-				Name      string          `json:"name"`
-				Spools    []string        `json:"spools"`
-				Harnesses json.RawMessage `json:"harnesses"`
-			}
-			raw, readErr := os.ReadFile(filepath.Join(member.Path, ".millstrand/config.json"))
-			if readErr != nil {
-				err = readErr
-			} else {
-				err = decode(raw, &config)
-			}
+		if err == nil && req.Operation == "weaver-restart" {
+			member, err = readMember(member.Path)
 			if err == nil {
 				d.mu.Lock()
-				for path, existing := range d.members {
-					if path != member.Path && config.Name != "" && existing.Name == config.Name {
-						err = fmt.Errorf("duplicate workspace name: %s", config.Name)
-					}
-				}
+				err = d.checkName(member)
 				d.mu.Unlock()
-				member.Name = config.Name
 			}
 		}
+
 		if err == nil {
 			action := "restart"
-			if req.Operation == "down" {
+			if req.Operation == "weaver-stop" {
 				action = "stop"
 			}
 			err = d.control(action, member.Path)
-			if req.Operation == "restart" {
+			if req.Operation == "weaver-restart" {
 				d.mu.Lock()
 				if err == nil {
 					d.members[member.Path] = member
@@ -426,7 +502,7 @@ func (d *Daemon) handle(conn net.Conn) {
 				}
 				d.mu.Unlock()
 			}
-			if err == nil && req.Operation == "down" {
+			if req.Operation == "weaver-stop" {
 				d.mu.Lock()
 				delete(d.members, member.Path)
 				d.mu.Unlock()
@@ -443,25 +519,11 @@ func (d *Daemon) handle(conn net.Conn) {
 		d.mu.Lock()
 		previous := d.host
 		done := d.hostDone
-		members := make([]Member, 0, len(d.members))
-		for _, member := range d.members {
-			members = append(members, member)
-		}
 		d.mu.Unlock()
 		err := previous.Process.Kill()
-		if err == nil {
+		if err == nil || errors.Is(err, os.ErrProcessDone) {
 			<-done
-			err = d.bootHost()
-		}
-		if err == nil {
-			for _, member := range members {
-				if startErr := d.control("start", member.Path); startErr != nil {
-					d.mu.Lock()
-					delete(d.members, member.Path)
-					d.mu.Unlock()
-					err = errors.Join(err, startErr)
-				}
-			}
+			err = d.restoreHost()
 		}
 		d.lifecycle.Unlock()
 		if err != nil {
@@ -469,15 +531,33 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]bool{"ready": true}})
 		}
-	case "status":
+	case "weaver-status":
+		d.lifecycle.Lock()
+		member, err := d.resolve(req.Workspace, req.CWD)
+		if err == nil {
+			err = d.control("member-status", member.Path)
+		}
+		d.lifecycle.Unlock()
+		if err != nil {
+			encode(conn, errFrame(err))
+		} else {
+			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true}})
+		}
+	case "status", "weaver-list":
 		d.mu.Lock()
 		members := make([]Member, 0, len(d.members))
 		for _, member := range d.members {
 			members = append(members, member)
 		}
+		sort.Slice(members, func(i, j int) bool { return members[i].Path < members[j].Path })
 		pid := d.host.Process.Pid
+		ready, hostError := d.hostReady, d.hostError
 		d.mu.Unlock()
-		encode(conn, Frame{OK: true, Result: map[string]any{"pid": os.Getpid(), "hostPid": pid, "members": members}})
+		if req.Operation == "weaver-list" {
+			encode(conn, Frame{OK: true, Result: members})
+		} else {
+			encode(conn, Frame{OK: true, Result: map[string]any{"pid": os.Getpid(), "hostPid": pid, "hostReady": ready, "hostError": hostError, "members": members}})
+		}
 	case "host-status":
 		response, err := d.hostCall("/control", map[string]any{"action": "status"})
 		if err != nil {
@@ -549,7 +629,7 @@ func Serve() error {
 		return err
 	}
 	defer os.Remove(socket())
-	d := &Daemon{home: home, repo: Repo(), hostSocket: filepath.Join(home, "host.sock"), members: map[string]Member{}, custodies: map[string]*process.Custody{}, listener: listener}
+	d := &Daemon{home: home, core: Core(), hostSocket: filepath.Join(home, "host.sock"), members: map[string]Member{}, custodies: map[string]*process.Custody{}, listener: listener}
 	if err := d.bootHost(); err != nil {
 		return err
 	}
@@ -592,243 +672,4 @@ func request(operation, target string, payload any) Request {
 		panic(err)
 	}
 	return Request{Protocol: 1, ID: rand.Text(), Operation: operation, Workspace: target, CWD: cwd, Payload: data}
-}
-func Start() error {
-	var existing bytes.Buffer
-	if err := Dial(request("status", "", nil), &existing); err == nil {
-		var frame Frame
-		if json.Unmarshal(existing.Bytes(), &frame) == nil && frame.OK {
-			return nil
-		}
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(Home(), 0700); err != nil {
-		return err
-	}
-	log, err := os.OpenFile(filepath.Join(Home(), "mill.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer log.Close()
-	cmd := exec.Command(exe, "serve")
-	cmd.Stdout = log
-	cmd.Stderr = log
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	_ = cmd.Process.Release()
-	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
-		var output bytes.Buffer
-		if err := Dial(request("status", "", nil), &output); err == nil {
-			var frame Frame
-			if json.Unmarshal(output.Bytes(), &frame) == nil && frame.OK {
-				return nil
-			}
-		}
-		time.Sleep(30 * time.Millisecond)
-	}
-	return errors.New("Mill start timed out; inspect mill.log")
-}
-func workspace(args []string) (string, []string, error) {
-	target := ""
-	result := []string{}
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--workspace" {
-			i++
-			if i == len(args) {
-				return "", nil, errors.New("--workspace requires a value")
-			}
-			target = args[i]
-		} else {
-			result = append(result, args[i])
-		}
-	}
-	if target == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", nil, err
-		}
-		for {
-			if _, err := os.Stat(filepath.Join(cwd, ".millstrand/config.json")); err == nil {
-				target = cwd
-				break
-			}
-			parent := filepath.Dir(cwd)
-			if parent == cwd {
-				return "", nil, errors.New("no workspace; pass --workspace path|name")
-			}
-			cwd = parent
-		}
-	}
-	return target, result, nil
-}
-func Relay(req Request) int {
-	var output bytes.Buffer
-	if req.Operation != "invoke" {
-		if err := Dial(req, &output); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		var frame Frame
-		if err := json.Unmarshal(output.Bytes(), &frame); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		if !frame.OK {
-			encode(os.Stderr, frame.Error)
-			return 1
-		}
-		encode(os.Stdout, frame.Result)
-		return 0
-	}
-	conn, err := net.DialTimeout("unix", socket(), time.Second)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	defer conn.Close()
-	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	scanner := bufio.NewScanner(conn)
-	scanner.Buffer(make([]byte, 4096), 16*1024*1024)
-	stream := false
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		var frame map[string]json.RawMessage
-		if !json.Valid(line) {
-			fmt.Fprintln(os.Stderr, "malformed JSON response")
-			return 1
-		}
-		objectErr := json.Unmarshal(line, &frame)
-		if !stream && objectErr != nil {
-			fmt.Fprintln(os.Stderr, objectErr)
-			return 1
-		}
-		if !stream {
-			if bytes.Equal(frame["stream"], []byte("true")) {
-				stream = true
-				continue
-			}
-			if bytes.Equal(frame["ok"], []byte("true")) {
-				fmt.Fprintln(os.Stdout, string(frame["result"]))
-				return 0
-			}
-			fmt.Fprintln(os.Stderr, string(frame["error"]))
-			return 1
-		}
-		if bytes.Equal(frame["done"], []byte("true")) && string(frame["request_id"]) == fmt.Sprintf("%q", req.ID) {
-			if bytes.Equal(frame["success"], []byte("true")) {
-				return 0
-			}
-			fmt.Fprintln(os.Stderr, string(frame["error"]))
-			return 1
-		}
-		fmt.Fprintln(os.Stdout, string(line))
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	} else {
-		fmt.Fprintln(os.Stderr, "response ended without a terminal frame")
-	}
-	return 1
-}
-func Strand(args []string) int {
-	target, args, err := workspace(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	timeout := 30 * time.Second
-	filtered := []string{}
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--timeout" {
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(os.Stderr, "--timeout requires a duration")
-				return 1
-			}
-			var parseErr error
-			timeout, parseErr = time.ParseDuration(args[i])
-			if parseErr != nil || timeout <= 0 {
-				fmt.Fprintln(os.Stderr, "invalid timeout")
-				return 1
-			}
-		} else {
-			argument := args[i]
-			if strings.HasPrefix(argument, "@") {
-				absolute, err := filepath.Abs(argument[1:])
-				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
-				}
-				argument = "@" + absolute
-			}
-			filtered = append(filtered, argument)
-		}
-	}
-	args = filtered
-	name := "help"
-	if len(args) > 0 {
-		name = args[0]
-		args = args[1:]
-	}
-	payload := map[string]any{"name": name, "argv": args, "timeout_ms": timeout.Milliseconds()}
-	if len(args) == 2 && args[0] == "--payload" {
-		var input any
-		raw := []byte(args[1])
-		if strings.HasPrefix(args[1], "@") {
-			raw, err = os.ReadFile(args[1][1:])
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-		}
-		if err := json.Unmarshal(raw, &input); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		delete(payload, "argv")
-		payload["input"] = input
-	}
-	return Relay(request("invoke", target, payload))
-}
-func Mill(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "mill start|serve|up PATH|restart PATH|down PATH|restart-host|status|host-status|bin NAME|stop")
-		return 1
-	}
-	switch args[0] {
-	case "serve":
-		if err := Serve(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		return 0
-	case "start":
-		if err := Start(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		return 0
-	case "bin":
-		target, rest, err := workspace(args[1:])
-		if err != nil || len(rest) == 0 {
-			fmt.Fprintln(os.Stderr, "mill bin NAME --workspace PATH|NAME [ARGS]")
-			return 1
-		}
-		return Relay(request("invoke", target, map[string]any{"name": rest[0], "argv": rest[1:], "bin": true}))
-	default:
-		target := ""
-		if len(args) > 1 {
-			target = args[1]
-		}
-		return Relay(request(args[0], target, nil))
-	}
 }

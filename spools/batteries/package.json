@@ -1,0 +1,22 @@
+{
+  "name": "@millstrand/spool-batteries",
+  "version": "0.1.0",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@millstrand/core": "workspace:^"
+  }
+}

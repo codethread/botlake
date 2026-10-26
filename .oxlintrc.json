@@ -54,5 +54,65 @@
     "promise/always-return": "off",
     "eslint/max-lines": "off"
   },
-  "ignorePatterns": ["node_modules/", "dist/", "out/", "coverage/"]
+  "ignorePatterns": ["node_modules/", "dist/", "out/", "coverage/"],
+  "overrides": [
+    {
+      "files": ["spools/*/src/**/*.{ts,mts,cts,js,mjs,cjs}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../../**"],
+                "message": "Use a declared package dependency and its public exports, not a relative import across package boundaries."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/core/src/**/*.{ts,mts,cts,js,mjs,cjs}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../../**"],
+                "message": "Use a declared package dependency and its public exports, not a relative import across package boundaries."
+              },
+              {
+                "group": ["@millstrand/spool-*", "@millstrand/identity"],
+                "message": "Core must not depend on spools or native plugins. Load explicitly selected spools through workspace configuration."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/*/*.{ts,mts,cts,js,mjs,cjs}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../**"],
+                "message": "Use a declared package dependency and its public exports, not a relative import across package boundaries."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["tests/blackbox/**/*.ts"],
+      "rules": {
+        "import/max-dependencies": "off"
+      }
+    }
+  ]
 }

@@ -1,0 +1,6 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "description": "Supply the selected Millstrand run's identity and policy context.",
+  "hooks": "./hooks/hooks.json"
+}

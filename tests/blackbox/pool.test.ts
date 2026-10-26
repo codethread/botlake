@@ -1,115 +1,147 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { mkdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
 
 import { z } from "zod";
 
-const root = resolve(import.meta.dir, "../..");
+import { system } from "./fixtures/system.ts";
+
 test("real Go Mill pools independent workers, routes names, and retains command custody across host recovery", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mill-pool-"));
-  const home = join(dir, "mill");
-  const mill = join(dir, "mill-bin");
-  const strand = join(dir, "strand-bin");
-  const env = { ...process.env, MILL_HOME: home, MILLSTRAND_SOURCE: root };
-  for (const [name, output] of [
-    ["mill", mill],
-    ["strand", strand],
-  ]) {
-    const build = Bun.spawn(["go", "build", "-o", output ?? "", `./cmd/${name ?? ""}`], {
-      cwd: join(root, "cli"),
-      env: { ...process.env, GOPROXY: "off" },
-      stderr: "pipe",
-    });
-    if ((await build.exited) !== 0) throw new Error(await new Response(build.stderr).text());
-  }
-  const api = join(root, "src/index.ts");
-  const spool = `import { defineOp } from ${JSON.stringify(api)}; import { z } from ${JSON.stringify(join(root, "node_modules/zod/index.js"))}; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.object({command:z.enum(["launch","list"])}),output:z.json(),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));ctx.bin("probe","process");} };`;
-  // A FIFO gives the process an explicit release point without timing assumptions.
-  const fifo = Bun.spawn(["mkfifo", join(dir, "release")]);
-  expect(await fifo.exited).toBe(0);
-  for (const name of ["alpha", "beta"]) {
-    await mkdir(join(dir, name, ".millstrand"), { recursive: true });
-    await Bun.write(join(dir, name, "probe.ts"), spool);
-    await Bun.write(
-      join(dir, name, ".millstrand/config.json"),
-      JSON.stringify({ name, spools: ["batteries", "./probe.ts"] }),
-    );
-  }
-  const daemon = Bun.spawn([mill, "serve"], { env, stdout: "pipe", stderr: "pipe" });
-  async function run(binary: string, args: string[], ok = true): Promise<unknown> {
-    const child = Bun.spawn([binary, ...args], { env, cwd: dir, stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    if (ok && code !== 0)
-      throw new Error(
-        `${args.join(" ")}: ${stderr}\n${await Bun.file(join(home, "host.log")).text()}`,
-      );
-    if (!ok) {
-      expect(code).not.toBe(0);
-      return stderr;
-    }
-    return JSON.parse(stdout);
-  }
+  const host = await system();
   try {
-    const reader = daemon.stdout.getReader();
-    const first = await reader.read();
-    expect(new TextDecoder().decode(first.value)).toContain('"ready":true');
-    reader.releaseLock();
-    for (const name of ["alpha", "beta"]) await run(mill, ["up", name]);
-    await run(strand, ["--workspace", "./alpha", "add", "A"]);
+    const spool = `import { defineOp } from "@millstrand/core"; import { z } from "zod"; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.object({command:z.enum(["launch","list"])}),output:z.json(),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(host.dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));} };`;
+    // A FIFO gives the process an explicit release point without timing assumptions.
+    const fifo = Bun.spawn(["mkfifo", join(host.dir, "release")]);
+    expect(await fifo.exited).toBe(0);
+    for (const name of ["alpha", "beta"]) {
+      const workspace = await host.workspace(name, ["@millstrand/spool-batteries", "./probe.ts"]);
+      await Bun.write(join(workspace, "probe.ts"), spool);
+      await host.mill(["weaver", "start", "--workspace", name]);
+    }
+    await host.cli(["--workspace", "./alpha", "add", "A"]);
     expect(
       z
         .array(z.object({ title: z.string() }))
-        .parse(await run(strand, ["--workspace", "alpha", "list"]))
+        .parse(await host.strand("alpha", "list", {}))
         .map((row) => row.title),
     ).toEqual(["A"]);
-    expect(await run(strand, ["--workspace", "beta", "list"])).toEqual([]);
+    expect(await host.strand("beta", "list", {})).toEqual([]);
     const before = z
       .object({ handle: z.string() })
-      .parse(
-        await run(strand, ["--workspace", "alpha", "process", "--payload", '{"command":"launch"}']),
-      );
-    await run(mill, ["restart", "alpha"]);
+      .parse(await host.strand("alpha", "process", { command: "launch" }));
+    await host.mill(["weaver", "restart", "--workspace", "alpha"]);
     expect(
       z
         .array(z.object({ handle: z.string() }))
-        .parse(
-          await run(strand, ["--workspace", "alpha", "process", "--payload", '{"command":"list"}']),
-        )[0]?.handle,
+        .parse(await host.strand("alpha", "process", { command: "list" }))[0]?.handle,
     ).toBe(before.handle);
-    await run(mill, ["restart-host"]);
+    await host.mill(["restart-host"]);
     expect(
       z
         .object({ handle: z.string() })
-        .parse(
-          await run(strand, [
-            "--workspace",
-            "alpha",
-            "process",
-            "--payload",
-            '{"command":"launch"}',
-          ]),
-        ).handle,
+        .parse(await host.strand("alpha", "process", { command: "launch" })).handle,
+    ).toBe(before.handle);
+    const status = z.object({ hostPid: z.number(), hostReady: z.boolean() });
+    const crashed = status.parse(await host.mill(["status"])).hostPid;
+    process.kill(crashed, "SIGKILL");
+    let recovered = false;
+    // Observe the supervisor's actual replacement, without replaying a launch or
+    // guessing how long startup takes. Each status call crosses the real socket.
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const current = status.parse(await host.mill(["status"]));
+      if (current.hostPid !== crashed && current.hostReady) {
+        recovered = true;
+        break;
+      }
+    }
+    expect(recovered).toBe(true);
+    expect(await host.mill(["weaver", "status", "--workspace", "alpha"])).toMatchObject({
+      name: "alpha",
+      ready: true,
+    });
+    expect(
+      z
+        .object({ handle: z.string() })
+        .parse(await host.strand("alpha", "process", { command: "launch" })).handle,
     ).toBe(before.handle);
     expect(
-      await Promise.all([
-        run(strand, ["--workspace", "alpha", "load"]),
-        run(strand, ["--workspace", "beta", "list"]),
-      ]),
+      z
+        .array(z.object({ handle: z.string() }))
+        .parse(await host.strand("alpha", "process", { command: "list" })),
+    ).toHaveLength(1);
+    expect(
+      await Promise.all([host.strand("alpha", "load", {}), host.strand("beta", "list", {})]),
     ).toEqual([10000, []]);
-    await run(strand, ["--workspace", "unknown", "list"], false);
-    await mkdir(join(dir, "duplicate", ".millstrand"), { recursive: true });
-    await Bun.write(join(dir, "duplicate", ".millstrand/config.json"), '{"name":"alpha"}');
-    await run(mill, ["up", join(dir, "duplicate")], false);
-    const release = Bun.spawn(["sh", "-c", 'printf go > "$1"', "sh", join(dir, "release")]);
+    await host.strand("unknown", "list", {}, false);
+    await mkdir(join(host.dir, "duplicate/.millstrand"), { recursive: true });
+    await Bun.write(join(host.dir, "duplicate/.millstrand/config.json"), '{"name":"alpha"}');
+    await host.mill(["weaver", "start", "--workspace", join(host.dir, "duplicate")], false);
+    const release = Bun.spawn(["sh", "-c", 'printf go > "$1"', "sh", join(host.dir, "release")]);
     expect(await release.exited).toBe(0);
   } finally {
-    await run(mill, ["stop"]);
-    expect(await daemon.exited).toBe(0);
-    await rm(dir, { recursive: true, force: true });
+    await host.close();
+  }
+}, 60000);
+
+test("Mill weaver lifecycle publishes validated names and refreshes routes on member and host replacement", async () => {
+  const host = await system();
+  const spools = ["@millstrand/spool-batteries"];
+  try {
+    const alpha = await host.workspace("alpha", spools);
+    const beta = await host.workspace("beta", spools);
+    const healthy = await host.workspace("healthy", spools);
+    const configure = (path: string, name?: string): Promise<number> =>
+      Bun.write(join(path, ".millstrand/config.json"), JSON.stringify({ name, spools }));
+    await configure(alpha);
+    expect(await host.mill(["weaver", "start", "--workspace", alpha])).toMatchObject({
+      name: "alpha",
+    });
+    await host.mill(["weaver", "start", "--workspace", beta]);
+    await host.mill(["weaver", "start", "--workspace", healthy]);
+    expect(await host.mill(["weaver", "list"])).toHaveLength(3);
+
+    // A changed file does not rename a live member until replacement succeeds.
+    await configure(alpha, "renamed");
+    expect(await host.mill(["weaver", "start", "--workspace", alpha])).toMatchObject({
+      name: "alpha",
+    });
+    await host.mill(["weaver", "restart", "--workspace", alpha]);
+    await host.strand("renamed", "add", { title: "A" });
+    expect(await host.mill(["weaver", "start", "--workspace", "renamed"])).toMatchObject({
+      name: "renamed",
+    });
+
+    // Published names win for bare selections; explicit paths still select paths.
+    await configure(beta, "alpha");
+    await host.mill(["weaver", "restart", "--workspace", beta]);
+    expect(await host.strand("alpha", "list", {})).toEqual([]);
+    expect(await host.strand("./alpha", "list", {})).toHaveLength(1);
+    await configure(alpha, "next");
+    await host.mill(["restart-host"]);
+    expect(await host.strand("next", "list", {})).toHaveLength(1);
+    expect(await host.strand("renamed", "list", {}, false)).toContain("unknown workspace");
+
+    // Reject a colliding member replacement before taking its current worker down.
+    await configure(beta, "next");
+    expect(await host.mill(["weaver", "restart", "--workspace", beta], false)).toContain(
+      "duplicate workspace name",
+    );
+    expect(await host.strand("alpha", "list", {})).toEqual([]);
+
+    // Pool recovery rejects every ambiguous name, without disrupting healthy peers.
+    expect(await host.mill(["restart-host"], false)).toContain("duplicate workspace name");
+    expect(await host.mill(["weaver", "list"])).toEqual([
+      { path: await realpath(healthy), name: "healthy" },
+    ]);
+    expect(await host.strand("next", "list", {}, false)).toContain("unknown workspace");
+    expect(await host.strand("healthy", "list", {})).toEqual([]);
+    await configure(alpha);
+    await host.mill(["weaver", "start", "--workspace", alpha]);
+    await host.mill(["weaver", "stop", "--workspace", alpha]);
+    expect(await host.mill(["weaver", "status", "--workspace", alpha], false)).toContain(
+      "unknown workspace",
+    );
+  } finally {
+    await host.close();
   }
 }, 60000);

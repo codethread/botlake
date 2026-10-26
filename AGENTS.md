@@ -4,6 +4,12 @@
 - Write unit tests to help shape and validate, delete once finished.
 - Write blackbox tests to verify the system as a user would.
 
+## Package seam
+
+- Core runs weavers; spools own domains, configuration and assets. Core stays spool-independent.
+- Cross-package imports use declared dependencies and public exports; relative imports stay within a package. Preserve Oxlint's `no-restricted-imports` boundary.
+- Spool imports stay inert. Consumers explicitly select spools and prerequisites; installation never activates them.
+
 ## Development cycle
 
 1. build (make it work)

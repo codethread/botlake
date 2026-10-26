@@ -3,20 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Runtime, ManualClock, type Context, type Spool } from "@millstrand/core";
+import { batteries } from "@millstrand/spool-batteries";
+import { Cron, defineJob, nextFire } from "@millstrand/spool-cron";
+import { identity } from "@millstrand/spool-identity";
+import { kanban } from "@millstrand/spool-kanban";
 import { z } from "zod";
 
-import {
-  Runtime,
-  ManualClock,
-  batteries,
-  identity,
-  kanban,
-  Cron,
-  defineJob,
-  nextFire,
-  type Context,
-  type Spool,
-} from "../../src/index.ts";
 import { rejected } from "./assert.ts";
 
 const strand = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
@@ -66,6 +59,28 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     expect(() => runtime.graph.batch({ refs: { claim: claim.claim.id }, burn: ["claim"] })).toThrow(
       "immutable",
     );
+    expect(
+      (
+        await rejected(
+          invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "different" }),
+        )
+      ).message,
+    ).toContain("ambiguous");
+    await invoke({ command: "claim", id: feature.id, owner: "second", branch: "next" });
+    await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" });
+    const history = z
+      .object({ history: z.array(strand) })
+      .parse(await invoke({ command: "card", id: feature.id })).history;
+    expect(history.map((entry) => entry.attributes["kanban/owner"])).toEqual([
+      "unresolved",
+      "second",
+      "unresolved",
+    ]);
+    const times = history.map((entry) =>
+      Date.parse(z.string().parse(entry.attributes["kanban/claimed-at"])),
+    );
+    expect(times[0]).toBeLessThan(times[1] ?? 0);
+    expect(times[1]).toBeLessThan(times[2] ?? 0);
     const view = z
       .object({
         tasks: z.array(z.object({ status: z.string(), owner: z.object({ source: z.string() }) })),
@@ -135,6 +150,16 @@ test("calendar parser handles spring and fall DST and interval jobs retain caden
   );
   expect(new Date(nextFire(calendar, Date.parse("2026-10-24T08:00:00Z"))).toISOString()).toBe(
     "2026-10-25T09:00:00.000Z",
+  );
+  const transition = { expression: "30 1 * * *", timezone: "Europe/London" };
+  expect(new Date(nextFire(transition, Date.parse("2026-03-28T01:30:00Z"))).toISOString()).toBe(
+    "2026-03-29T01:30:00.000Z",
+  );
+  expect(new Date(nextFire(transition, Date.parse("2026-10-24T00:30:00Z"))).toISOString()).toBe(
+    "2026-10-25T00:30:00.000Z",
+  );
+  expect(new Date(nextFire(transition, Date.parse("2026-10-25T00:30:00Z"))).toISOString()).toBe(
+    "2026-10-26T01:30:00.000Z",
   );
   const clock = new ManualClock(0);
   const ids: string[] = [];
@@ -339,5 +364,70 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
     } finally {
       await recovered.stop();
     }
+  });
+});
+
+test("Cron allows explicitly concurrent occurrences and persists exhausted failures", async () => {
+  const clock = new ManualClock(0);
+  const gate = Promise.withResolvers<void>();
+  let service: Cron | undefined;
+  const spool: Spool = {
+    name: "concurrent-jobs",
+    activate(ctx) {
+      service = new Cron(
+        ctx,
+        [
+          defineJob({
+            id: "parallel",
+            action: "block",
+            schedule: { everyMs: 1000 },
+            overlap: "allow",
+          }),
+          defineJob({ id: "failure", action: "fail", schedule: { everyMs: 1000 } }),
+        ],
+        {
+          block: async () => {
+            await gate.promise;
+          },
+          fail: () => {
+            throw new Error("action failed");
+          },
+        },
+      );
+      ctx.resource(service);
+    },
+  };
+  await world([spool], clock, async (runtime) => {
+    try {
+      clock.advance(1000);
+      await runtime.drain();
+      clock.advance(2000);
+      await runtime.drain();
+      const outcomes = z.array(
+        z.object({
+          id: z.string(),
+          status: z.string(),
+          attempt: z.number(),
+          error: z.string().nullable(),
+        }),
+      );
+      expect(outcomes.parse(service?.history("parallel")).map((entry) => entry.status)).toEqual([
+        "running",
+        "running",
+      ]);
+      expect(outcomes.parse(service?.history("failure"))).toEqual([
+        { id: "failure/1000", status: "failed", attempt: 1, error: "Error: action failed" },
+        { id: "failure/2000", status: "failed", attempt: 1, error: "Error: action failed" },
+      ]);
+    } finally {
+      gate.resolve();
+      await service?.drain();
+    }
+    expect(
+      z
+        .array(z.object({ status: z.string() }))
+        .parse(service?.history("parallel"))
+        .map((entry) => entry.status),
+    ).toEqual(["succeeded", "succeeded"]);
   });
 });

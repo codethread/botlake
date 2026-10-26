@@ -1,0 +1,24 @@
+{
+  "name": "@millstrand/spool-harnesses",
+  "version": "0.1.0",
+  "files": [
+    "src",
+    "plugins",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@millstrand/identity": "workspace:^",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@millstrand/core": "workspace:^",
+    "@millstrand/spool-identity": "workspace:^"
+  }
+}

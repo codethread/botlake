@@ -3,10 +3,10 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { Runtime, type Context } from "@millstrand/core";
 import { z } from "zod";
 
-import { Runtime, type Context } from "../../src/index.ts";
-import { system, source } from "./fixtures/system.ts";
+import { system, install } from "./fixtures/system.ts";
 
 test("external Bun package imports stay inert; worker deps, cleanup, wire streams, deadlines and peer links work", async () => {
   const host = await system();
@@ -20,21 +20,29 @@ test("external Bun package imports stay inert; worker deps, cleanup, wire stream
         name: "outside-spool",
         type: "module",
         exports: "./index.ts",
-        dependencies: { "millstrand-ts": `file:${source}` },
+        dependencies: {
+          ...Object.fromEntries(
+            Object.entries(host.packages).filter(([name]) => name === "@millstrand/core"),
+          ),
+          zod: "^4.6.7",
+        },
       }),
     );
     await Bun.write(
       join(library, "index.ts"),
-      `import {defineOp} from "millstrand-ts";import {z} from ${JSON.stringify(join(source, "node_modules/zod/index.js"))};
+      `import {defineOp} from "@millstrand/core";import {z} from "zod";
 export const op=defineOp({name:"echo",input:z.object({value:z.string()}),output:z.string(),cli:{description:"echo",positionals:[{name:"value",type:"string",required:true}]},handler:input=>input.value});
-export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defineOp({name:"issues",input:{"~standard":{version:1,vendor:"fixture",validate:()=>({issues:[{message:"invalid",path:[Symbol("field")]}]})}},output:z.string(),cli:{description:"issues"},handler:()=>"never"}));ctx.register(defineOp({name:"success-stream",input:z.object({}),output:z.number(),stream:true,cli:{description:"stream"},async *handler(){yield 1;yield 2;}}));ctx.bin("say","echo");ctx.register(defineOp({name:"numbers",input:z.object({}),output:z.number().positive(),stream:true,cli:{description:"numbers"},async *handler(){yield 1;yield 2;yield 0;}}));ctx.register(defineOp({name:"wait",input:z.object({}),output:z.string(),cli:{description:"wait"},async handler(_,ctx,request){await new Promise((resolve,reject)=>{request.signal.addEventListener("abort",()=>reject(request.signal.reason),{once:true});});return "never";}}));ctx.resource({start(){return Bun.write(${JSON.stringify(marker)},"started").then(()=>{});},stop(){return Bun.write(${JSON.stringify(marker)},"stopped").then(()=>{});}});}};`,
+export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defineOp({name:"issues",input:{"~standard":{version:1,vendor:"fixture",validate:()=>({issues:[{message:"invalid",path:[Symbol("field")]}]})}},output:z.string(),cli:{description:"issues"},handler:()=>"never"}));ctx.register(defineOp({name:"success-stream",input:z.object({}),output:z.number(),stream:true,cli:{description:"stream"},async *handler(){yield 1;yield 2;}}));ctx.bin("say",{description:"External executable",exec:{command:"echo"}});ctx.register(defineOp({name:"numbers",input:z.object({}),output:z.number().positive(),stream:true,cli:{description:"numbers"},async *handler(){yield 1;yield 2;yield 0;}}));ctx.register(defineOp({name:"wait",input:z.object({}),output:z.string(),cli:{description:"wait"},async handler(_,ctx,request){await new Promise((resolve,reject)=>{request.signal.addEventListener("abort",()=>reject(request.signal.reason),{once:true});});return "never";}}));ctx.resource({start(){return Bun.write(${JSON.stringify(marker)},"started").then(()=>{});},stop(){return Bun.write(${JSON.stringify(marker)},"stopped").then(()=>{});}});}};`,
     );
-    const install = Bun.spawn(["bun", "install", "--ignore-scripts", "--offline"], {
+    const installing = Bun.spawn(["bun", "install", "--ignore-scripts", "--offline"], {
       cwd: library,
       stdout: "pipe",
       stderr: "pipe",
     });
-    const [code, error] = await Promise.all([install.exited, new Response(install.stderr).text()]);
+    const [code, error] = await Promise.all([
+      installing.exited,
+      new Response(installing.stderr).text(),
+    ]);
     if (code !== 0) throw new Error(error);
     expect(await Bun.file(join(library, "bun.lock")).exists()).toBe(true);
     const imported: unknown = await import(pathToFileURL(join(library, "index.ts")).href);
@@ -55,12 +63,17 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await Bun.file(marker).text()).toBe("stopped");
     for (const name of ["alpha", "beta"]) {
       const workspace = await host.workspace(name, [
-        "batteries",
-        "identity",
-        "kanban",
-        join(library, "index.ts"),
+        "@millstrand/spool-batteries",
+        "@millstrand/spool-identity",
+        "@millstrand/spool-kanban",
+        "outside-spool",
         "./deps.ts",
       ]);
+      await install(workspace, {
+        ...host.packages,
+        "outside-spool": `file:${library}`,
+        zod: "^4.6.7",
+      });
       await mkdir(join(workspace, "node_modules/private-value"), { recursive: true });
       await Bun.write(
         join(workspace, "node_modules/private-value/package.json"),
@@ -72,12 +85,31 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       );
       await Bun.write(
         join(workspace, "deps.ts"),
-        `import value from "private-value";import {defineOp} from ${JSON.stringify(join(source, "src/index.ts"))};import {z} from ${JSON.stringify(join(source, "node_modules/zod/index.js"))};export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.object({}),output:z.string(),cli:{description:"dependency"},handler:()=>value}));}};`,
+        `import value from "private-value";import {defineOp} from "@millstrand/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.object({}),output:z.string(),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.object({value:z.string(),operation:z.string().default("echo")}),output:z.string(),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
       );
-      await host.mill(["up", workspace]);
+      await host.mill(["weaver", "start", "--workspace", workspace]);
       expect(await host.strand(name, "dep", {})).toBe(name);
     }
-    expect(await host.mill(["bin", "say", "--workspace", "alpha", "hello"])).toBe("hello");
+    expect(await host.mill(["bin", "list", "--workspace", "alpha"])).toEqual({
+      operation: "bins list",
+      bins: [{ name: "say", description: "External executable" }],
+    });
+    const unicode = "世界🙂—".repeat(50000);
+    const relayed = z.object({ ok: z.literal(true), result: z.string() }).parse(
+      JSON.parse(
+        await host.wire({
+          protocol_version: 1,
+          request_id: "unicode-peer",
+          operation: "invoke",
+          workspace: "alpha",
+          payload: { name: "relay", input: { value: unicode } },
+        }),
+      ),
+    );
+    expect(relayed.result === unicode).toBe(true);
+    expect(
+      await host.strand("alpha", "relay", { value: "", operation: "success-stream" }, false),
+    ).toContain("Streaming peer calls are unsupported");
     expect(await host.strand("alpha", "issues", {}, false)).toContain("Symbol(field)");
     const streamCli = Bun.spawn([host.strandBin, "--workspace", "alpha", "success-stream"], {
       env: host.env,
@@ -132,7 +164,9 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       join(bad, "bad.ts"),
       `export default {name:"bad",activate(ctx){ctx.resource({start(){throw new Error("startup-failure")},stop(){return Bun.write(${JSON.stringify(disposed)},"disposed").then(()=>{});}});}};`,
     );
-    expect(await host.mill(["up", bad], false)).toContain("startup-failure");
+    expect(await host.mill(["weaver", "start", "--workspace", bad], false)).toContain(
+      "startup-failure",
+    );
     expect(await Bun.file(disposed).text()).toBe("disposed");
     expect(
       z
@@ -140,15 +174,15 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
         .parse(await host.mill(["status"]))
         .members.map((member) => member.name),
     ).not.toContain("bad");
-    await host.mill(["down", "beta"]);
+    await host.mill(["weaver", "stop", "--workspace", "beta"]);
     expect(
       z
         .object({ link: z.object({ status: z.string() }) })
         .parse(await host.strand("alpha", "kanban", { command: "card", id: mirror.id })).link
         .status,
     ).toBe("unavailable");
-    const healthy = await host.workspace("healthy", ["batteries"]);
-    await host.mill(["up", healthy]);
+    const healthy = await host.workspace("healthy", ["@millstrand/spool-batteries"]);
+    await host.mill(["weaver", "start", "--workspace", healthy]);
     await Bun.write(
       join(host.dir, "alpha/.millstrand/config.json"),
       '{"name":"alpha","spools":["missing-spool"]}',

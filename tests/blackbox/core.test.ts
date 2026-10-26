@@ -3,11 +3,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  Runtime,
+  ManualClock,
+  defineOp,
+  isStream,
+  type GraphEvent,
+  type Predicate,
+  type Spool,
+} from "@millstrand/core";
+import { batteries } from "@millstrand/spool-batteries";
 import * as v from "valibot";
 import { z } from "zod";
 
-import { Runtime, batteries, ManualClock, defineOp, type Spool } from "../../src/index.ts";
-import { isStream } from "../../src/runtime/runtime.ts";
 import { rejected } from "./assert.ts";
 
 async function disposable(
@@ -66,6 +74,257 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     expect(await runtime.invoke("help", [])).toBeArray();
     expect(await runtime.invoke("about", ["list"])).toBeArray();
   });
+});
+
+test("archival preserves immutable evidence and burn records each deletion exactly once", async () => {
+  const events: GraphEvent[] = [];
+  await disposable(
+    async (runtime) => {
+      const graph = runtime.graph;
+      const target = graph.add({ title: "target" });
+      const note = graph.note(target.id, "source", { scratch: "extra" });
+      await runtime.drain();
+      events.length = 0;
+      expect(
+        (
+          await rejected(
+            runtime.invoke("archive", {
+              id: note.id,
+              keys: ["scratch", "note/text"],
+            }),
+          )
+        ).message,
+      ).toContain("Immutable");
+      expect(
+        (
+          await rejected(
+            runtime.invoke("archive", {
+              id: note.id,
+              keys: ["scratch", "typo"],
+            }),
+          )
+        ).message,
+      ).toContain("Unknown attribute");
+      expect(graph.show(note.id, true)).toEqual(note);
+      expect(
+        (await rejected(runtime.invoke("burn", { ids: [target.id, target.id] }))).message,
+      ).toContain("Duplicate strand");
+      expect(
+        (
+          await rejected(
+            runtime.invoke("batch", {
+              refs: { a: target.id, alias: target.id },
+              strands: [{ ref: "new", title: "rolled back" }],
+              burn: ["a", "alias"],
+            }),
+          )
+        ).message,
+      ).toContain("Duplicate strand");
+      expect(graph.list()).toHaveLength(2);
+      expect(graph.tombstones(target.id)).toEqual([]);
+      await runtime.drain();
+      expect(events).toEqual([]);
+      await runtime.invoke("archive", { id: note.id, keys: ["scratch"] });
+      expect(graph.show(note.id, true).attributes).not.toHaveProperty("scratch");
+      expect(graph.show(note.id).attributes["scratch"]).toBe("extra");
+      await runtime.drain();
+      events.length = 0;
+      await runtime.invoke("burn", { ids: [target.id, note.id] });
+      await runtime.drain();
+      expect(graph.tombstones(target.id)).toHaveLength(1);
+      expect(graph.tombstones(note.id)).toHaveLength(1);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.changes.filter((change) => change.kind === "strand")).toHaveLength(2);
+      expect(events[0]?.changes.filter((change) => change.kind === "edge")).toHaveLength(1);
+    },
+    [
+      batteries(),
+      {
+        name: "observer",
+        activate(ctx) {
+          ctx.subscribe((event) => {
+            events.push(event);
+          });
+        },
+      },
+    ],
+  );
+});
+
+test("query negation requires present hot values and composes across named queries and edges", async () => {
+  const a: Predicate = { op: "=", field: { attr: "a", path: [] }, value: 1 };
+  const field = { attr: "doc", path: ["value"] };
+  const b: Predicate = { op: "=", field, value: 2 };
+  await disposable(
+    async (runtime) => {
+      const graph = runtime.graph;
+      graph.add({ title: "missing", attributes: { a: 1 } });
+      const nullable = graph.add({ title: "null", attributes: { a: 1, doc: { value: null } } });
+      expect(nullable.attributes["doc"]).toEqual({ value: null });
+      const matching = graph.add({ title: "matching", attributes: { a: 1, doc: { value: 2 } } });
+      const different = graph.add({ title: "different", attributes: { a: 0, doc: { value: 3 } } });
+      graph.add({ title: "other", attributes: { a: 1, doc: { value: 3 } } });
+      graph.add({ title: "partial", attributes: { a: 0 } });
+      const archived = graph.add({ title: "archived", attributes: { a: 1, doc: { value: 3 } } });
+      graph.archive(archived.id, ["doc"]);
+      const titles = (result: unknown): string[] =>
+        z
+          .array(z.object({ title: z.string() }))
+          .parse(result)
+          .map((row) => row.title)
+          .toSorted();
+      const select = async (where: Predicate): Promise<string[]> =>
+        titles(await runtime.invoke("list", { where }));
+      expect(await select({ op: "not", arg: b })).toEqual(["different", "other"]);
+      expect(await select({ op: "not", arg: { op: "in", field, value: [2] } })).toEqual([
+        "different",
+        "other",
+      ]);
+      expect(await select({ op: "not", arg: { op: "and", args: [a, b] } })).toEqual([
+        "different",
+        "other",
+        "partial",
+      ]);
+      expect(await select({ op: "not", arg: { op: "or", args: [a, b] } })).toEqual(["different"]);
+      expect(
+        await select({ op: "not", arg: { op: "not", arg: { op: "and", args: [a, b] } } }),
+      ).toEqual(["matching"]);
+      expect(await select({ op: "exists", field })).toEqual(["different", "matching", "other"]);
+      expect(await select({ op: "missing", field })).toEqual([
+        "archived",
+        "missing",
+        "null",
+        "partial",
+      ]);
+      expect(await select({ op: "=", field, value: null })).toEqual([]);
+      expect(await select({ op: "!=", field, value: null })).toEqual([]);
+      expect(
+        titles(await runtime.invoke("list", { query: "different", params: { value: 2 } })),
+      ).toEqual(["different", "other"]);
+      expect((await rejected(runtime.invoke("list", { query: "different" }))).message).toContain(
+        "Missing parameter",
+      );
+      graph.connect(matching.id, different.id, "ref");
+      expect(
+        await select({
+          op: "edge",
+          direction: "out",
+          relation: "ref",
+          where: { op: "not", arg: b },
+        }),
+      ).toEqual(["matching"]);
+      expect(
+        await select({ op: "not", arg: { op: "edge", direction: "out", relation: "ref" } }),
+      ).toEqual(["archived", "different", "missing", "null", "other", "partial"]);
+      const key = 'owner") OR 1=1 --';
+      graph.update(matching.id, { attributes: { [key]: { "a.b": { 'quote"key': "safe" } } } });
+      expect(
+        await select({ op: "=", field: { attr: key, path: ["a.b", 'quote"key'] }, value: "safe" }),
+      ).toEqual(["matching"]);
+    },
+    [
+      batteries({
+        different: {
+          description: "Present values other than the supplied value",
+          params: ["value"],
+          where: { op: "not", arg: { op: "=", field, value: { param: "value" } } },
+        },
+      }),
+    ],
+  );
+});
+
+test("batches compose local refs and ordered edges, enforce relation invariants and roll back stale writes", async () => {
+  const events: GraphEvent[] = [];
+  await disposable(
+    async (runtime) => {
+      const graph = runtime.graph;
+      graph.declareAcyclic("custom");
+      const created = graph.batch({
+        strands: ["root", "child", "blocker", "executor"].map((ref) => ({ ref, title: ref })),
+        edges: [
+          { op: "upsert", from: "root", to: "child", relation: "parent-of" },
+          { op: "upsert", from: "child", to: "blocker", relation: "depends-on" },
+          { op: "upsert", from: "executor", to: "child", relation: "serves" },
+          { op: "upsert", from: "root", to: "child", relation: "custom" },
+        ],
+      });
+      const id = (ref: string): string => z.string().parse(created.refs[ref]);
+      expect(
+        graph
+          .list({ ready: true })
+          .map((row) => row.title)
+          .toSorted(),
+      ).toEqual(["blocker", "executor", "root"]);
+      expect(
+        graph
+          .subgraph(id("root"))
+          .strands.map((row) => row.title)
+          .toSorted(),
+      ).toEqual(["child", "root"]);
+      expect(() => graph.connect(id("child"), id("root"), "custom")).toThrow("Cycle");
+      expect(() => graph.connect(id("executor"), id("blocker"), "serves")).toThrow();
+      const moved = graph.batch({
+        refs: created.refs,
+        edges: [
+          { op: "remove", from: "executor", to: "child", relation: "serves" },
+          {
+            op: "upsert",
+            from: "executor",
+            to: "blocker",
+            relation: "serves",
+            attributes: { reason: "next" },
+          },
+        ],
+      });
+      expect(moved.changes).toMatchObject([
+        { kind: "edge", before: { to_id: id("child") }, after: null },
+        {
+          kind: "edge",
+          before: null,
+          after: { to_id: id("blocker"), attributes: { reason: "next" } },
+        },
+      ]);
+      const original = graph.show(id("root"));
+      graph.update(original.id, { title: "root revised", expectedRevision: original.revision });
+      await runtime.drain();
+      events.length = 0;
+      expect(() =>
+        graph.batch({
+          refs: created.refs,
+          strands: [
+            { ref: "child", title: "must roll back" },
+            { ref: "root", title: "stale", expectedRevision: original.revision },
+          ],
+        }),
+      ).toThrow("Stale");
+      expect(graph.show(id("child")).title).toBe("child");
+      expect(graph.show(original.id).title).toBe("root revised");
+      expect(() =>
+        graph.batch({
+          refs: created.refs,
+          strands: [{ ref: "new", title: "must roll back" }],
+          edges: [{ op: "remove", from: "child", to: "root", relation: "parent-of" }],
+        }),
+      ).toThrow("Unknown edge");
+      expect(graph.list()).toHaveLength(4);
+      await runtime.drain();
+      expect(events).toEqual([]);
+      graph.update(id("blocker"), { state: "closed" });
+      expect(graph.list({ ready: true }).map((row) => row.title)).toContain("child");
+    },
+    [
+      batteries(),
+      {
+        name: "observer",
+        activate(ctx) {
+          ctx.subscribe((event) => {
+            events.push(event);
+          });
+        },
+      },
+    ],
+  );
 });
 
 test("async Zod and Valibot transformations, discovery, output validation and stream framing", async () => {
@@ -222,7 +481,7 @@ test("a due wake cancelled or replaced by an earlier handler never receives stal
 });
 
 test("events follow commit, rollback stays silent, and nested domain authority does not leak", async () => {
-  const { identity, reserveIdentity } = await import("../../src/index.ts");
+  const { identity, reserveIdentity } = await import("@millstrand/spool-identity");
   const committed: number[] = [];
   await disposable(
     async (runtime) => {

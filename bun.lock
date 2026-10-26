@@ -4,12 +4,13 @@
   "workspaces": {
     "": {
       "name": "millstrand-ts",
-      "dependencies": {
-        "@standard-schema/spec": "^1.1.0",
-        "cron-parser": "^5.10.2",
-        "zod": "^4.6.7",
-      },
       "devDependencies": {
+        "@millstrand/core": "workspace:*",
+        "@millstrand/spool-batteries": "workspace:*",
+        "@millstrand/spool-cron": "workspace:*",
+        "@millstrand/spool-harnesses": "workspace:*",
+        "@millstrand/spool-identity": "workspace:*",
+        "@millstrand/spool-kanban": "workspace:*",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -18,10 +19,108 @@
         "oxlint-tsgolint": "^7.0.2005",
         "typescript": "^7.0.2",
         "valibot": "^1.5.0",
+        "zod": "^4.6.7",
+      },
+    },
+    ".millstrand": {
+      "name": "@millstrand/dogfood",
+      "dependencies": {
+        "@millstrand/core": "workspace:*",
+        "@millstrand/spool-batteries": "workspace:*",
+        "@millstrand/spool-cron": "workspace:*",
+        "@millstrand/spool-harnesses": "workspace:*",
+        "@millstrand/spool-identity": "workspace:*",
+        "@millstrand/spool-kanban": "workspace:*",
+      },
+    },
+    "packages/core": {
+      "name": "@millstrand/core",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "zod": "^4.6.7",
+      },
+    },
+    "plugins/identity": {
+      "name": "@millstrand/identity",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+    },
+    "spools/batteries": {
+      "name": "@millstrand/spool-batteries",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+      },
+    },
+    "spools/cron": {
+      "name": "@millstrand/spool-cron",
+      "version": "0.1.0",
+      "dependencies": {
+        "cron-parser": "^5.10.2",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+      },
+    },
+    "spools/harnesses": {
+      "name": "@millstrand/spool-harnesses",
+      "version": "0.1.0",
+      "dependencies": {
+        "@millstrand/identity": "workspace:^",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+        "@millstrand/spool-identity": "workspace:^",
+      },
+    },
+    "spools/identity": {
+      "name": "@millstrand/spool-identity",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+      },
+    },
+    "spools/kanban": {
+      "name": "@millstrand/spool-kanban",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@millstrand/core": "workspace:^",
+        "@millstrand/spool-identity": "workspace:^",
       },
     },
   },
   "packages": {
+    "@millstrand/core": ["@millstrand/core@workspace:packages/core"],
+
+    "@millstrand/dogfood": ["@millstrand/dogfood@workspace:.millstrand"],
+
+    "@millstrand/identity": ["@millstrand/identity@workspace:plugins/identity"],
+
+    "@millstrand/spool-batteries": ["@millstrand/spool-batteries@workspace:spools/batteries"],
+
+    "@millstrand/spool-cron": ["@millstrand/spool-cron@workspace:spools/cron"],
+
+    "@millstrand/spool-harnesses": ["@millstrand/spool-harnesses@workspace:spools/harnesses"],
+
+    "@millstrand/spool-identity": ["@millstrand/spool-identity@workspace:spools/identity"],
+
+    "@millstrand/spool-kanban": ["@millstrand/spool-kanban@workspace:spools/kanban"],
+
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 
     "@oxfmt/binding-android-arm64": ["@oxfmt/binding-android-arm64@0.74.0", "", { "os": "android", "cpu": "arm64" }, "sha512-FJW3sATVvrWbV64al8xofCPZj4500Z/1W0ad7Tg1rcCUyh0EMbuSrsf3jsZS7CEbwQ5fQ0mRhmkc129GFgofSQ=="],

@@ -1,0 +1,10 @@
+{
+  "name": "millstrand-ts",
+  "spools": [
+    "@millstrand/spool-batteries",
+    "@millstrand/spool-identity",
+    "@millstrand/spool-harnesses",
+    "@millstrand/spool-kanban",
+    "@millstrand/spool-cron"
+  ]
+}

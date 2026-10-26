@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { nativeProject, registerNative, strand } from "./client.ts";
 
-const provider = z.enum(["codex", "claude", "cursor"]).parse(Bun.argv[2]);
+const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
 try {
   const event = z
     .object({
