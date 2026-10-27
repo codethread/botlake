@@ -247,7 +247,7 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 	if len(view.path) == 0 {
 		p.heading("Workspace operations")
 		if len(operations) == 0 {
-			p.body("No operations are registered. Select spools in .botlake/config.json.", "  ")
+			p.body("No operations are registered. Select spools in .botlake/package.json (botlake.spools).", "  ")
 		}
 		sort.Slice(operations, func(i, j int) bool { return operations[i].Name < operations[j].Name })
 		for _, op := range operations {

@@ -10,5 +10,16 @@
     "@botlake/spool-harnesses": "workspace:*",
     "@botlake/spool-identity": "workspace:*",
     "@botlake/spool-kanban": "workspace:*"
+  },
+  "botlake": {
+    "name": "botlake",
+    "spools": [
+      "@botlake/spool-batteries",
+      "@botlake/spool-identity",
+      "./.botlake/flags.ts",
+      "./.botlake/agents.ts",
+      "@botlake/spool-kanban",
+      "@botlake/spool-cron"
+    ]
   }
 }

@@ -183,8 +183,8 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     const healthy = await host.workspace("healthy", ["@botlake/spool-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
     await Bun.write(
-      join(host.dir, "alpha/.botlake/config.json"),
-      '{"name":"alpha","spools":["missing-spool"]}',
+      join(host.dir, "alpha/.botlake/package.json"),
+      '{"botlake":{"name":"alpha","spools":["missing-spool"]}}',
     );
     expect(await host.botlake(["restart-host"], false)).toContain("missing-spool");
     expect(await host.bl("healthy", "list", {})).toEqual([]);

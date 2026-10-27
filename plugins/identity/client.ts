@@ -28,7 +28,7 @@ export async function nativeProject(cwd: string): Promise<string | null> {
   }
   if (basename(common) !== ".git") return null;
   const root = dirname(common);
-  return existsSync(join(root, ".botlake/config.json")) ? realpathSync(root) : null;
+  return existsSync(join(root, ".botlake/package.json")) ? realpathSync(root) : null;
 }
 export async function bl(workspace: string, op: string, input: unknown): Promise<unknown> {
   const { stdout } = await execute(

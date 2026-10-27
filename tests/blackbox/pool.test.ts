@@ -75,7 +75,10 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
     ]);
     await host.bl("unknown", "list", {}, false);
     await mkdir(join(host.dir, "duplicate/.botlake"), { recursive: true });
-    await Bun.write(join(host.dir, "duplicate/.botlake/config.json"), '{"name":"alpha"}');
+    await Bun.write(
+      join(host.dir, "duplicate/.botlake/package.json"),
+      '{"botlake":{"name":"alpha"}}',
+    );
     await host.botlake(["lake", "start", "--workspace", join(host.dir, "duplicate")], false);
     const release = Bun.spawn(["sh", "-c", 'printf go > "$1"', "sh", join(host.dir, "release")]);
     expect(await release.exited).toBe(0);
@@ -92,7 +95,7 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     const beta = await host.workspace("beta", spools);
     const healthy = await host.workspace("healthy", spools);
     const configure = (path: string, name?: string): Promise<number> =>
-      Bun.write(join(path, ".botlake/config.json"), JSON.stringify({ name, spools }));
+      Bun.write(join(path, ".botlake/package.json"), JSON.stringify({ botlake: { name, spools } }));
     await configure(alpha);
     expect(await host.botlake(["lake", "start", "--workspace", alpha])).toMatchObject({
       name: "alpha",

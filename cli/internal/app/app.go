@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -239,30 +238,6 @@ func (d *Daemon) restoreHost() error {
 	}
 	d.mu.Unlock()
 	return err
-}
-
-var workspaceName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
-
-func readMember(path string) (Member, error) {
-	raw, err := os.ReadFile(filepath.Join(path, ".botlake/config.json"))
-	if err != nil {
-		return Member{}, err
-	}
-	var config struct {
-		Name   *string  `json:"name"`
-		Spools []string `json:"spools"`
-	}
-	if err := decode(raw, &config); err != nil {
-		return Member{}, err
-	}
-	name := filepath.Base(path)
-	if config.Name != nil {
-		name = *config.Name
-	}
-	if !workspaceName.MatchString(name) {
-		return Member{}, fmt.Errorf("invalid workspace name %q; set name in .botlake/config.json to a letter followed by letters, digits, underscores or hyphens", name)
-	}
-	return Member{Path: path, Name: name}, nil
 }
 
 func (d *Daemon) checkName(member Member) error {

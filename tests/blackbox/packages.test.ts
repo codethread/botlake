@@ -13,7 +13,10 @@ test("packed core runs alone; installed spools require explicit selection and ow
   try {
     const bare = join(host.dir, "bare");
     await mkdir(join(bare, ".botlake"), { recursive: true });
-    await Bun.write(join(bare, ".botlake/config.json"), '{"name":"bare"}');
+    await Bun.write(
+      join(bare, ".botlake/package.json"),
+      '{"name":"@example/not-the-lake-name","private":true,"botlake":{}}',
+    );
     await host.botlake(["lake", "start", "--workspace", bare]);
     expect(catalog.parse(await host.bl("bare", "help", {}))).toEqual([{ name: "bins" }]);
     expect(await host.bl("bare", "list", {}, false)).toContain("Unknown op");
@@ -27,9 +30,13 @@ test("packed core runs alone; installed spools require explicit selection and ow
         ),
       ),
     );
+    const manifest = Bun.file(join(bare, ".botlake/package.json"));
     await Bun.write(
-      join(bare, ".botlake/config.json"),
-      JSON.stringify({ name: "bare", spools: ["@botlake/spool-batteries"] }),
+      manifest,
+      JSON.stringify({
+        ...z.record(z.string(), z.unknown()).parse(await manifest.json()),
+        botlake: { spools: ["@botlake/spool-batteries"] },
+      }),
     );
     await host.botlake(["lake", "restart", "--workspace", "bare"]);
     expect(
@@ -44,10 +51,12 @@ test("packed core runs alone; installed spools require explicit selection and ow
       "requires explicitly selected identity",
     );
     await Bun.write(
-      join(board, ".botlake/config.json"),
+      join(board, ".botlake/package.json"),
       JSON.stringify({
-        name: "board",
-        spools: ["@botlake/spool-kanban", "@botlake/spool-identity"],
+        botlake: {
+          name: "board",
+          spools: ["@botlake/spool-kanban", "@botlake/spool-identity"],
+        },
       }),
     );
     await host.botlake(["lake", "start", "--workspace", board]);

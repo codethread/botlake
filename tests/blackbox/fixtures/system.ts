@@ -115,7 +115,10 @@ export async function system(): Promise<{
     async workspace(name, spools) {
       const path = join(dir, name);
       await mkdir(join(path, ".botlake"), { recursive: true });
-      await Bun.write(join(path, ".botlake/config.json"), JSON.stringify({ name, spools }));
+      await Bun.write(
+        join(path, ".botlake/package.json"),
+        JSON.stringify({ private: true, type: "module", botlake: { name, spools } }),
+      );
       await install(path, { ...packages, zod: "^4.6.7" });
       return path;
     },

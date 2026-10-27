@@ -36,39 +36,58 @@ func initWorkspace(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	config := filepath.Join(path, ".botlake", "config.json")
-	if _, err := os.Stat(config); err == nil {
+	manifest, err := readWorkspacePackage(path)
+	missing := errors.Is(err, os.ErrNotExist)
+	if err != nil && !missing {
+		return fail(err)
+	}
+	if missing {
+		manifest = map[string]json.RawMessage{"private": json.RawMessage("true"), "type": json.RawMessage(`"module"`)}
+	}
+	if _, exists := manifest["botlake"]; exists {
 		member, err := readMember(path)
 		if err != nil {
 			return fail(err)
 		}
 		if *name != "" && *name != member.Name {
-			return fail(errors.New("workspace already exists; edit its config to change its name"))
+			return fail(errors.New("workspace already exists; edit botlake.name in .botlake/package.json to change its name"))
 		}
 		encode(os.Stdout, map[string]any{"workspace": path, "name": member.Name, "created": false})
 		return 0
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fail(err)
 	}
-	if *name == "" {
-		*name = filepath.Base(path)
+	publishedName := *name
+	if publishedName == "" {
+		publishedName = filepath.Base(path)
 	}
-	if !workspaceName.MatchString(*name) {
+	if !workspaceName.MatchString(publishedName) {
 		return fail(errors.New("invalid workspace name; pass --name starting with a letter, followed by letters, digits, underscores or hyphens"))
 	}
-	if err := os.MkdirAll(filepath.Dir(config), 0755); err != nil {
+	config := map[string]any{"spools": []string{}}
+	if *name != "" {
+		config["name"] = *name
+	}
+	manifest["botlake"], err = json.Marshal(config)
+	if err != nil {
 		return fail(err)
 	}
-	file, err := os.OpenFile(config, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	filePath := filepath.Join(path, ".botlake", "package.json")
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return fail(err)
+	}
+	mode := os.O_WRONLY | os.O_TRUNC
+	if missing {
+		mode = os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	}
+	file, err := os.OpenFile(filePath, mode, 0644)
 	if err != nil {
 		return fail(err)
 	}
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	writeErr := encoder.Encode(map[string]any{"name": *name, "spools": []string{}})
+	writeErr := encoder.Encode(manifest)
 	if err := errors.Join(writeErr, file.Close()); err != nil {
 		return fail(err)
 	}
-	encode(os.Stdout, map[string]any{"workspace": path, "name": *name, "created": true})
+	encode(os.Stdout, map[string]any{"workspace": path, "name": publishedName, "created": true})
 	return 0
 }

@@ -93,8 +93,8 @@ test("coordinator links use canonical workspace identity and preserve honest liv
     }
 
     await Bun.write(
-      join(downstream, ".botlake/config.json"),
-      JSON.stringify({ name: "renamed", spools }),
+      join(downstream, ".botlake/package.json"),
+      JSON.stringify({ botlake: { name: "renamed", spools } }),
     );
     await host.botlake(["lake", "restart", "--workspace", downstream]);
     await host.bl("renamed", "update", { id: card.id, title: "Live title" });

@@ -51,21 +51,25 @@ bl agent show RUN_ID
 
 Flags are lake-local and reset to configured defaults on lake restart. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](spools/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
 
-In another workspace, install core and the spools you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work` to create an empty configuration, then edit `.botlake/config.json` to select spools:
+In another workspace, install core and the spools you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select spools in `.botlake/package.json`:
 
 ```json
 {
-  "name": "work",
-  "spools": [
-    "@botlake/spool-batteries",
-    "@botlake/spool-identity",
-    "@botlake/spool-kanban",
-    "./spools.ts"
-  ]
+  "private": true,
+  "type": "module",
+  "botlake": {
+    "name": "work",
+    "spools": [
+      "@botlake/spool-batteries",
+      "@botlake/spool-identity",
+      "@botlake/spool-kanban",
+      "./spools.ts"
+    ]
+  }
 }
 ```
 
-Each entry must default-export a `Spool`. Package names resolve from `.botlake`, which can own its dependencies in a private package; normal package lookup also reaches workspace-root dependencies. Relative paths resolve from the workspace root. Omitted or empty `spools` activates nothing; there are no built-in aliases. Prerequisites must be explicitly selected, in any order. Imports are inert; activation registers operations; resources start only after dependency and collision validation.
+The `botlake` field is required; its `name` is optional and defaults to the workspace directory basename, independently of the package's own `name`. Each spool entry must default-export a `Spool`. Package names resolve from `.botlake`, which can declare its dependencies in the same manifest; normal package lookup also reaches workspace-root dependencies. Relative paths resolve from the workspace root. Omitted or empty `spools` activates nothing; there are no built-in aliases. Prerequisites must be explicitly selected, in any order. Imports are inert; activation registers operations; resources start only after dependency and collision validation.
 
 Spool-specific configuration belongs to that spool, not core's JSON schema. Use a local module to call a configured factory, then select that module:
 
@@ -97,11 +101,11 @@ export default {
 
 Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` sets a deadline; `--dry-run` prints the request. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the spool; `--` ends its flag parsing.
 
-`botlake init [--workspace DIR] [--name NAME]` creates missing workspace configuration without installing or selecting spools. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing files are preserved. `botlake --version` reports the CLI/build/protocol versions.
+`botlake init [--workspace DIR] [--name NAME]` adds an empty `botlake` field to `.botlake/package.json`, creating a private module package if missing, without installing or selecting spools. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing package fields and selected configuration are preserved. `botlake --version` reports the CLI/build/protocol versions.
 
 `botlake bin list|build|run [--workspace PATH|NAME] [BIN] [ARGS...]` lists, builds or executes spool-declared programs. Runs inherit the caller’s working directory, stdin/stdout/stderr and terminal, overlay the declared environment, and preserve the program’s exit status. All arguments after BIN pass through literally. Builds run only when explicitly requested, in their declared directory.
 
-`botlake lake start|restart|stop|status --workspace PATH|NAME` manages one worker; `botlake lake list` lists published routes. Without `--workspace`, CLI commands read `.git` and linked-worktree `commondir` metadata directly—no Git subprocess—to select the main checkout's `.botlake/config.json` and database, ignoring worktree-local configs. Invocation context still reports the actual worktree. Non-Git directories and layouts whose common directory is not named `.git` require `--workspace`. Explicit paths or published names bypass discovery, allowing isolated lakes. Names default to the workspace directory basename; duplicate names fail before activation. Bare selections prefer published names; explicit paths select paths. Replacement reloads configuration and publishes the new name only after readiness. `botlake status`, `restart-host`, `host-status`, and `stop` manage the daemon/pool.
+`botlake lake start|restart|stop|status --workspace PATH|NAME` manages one worker; `botlake lake list` lists published routes. Without `--workspace`, CLI commands read `.git` and linked-worktree `commondir` metadata directly—no Git subprocess—to select the main checkout's `.botlake/package.json` and database, ignoring worktree-local configs. Invocation context still reports the actual worktree. Non-Git directories and layouts whose common directory is not named `.git` require `--workspace`. Explicit paths or published names bypass discovery, allowing isolated lakes. Names default to the workspace directory basename; duplicate names fail before activation. Bare selections prefer published names; explicit paths select paths. Replacement reloads configuration and publishes the new name only after readiness. `botlake status`, `restart-host`, `host-status`, and `stop` manage the daemon/pool.
 
 `BOTLAKE_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BOTLAKE_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
 

@@ -298,17 +298,26 @@ test("botlake init bootstraps a fresh empty workspace without replacing selected
         name: "fresh",
       },
     );
-    const config = Bun.file(join(workspace, ".botlake/config.json"));
-    expect(await config.json()).toEqual({ name: "fresh", spools: [] });
+    const config = Bun.file(join(workspace, ".botlake/package.json"));
+    expect(await config.json()).toEqual({
+      private: true,
+      type: "module",
+      botlake: { name: "fresh", spools: [] },
+    });
     await host.botlake(["lake", "start", "--workspace", workspace]);
     expect(await host.cli(["--workspace", "fresh", "bins", "list"])).toMatchObject({ bins: [] });
     await host.botlake(["lake", "stop", "--workspace", "fresh"]);
-    await Bun.write(config, '{"name":"renamed","spools":["./selected.ts"]}\n');
+    await Bun.write(
+      config,
+      '{"private":true,"botlake":{"name":"renamed","spools":["./selected.ts"]}}\n',
+    );
     expect(await host.botlake(["init", "--workspace", workspace])).toMatchObject({
       created: false,
       name: "renamed",
     });
-    expect(await config.text()).toBe('{"name":"renamed","spools":["./selected.ts"]}\n');
+    expect(await config.text()).toBe(
+      '{"private":true,"botlake":{"name":"renamed","spools":["./selected.ts"]}}\n',
+    );
     expect(
       await host.botlake(["init", "--workspace", workspace, "--name", "other"], false),
     ).toContain("already exists");

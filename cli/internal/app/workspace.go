@@ -1,12 +1,63 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var workspaceName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+
+func readWorkspacePackage(path string) (map[string]json.RawMessage, error) {
+	raw, err := os.ReadFile(filepath.Join(path, ".botlake", "package.json"))
+	if err != nil {
+		return nil, err
+	}
+	var manifest map[string]json.RawMessage
+	if err := decode(raw, &manifest); err != nil {
+		return nil, err
+	}
+	if manifest == nil {
+		return nil, errors.New(".botlake/package.json must be an object")
+	}
+	return manifest, nil
+}
+
+func readMember(path string) (Member, error) {
+	manifest, err := readWorkspacePackage(path)
+	if err != nil {
+		return Member{}, err
+	}
+	raw, ok := manifest["botlake"]
+	if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return Member{}, errors.New(".botlake/package.json must contain a botlake object")
+	}
+	var config struct {
+		Name   json.RawMessage `json:"name"`
+		Spools []string        `json:"spools"`
+	}
+	if err := decode(raw, &config); err != nil {
+		return Member{}, fmt.Errorf(".botlake/package.json botlake: %w", err)
+	}
+	name := filepath.Base(path)
+	if config.Name != nil {
+		if err := json.Unmarshal(config.Name, &name); err != nil {
+			return Member{}, err
+		}
+		if bytes.Equal(bytes.TrimSpace(config.Name), []byte("null")) {
+			return Member{}, errors.New("botlake.name must be a string")
+		}
+	}
+	if !workspaceName.MatchString(name) {
+		return Member{}, fmt.Errorf("invalid workspace name %q; set botlake.name in .botlake/package.json to a letter followed by letters, digits, underscores or hyphens", name)
+	}
+	return Member{Path: path, Name: name}, nil
+}
 
 func defaultWorkspace(cwd string) (string, error) {
 	_, common, err := gitContext(cwd)

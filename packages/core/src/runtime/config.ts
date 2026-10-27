@@ -5,19 +5,20 @@ import { z } from "zod";
 
 import type { Spool } from "./context.ts";
 
-export const workspaceSchema = z.strictObject({
+const configSchema = z.strictObject({
   name: z
     .string()
     .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
     .optional(),
   spools: z.array(z.string().min(1)).default([]),
 });
-export type WorkspaceConfig = z.infer<typeof workspaceSchema>;
+export const workspaceSchema = z.looseObject({ botlake: configSchema });
+export type WorkspaceConfig = z.infer<typeof configSchema>;
 export async function loadWorkspace(
   path: string,
 ): Promise<{ config: WorkspaceConfig; spools: Spool[] }> {
-  const config = workspaceSchema.parse(
-    await Bun.file(resolve(path, ".botlake/config.json")).json(),
+  const { botlake: config } = workspaceSchema.parse(
+    await Bun.file(resolve(path, ".botlake/package.json")).json(),
   );
   const spools: Spool[] = [];
   for (const specifier of config.spools) {
