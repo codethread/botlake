@@ -1,8 +1,8 @@
-import { harnesses } from "@botlake/extension-harnesses";
+import { agents } from "@botlake/extension-agents";
 
 import { flagNames } from "./flags.ts";
 
-export default harnesses({
+export default agents({
   aliases: {
     deepseek: {
       doc: `DeepSeek V4.1 Flash. Fast, inexpensive coding for well-scoped acceptance

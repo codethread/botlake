@@ -3,7 +3,7 @@ import { copyFile, cp, mkdir, symlink, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { provider } from "@botlake/extension-harnesses";
+import { provider } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
@@ -110,9 +110,9 @@ try {
 
   await Bun.write(
     join(workspace, "agents.ts"),
-    `import {harnesses,provider} from "@botlake/extension-harnesses";
+    `import {agents,provider} from "@botlake/extension-agents";
 const settings=${JSON.stringify(settings)};
-export default harnesses({providers:Object.entries(settings).map(([name,setting])=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
+export default agents({providers:Object.entries(settings).map(([name,setting])=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
   );
   await host.botlake(["lake", "start", "--workspace", workspace]);
   async function settled(id: string): Promise<z.infer<typeof runSchema>> {
@@ -120,7 +120,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
     while (Date.now() < deadline) {
       await host.bl("native-smoke", "agent", { command: "reconcile" });
       const run = runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
-      if (run.attributes["harness/settled"] === true) return run;
+      if (run.attributes["agent/settled"] === true) return run;
       await Bun.sleep(200);
     }
 
@@ -134,21 +134,20 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
         model: z.string().min(1),
         thinkingLevel: z.string().optional(),
       })
-      .parse(run.attributes["harness/observation"]);
-    if (run.attributes["harness/provider"] === "pi")
-      z.string().min(1).parse(observed.thinkingLevel);
+      .parse(run.attributes["agent/observation"]);
+    if (run.attributes["agent/provider"] === "pi") z.string().min(1).parse(observed.thinkingLevel);
   }
   function verify(run: z.infer<typeof runSchema>): void {
-    check(run.attributes["harness/substatus"] === "completed", JSON.stringify(run));
+    check(run.attributes["agent/substatus"] === "completed", JSON.stringify(run));
     lifecycle(run);
     check(
-      run.attributes["harness/integration"] === "native",
+      run.attributes["agent/integration"] === "native",
       `Plugin did not bind: ${JSON.stringify(run)}`,
     );
-    const result = z.string().parse(run.attributes["harness/result"]);
+    const result = z.string().parse(run.attributes["agent/result"]);
     check(result.includes(marker), `Missing probe answer: ${result}`);
     check(
-      result.includes(z.string().parse(run.attributes["harness/identity"])),
+      result.includes(z.string().parse(run.attributes["agent/identity"])),
       `Identity context missing: ${result}`,
     );
   }
@@ -173,11 +172,11 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
     const continuation = await settled(resumed.id);
     verify(continuation);
     check(
-      first.attributes["harness/session-id"] === continuation.attributes["harness/session-id"],
+      first.attributes["agent/session-id"] === continuation.attributes["agent/session-id"],
       "Resume changed native session",
     );
     check(
-      first.attributes["harness/identity"] === continuation.attributes["harness/identity"],
+      first.attributes["agent/identity"] === continuation.attributes["agent/identity"],
       "Resume changed identity",
     );
     const setting = z
@@ -223,18 +222,18 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
       .parse(await host.bl("native-smoke", "agent", { command: "list" }));
     const external = runs.find(
       (run) =>
-        run.attributes["harness/session-id"] === outcome.sessionId &&
-        run.attributes["harness/external"] === true,
+        run.attributes["agent/session-id"] === outcome.sessionId &&
+        run.attributes["agent/external"] === true,
     );
     check(external !== undefined, "Direct native session was not registered");
     lifecycle(external);
-    const identity = z.string().parse(external.attributes["harness/identity"]);
+    const identity = z.string().parse(external.attributes["agent/identity"]);
     check(
       outcome.result?.includes(identity) === true,
       `Direct native identity context mismatch: expected ${identity}, received ${JSON.stringify(outcome.result)}`,
     );
     check(
-      external.attributes["harness/settled"] === undefined,
+      external.attributes["agent/settled"] === undefined,
       "External observation claimed settlement",
     );
     const stop = await host.bl(
@@ -266,7 +265,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
   try {
     for (const id of owned) {
       const run = runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
-      if (run.attributes["harness/settled"] !== true)
+      if (run.attributes["agent/settled"] !== true)
         await host.bl("native-smoke", "agent", { command: "cancel", id });
     }
   } finally {

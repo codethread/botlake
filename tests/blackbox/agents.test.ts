@@ -11,7 +11,7 @@ const row = z.object({
   state: z.string(),
   attributes: z.record(z.string(), z.json()),
 });
-test("Harnesses publishes, binds actual native sessions, fences writes, reconciles custody and resumes without Workflow", async () => {
+test("Agents publishes, binds actual native sessions, fences writes, reconciles custody and resumes without Workflow", async () => {
   const host = await system();
   try {
     const workspace = await host.workspace("agents", [
@@ -31,7 +31,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
+      `import {agents,provider} from "@botlake/extension-agents";const base=provider("codex");export default agents({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));
@@ -45,7 +45,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         target: target.id,
       }),
     );
-    expect(first.attributes["harness/state"]).toBe("running");
+    expect(first.attributes["agent/state"]).toBe("running");
     expect(
       await host.bl(
         "agents",
@@ -88,19 +88,19 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       ),
     ).toContain("different input");
     expect(await host.bl("agents", "update", { id: first.id, state: "closed" }, false)).toContain(
-      "Harnesses API",
+      "Agents API",
     );
     // Public reconciliation is the synchronization boundary; it observes Botlake's terminal fact.
     let settled = first;
     for (
       let attempts = 0;
-      attempts < 100 && settled.attributes["harness/settled"] !== true;
+      attempts < 100 && settled.attributes["agent/settled"] !== true;
       attempts++
     ) {
       await host.bl("agents", "agent", { command: "reconcile" });
       settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     }
-    expect(settled.attributes["harness/substatus"]).toBe("completed");
+    expect(settled.attributes["agent/substatus"]).toBe("completed");
     expect(row.parse(await host.bl("agents", "show", { id: target.id })).state).toBe("active");
     const resumed = row.parse(
       await host.bl("agents", "agent", {
@@ -110,8 +110,8 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         requestId: "two",
       }),
     );
-    expect(resumed.attributes["harness/identity"]).toBe(settled.attributes["harness/identity"]);
-    expect(resumed.attributes["harness/session-id"]).toBe(settled.attributes["harness/session-id"]);
+    expect(resumed.attributes["agent/identity"]).toBe(settled.attributes["agent/identity"]);
+    expect(resumed.attributes["agent/session-id"]).toBe(settled.attributes["agent/session-id"]);
     expect(
       await host.bl(
         "agents",
@@ -141,7 +141,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       let run = row.parse(await host.bl("agents", "agent", { command: "show", id }));
       for (
         let attempts = 0;
-        attempts < 100 && run.attributes["harness/settled"] !== true;
+        attempts < 100 && run.attributes["agent/settled"] !== true;
         attempts++
       ) {
         await host.bl("agents", "agent", { command: "reconcile" });
@@ -150,12 +150,12 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       return run;
     }
     retry = await settle(retry.id);
-    expect(retry.attributes["harness/substatus"]).toBe("execution");
+    expect(retry.attributes["agent/substatus"]).toBe("execution");
     await host.bl("agents", "agent", { command: "retry", id: retry.id });
     retry = await settle(retry.id);
-    expect(retry.attributes["harness/substatus"]).toBe("completed");
-    expect(retry.attributes["harness/integration"]).toBe("output");
-    expect(retry.attributes["harness/session-confirmed"]).toBe(true);
+    expect(retry.attributes["agent/substatus"]).toBe("completed");
+    expect(retry.attributes["agent/integration"]).toBe("output");
+    expect(retry.attributes["agent/session-confirmed"]).toBe(true);
     const parentA = await settle(
       row.parse(
         await host.bl("agents", "agent", {
@@ -196,9 +196,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     ).toContain("different input");
     expect(
       row.parse(await host.bl("agents", "agent", { command: "show", id: childA.id })).attributes[
-        "harness/identity"
+        "agent/identity"
       ],
-    ).toBe(parentA.attributes["harness/identity"]);
+    ).toBe(parentA.attributes["agent/identity"]);
     const cancellable = row.parse(
       await host.bl("agents", "agent", {
         command: "start",
@@ -221,13 +221,13 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     await host.botlake(["restart-host"]);
     expect(
       row.parse(await host.bl("agents", "agent", { command: "show", id: cancellable.id }))
-        .attributes["harness/handle"],
-    ).toBe(cancellable.attributes["harness/handle"]);
+        .attributes["agent/handle"],
+    ).toBe(cancellable.attributes["agent/handle"]);
     const cancelled = row.parse(
       await host.bl("agents", "agent", { command: "cancel", id: cancellable.id }),
     );
-    expect(cancelled.attributes["harness/substatus"]).toBe("requested");
-    expect(cancelled.attributes["harness/settled"]).toBe(true);
+    expect(cancelled.attributes["agent/substatus"]).toBe("requested");
+    expect(cancelled.attributes["agent/settled"]).toBe(true);
     const external = z.object({ runId: z.string() }).parse(
       await host.bl("agents", "agent", {
         command: "native",

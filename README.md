@@ -12,11 +12,11 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
 | [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
-| [`@botlake/extension-harnesses`](extensions/harnesses/README.md) | Providers, tracked runs, assignment, reconciliation | Identity, Flags |
+| [`@botlake/extension-agents`](extensions/agents/README.md) | Providers, tracked runs, assignment, reconciliation | Identity, Flags |
 | [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
 | [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
-Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Harnesses and Kanban; Flags is a peer of Harnesses. Installation does not imply activation.
+Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Agents and Kanban; Flags is a peer of Agents. Installation does not imply activation.
 
 Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core, Identity and Flags to their tarball paths as well as listing them in `dependencies`.
 
@@ -37,7 +37,7 @@ bl list
 
 The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run `bun run install:local` after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
 
-The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Harnesses starts no agents automatically, and Cron has no jobs until configured.
+The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, and Cron has no jobs until configured.
 
 [Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.botlake/flags.ts) enable model families and gate DeepSeek with `seat/allow-china`; Claude remains registered but disabled. Managed launches, including `tui`, are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 
@@ -49,7 +49,7 @@ bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do 
 bl agent show RUN_ID
 ```
 
-Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
+Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. See [catalog authoring](extensions/agents/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
 
 In another workspace, install core and the extensions you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select extensions in `.botlake/package.json`:
 
@@ -111,7 +111,7 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 
 Extensions read the environment supplied to `botlake lake start|restart` through `ctx.env.lake`, and each invoking `bl` or lake eval caller's environment through `ctx.env.bl`. Values stay in their own namespaces; caller values apply only to that invocation.
 
-Harnesses supports Codex, Pi and Claude. Native harnesses own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
+Agents supports Codex, Pi and Claude. Native agents own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
 
 ## JavaScript evaluation
 
@@ -121,8 +121,8 @@ Use `bl list|ready --query NAME --params JSON` for named queries. For ad hoc pre
 botlake lake eval --workspace work - <<'JS'
 const runs = await api.call("list", {
   where: q.and(
-    q.eq(q.attr("harness/run"), true),
-    q.eq(q.attr("harness/state"), "running"),
+    q.eq(q.attr("agent/run"), true),
+    q.eq(q.attr("agent/state"), "running"),
   ),
   limit: 20,
 });
@@ -146,4 +146,4 @@ bun scripts/schema.ts workspace
 bun scripts/benchmark.ts 24
 ```
 
-Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `harnesses` or `flags`; each schema is owned by its package. [Runtime limits](docs/LIMITS.md), [pool measurements](docs/pool-benchmark.json).
+Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `agents` or `flags`; each schema is owned by its package. [Runtime limits](docs/LIMITS.md), [pool measurements](docs/pool-benchmark.json).

@@ -1,6 +1,6 @@
 # @botlake/extension-flags
 
-Workspace-local described boolean flags shared by explicitly selected extensions. Overrides persist in the lake's SQLite database. No Harnesses dependency or implicit activation. Install the `@botlake/core` peer.
+Workspace-local described boolean flags shared by explicitly selected extensions. Overrides persist in the lake's SQLite database. No Agents dependency or implicit activation. Install the `@botlake/core` peer.
 
 Select `"@botlake/extension-flags"` for no configured defaults, or select a local module instead:
 

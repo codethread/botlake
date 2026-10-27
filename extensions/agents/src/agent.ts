@@ -3,11 +3,11 @@ import { agentMetadata, registrationSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { startSchema, type Harnesses } from "./runs.ts";
+import { startSchema, type Agents } from "./runs.ts";
 
 const text = z.string().min(1);
 
-export function registerAgent(ctx: Context, service: Harnesses): void {
+export function registerAgent(ctx: Context, service: Agents): void {
   const input = z.discriminatedUnion("command", [
     startSchema.extend({ command: z.literal("start") }),
     z.strictObject({ command: z.literal("list") }),
@@ -30,7 +30,7 @@ export function registerAgent(ctx: Context, service: Harnesses): void {
     defineOp({
       name: "agent",
       primer:
-        "Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set harness/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. Inspect show or reconcile before continuing. Process completion does not complete tasks; external sessions carry no stop authority.",
+        "Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set agent/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. Inspect show or reconcile before continuing. Process completion does not complete tasks; external sessions carry no stop authority.",
       input,
       output: z.json(),
       cli: {

@@ -141,7 +141,7 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
   }, authority);
 }
 
-// Harnesses owns run admission; Identity owns the provenance edge, never process custody.
+// Agents owns run admission; Identity owns the provenance edge, never process custody.
 export function recordParticipation(
   ctx: Context,
   identityId: string,

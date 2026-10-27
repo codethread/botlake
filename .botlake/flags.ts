@@ -1,14 +1,14 @@
 import { flags } from "@botlake/extension-flags";
 
 export const flagNames = {
-  harnessClaude: "harness/claude",
+  agentClaude: "agent/claude",
   seatAllowChina: "seat/allow-china",
   modelOpenai: "model/openai",
   modelAnthropic: "model/anthropic",
 } as const;
 
 export default flags({
-  [flagNames.harnessClaude]: {
+  [flagNames.agentClaude]: {
     description: "Allow the Claude provider for new agent runs.",
     value: false,
   },

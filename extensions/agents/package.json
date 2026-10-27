@@ -1,5 +1,5 @@
 {
-  "name": "@botlake/extension-harnesses",
+  "name": "@botlake/extension-agents",
   "version": "0.1.0",
   "files": [
     "src",

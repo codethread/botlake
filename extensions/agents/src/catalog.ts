@@ -55,14 +55,14 @@ export type Alias = z.input<typeof aliasSchema>;
 
 type Candidate = z.output<typeof candidateSchema>;
 
-export const harnessConfigSchema = z.strictObject({
+export const agentConfigSchema = z.strictObject({
   aliases: z.record(text, aliasSchema).default({}),
 });
 
-export type HarnessConfig = z.input<typeof harnessConfigSchema>;
+export type AgentConfig = z.input<typeof agentConfigSchema>;
 
-export function harnessConfigJsonSchema(): unknown {
-  return z.toJSONSchema(harnessConfigSchema, { io: "input" });
+export function agentConfigJsonSchema(): unknown {
+  return z.toJSONSchema(agentConfigSchema, { io: "input" });
 }
 
 type Reason = {
@@ -90,7 +90,7 @@ export class Catalog {
 
   constructor(
     private readonly providers: Provider[],
-    aliases: z.output<typeof harnessConfigSchema>["aliases"],
+    aliases: z.output<typeof agentConfigSchema>["aliases"],
     private readonly flag: (name: string) => boolean | undefined,
   ) {
     for (const [name, value] of Object.entries(aliases)) {
@@ -176,7 +176,7 @@ export class Catalog {
     const provider = this.providers.find((entry) => entry.name === name);
     if (provider === undefined)
       return { available: false, doc: null, reasons: [{ name, reason: "not-registered" }] };
-    const flag = `harness/${provider.name}`;
+    const flag = `agent/${provider.name}`;
     if (this.flag(flag) === false)
       return {
         available: false,

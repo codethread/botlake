@@ -24,10 +24,10 @@
   },
   "devDependencies": {
     "@botlake/core": "workspace:*",
+    "@botlake/extension-agents": "workspace:*",
     "@botlake/extension-batteries": "workspace:*",
     "@botlake/extension-cron": "workspace:*",
     "@botlake/extension-flags": "workspace:*",
-    "@botlake/extension-harnesses": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
     "@botlake/extension-kanban": "workspace:*",
     "@botlake/native-session": "workspace:*",

@@ -54,16 +54,16 @@ if(name==="claude") {
     await chmod(executable, 0o755);
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/extension-harnesses";
+      `import {agents,provider} from "@botlake/extension-agents";
 const names=["codex","pi","claude"];
-export default harnesses({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompts:["policy"]}]))});`,
+export default agents({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompts:["policy"]}]))});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {
       for (let attempt = 0; attempt < 100; attempt++) {
         await host.bl("providers", "agent", { command: "reconcile" });
         const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
-        if (run.attributes["harness/settled"] === true) return run;
+        if (run.attributes["agent/settled"] === true) return run;
       }
       throw new Error(`Provider did not settle: ${id}`);
     }
@@ -78,25 +78,21 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
           }),
         );
         const run = await settled(started.id);
-        expect(run.attributes["harness/state"]).toBe(
-          scenario === "complete" ? "stopped" : "failed",
-        );
-        expect(run.attributes["harness/substatus"]).toBe(
+        expect(run.attributes["agent/state"]).toBe(scenario === "complete" ? "stopped" : "failed");
+        expect(run.attributes["agent/substatus"]).toBe(
           scenario === "complete" ? "completed" : "execution",
         );
         if (name === "claude" && scenario === "truncated") {
-          expect(run.attributes["harness/result"]).toBeUndefined();
+          expect(run.attributes["agent/result"]).toBeUndefined();
         } else {
-          expect(run.attributes["harness/result"]).toBe(
-            name === "pi" ? "first\n\nsecond" : "answer",
-          );
+          expect(run.attributes["agent/result"]).toBe(name === "pi" ? "first\n\nsecond" : "answer");
         }
         if (scenario === "truncated" && name !== "claude") {
-          expect(run.attributes["harness/session-confirmed"]).toBe(true);
-          expect(run.attributes["harness/error"]).toContain("JSONL");
+          expect(run.attributes["agent/session-confirmed"]).toBe(true);
+          expect(run.attributes["agent/error"]).toContain("JSONL");
         }
         if (scenario === "no-session")
-          expect(run.attributes["harness/error"]).toContain(
+          expect(run.attributes["agent/error"]).toContain(
             name === "codex" ? "no thread id" : "no session id",
           );
         if (scenario === "complete") {
@@ -108,9 +104,9 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
             }),
           );
           const continuation = await settled(resumed.id);
-          expect(continuation.attributes["harness/state"]).toBe("stopped");
-          expect(continuation.attributes["harness/session-id"]).toBe(
-            run.attributes["harness/session-id"],
+          expect(continuation.attributes["agent/state"]).toBe("stopped");
+          expect(continuation.attributes["agent/session-id"]).toBe(
+            run.attributes["agent/session-id"],
           );
         }
       }

@@ -16,14 +16,14 @@ import { getFlag } from "@botlake/extension-flags";
 import { registrationSchema, type NativeRegistration } from "@botlake/native-session";
 import { z } from "zod";
 
-import { Catalog, harnessConfigSchema, seatSchema, type HarnessConfig } from "./catalog.ts";
+import { Catalog, agentConfigSchema, seatSchema, type AgentConfig } from "./catalog.ts";
 import { NativeSessions } from "./native.ts";
 import type { Provider, ProviderName, ProviderRun } from "./providers/contract.ts";
 import { provider } from "./providers/index.ts";
 
 const text = z.string().min(1);
 
-export type HarnessOptions = HarnessConfig & { providers?: Provider[] };
+export type AgentOptions = AgentConfig & { providers?: Provider[] };
 
 export const startSchema = z.strictObject({
   seat: text,
@@ -52,8 +52,8 @@ function fingerprint(value: unknown): string {
     .digest("hex");
 }
 
-export class Harnesses {
-  private readonly authority = Symbol("harnesses");
+export class Agents {
+  private readonly authority = Symbol("agents");
   private readonly providers = new Map<ProviderName, Provider>();
   private readonly seats: Catalog;
   private readonly sessions: NativeSessions;
@@ -61,11 +61,11 @@ export class Harnesses {
 
   constructor(
     private readonly ctx: Context,
-    options: HarnessOptions = {},
+    options: AgentOptions = {},
   ) {
     this.sessions = new NativeSessions(ctx, this.authority);
     const { providers, ...config } = options;
-    const configuration = harnessConfigSchema.parse(config);
+    const configuration = agentConfigSchema.parse(config);
 
     for (const entry of providers ?? [provider("codex"), provider("pi"), provider("claude")]) {
       if (this.providers.has(entry.name))
@@ -84,10 +84,10 @@ export class Harnesses {
       for (const change of changes) {
         if (
           change.kind === "node" &&
-          (change.before?.attributes["harness/run"] === true ||
-            change.after?.attributes["harness/run"] === true)
+          (change.before?.attributes["agent/run"] === true ||
+            change.after?.attributes["agent/run"] === true)
         )
-          throw new Fault("harness-guard", "Tracked runs require the Harnesses API");
+          throw new Fault("agent-guard", "Tracked runs require the Agents API");
         if (change.kind === "edge") {
           const edge = change.before ?? change.after;
           if (
@@ -95,14 +95,14 @@ export class Harnesses {
             ["serves", "continues"].includes(edge.relation) &&
             this.runs().some((run) => run.id === edge.from_id)
           )
-            throw new Fault("harness-guard", "Execution authority requires the Harnesses API");
+            throw new Fault("agent-guard", "Execution authority requires the Agents API");
         }
       }
     });
 
-    ctx.scheduler.register("harnesses/reconcile", async () => {
+    ctx.scheduler.register("agents/reconcile", async () => {
       await this.reconcile();
-      ctx.scheduler.schedule("harnesses/reconcile", ctx.clock.now() + 1000, "harnesses/reconcile");
+      ctx.scheduler.schedule("agents/reconcile", ctx.clock.now() + 1000, "agents/reconcile");
     });
   }
 
@@ -114,18 +114,18 @@ export class Harnesses {
   }
 
   runs(): Node[] {
-    return this.ctx.graph.all({ where: q.eq(q.attr("harness/run"), true), lean: false });
+    return this.ctx.graph.all({ where: q.eq(q.attr("agent/run"), true), lean: false });
   }
 
   private run(id: string): Node {
     const run = this.ctx.graph.show(id);
-    if (run.attributes["harness/run"] !== true) throw new Fault("run", "Expected tracked run");
+    if (run.attributes["agent/run"] !== true) throw new Fault("run", "Expected tracked run");
 
     return run;
   }
 
   private active(run: Node): boolean {
-    return run.attributes["harness/settled"] !== true;
+    return run.attributes["agent/settled"] !== true;
   }
 
   start(raw: StartRun): Node {
@@ -148,10 +148,10 @@ export class Harnesses {
     return this.ctx.graph.atomic(() => {
       if (input.requestId !== undefined) {
         const existing = this.runs().find(
-          (run) => run.attributes["harness/request-id"] === input.requestId,
+          (run) => run.attributes["agent/request-id"] === input.requestId,
         );
         if (existing !== undefined) {
-          if (existing.attributes["harness/request-hash"] !== hash)
+          if (existing.attributes["agent/request-hash"] !== hash)
             throw new Fault("replay", "Request ID was used with different input");
           return existing;
         }
@@ -160,7 +160,7 @@ export class Harnesses {
       const seat =
         parent === undefined
           ? this.seats.resolve(input.seat)
-          : seatSchema.parse(parent.attributes["harness/settings"]);
+          : seatSchema.parse(parent.attributes["agent/settings"]);
       if (!this.providers.has(seat.provider))
         throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
 
@@ -178,28 +178,28 @@ export class Harnesses {
       }
 
       const attrs: Attributes = {
-        "harness/run": true,
-        "harness/state": "ready",
-        "harness/substatus": "pending",
-        "harness/accepted": true,
-        "harness/settled": false,
-        "harness/attempt": 0,
-        "harness/provider": seat.provider,
-        "harness/seat": input.seat,
-        "harness/cwd": cwd,
-        "harness/prompt": input.prompt,
-        "harness/policy": input.policy,
-        "harness/context": input.context,
+        "agent/run": true,
+        "agent/state": "ready",
+        "agent/substatus": "pending",
+        "agent/accepted": true,
+        "agent/settled": false,
+        "agent/attempt": 0,
+        "agent/provider": seat.provider,
+        "agent/seat": input.seat,
+        "agent/cwd": cwd,
+        "agent/prompt": input.prompt,
+        "agent/policy": input.policy,
+        "agent/context": input.context,
         ...(parent === undefined
           ? {}
           : {
-              "harness/session-id": text.parse(parent.attributes["harness/session-id"]),
-              "harness/identity": text.parse(parent.attributes["harness/identity"]),
+              "agent/session-id": text.parse(parent.attributes["agent/session-id"]),
+              "agent/identity": text.parse(parent.attributes["agent/identity"]),
             }),
-        "harness/resumes": parent !== undefined,
-        "harness/session-confirmed": false,
-        "harness/integration": "unobserved",
-        "harness/settings": z.json().parse(
+        "agent/resumes": parent !== undefined,
+        "agent/session-confirmed": false,
+        "agent/integration": "unobserved",
+        "agent/settings": z.json().parse(
           parent === undefined
             ? {
                 ...seat,
@@ -216,13 +216,13 @@ export class Harnesses {
                       ]),
                 ],
               }
-            : parent.attributes["harness/settings"],
+            : parent.attributes["agent/settings"],
         ),
       };
 
       if (input.requestId !== undefined) {
-        attrs["harness/request-id"] = input.requestId;
-        attrs["harness/request-hash"] = hash;
+        attrs["agent/request-id"] = input.requestId;
+        attrs["agent/request-hash"] = hash;
       }
 
       const run = this.ctx.graph.add({ title: `Agent ${input.seat}`, attributes: attrs });
@@ -234,14 +234,14 @@ export class Harnesses {
   }
 
   private providerRun(run: Node): ProviderRun {
-    const seat = seatSchema.parse(run.attributes["harness/settings"]);
+    const seat = seatSchema.parse(run.attributes["agent/settings"]);
 
     return {
       provider: seat.provider,
-      cwd: text.parse(run.attributes["harness/cwd"]),
-      prompt: text.parse(run.attributes["harness/prompt"]),
-      ...(run.attributes["harness/resumes"] === true
-        ? { resumes: true, sessionId: text.parse(run.attributes["harness/session-id"]) }
+      cwd: text.parse(run.attributes["agent/cwd"]),
+      prompt: text.parse(run.attributes["agent/prompt"]),
+      ...(run.attributes["agent/resumes"] === true
+        ? { resumes: true, sessionId: text.parse(run.attributes["agent/session-id"]) }
         : { resumes: false }),
       model: seat.model,
       effort: seat.effort,
@@ -253,7 +253,7 @@ export class Harnesses {
   private begin(run: Node): Node {
     return this.ctx.graph.atomic(() => {
       const current = this.run(run.id);
-      if (current.attributes["harness/state"] !== "ready")
+      if (current.attributes["agent/state"] !== "ready")
         throw new Fault("attempt", "Run is not ready");
       const target = this.ctx.graph.edges(run.id, "serves").find((edge) => edge.from_id === run.id);
       if (
@@ -269,15 +269,15 @@ export class Harnesses {
         "Provider unavailable",
       ).prepare(definition);
       const trackingEnv: Record<string, string> = {
-        BL_AGENT_SEAT: text.parse(current.attributes["harness/seat"]),
+        BL_AGENT_SEAT: text.parse(current.attributes["agent/seat"]),
         ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
         ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
         ...(definition.resumes
-          ? { BL_ACTOR: text.parse(current.attributes["harness/identity"]) }
+          ? { BL_ACTOR: text.parse(current.attributes["agent/identity"]) }
           : {}),
       };
       const spec: ProcessSpec = {
-        owner: "harnesses",
+        owner: "agents",
         key: `${current.id}/${invocation}`,
         command: [
           "env",
@@ -302,10 +302,10 @@ export class Harnesses {
       };
 
       return this.patch(current.id, {
-        "harness/state": "running",
-        "harness/invocation": invocation,
-        "harness/attempt": z.number().parse(current.attributes["harness/attempt"]) + 1,
-        "harness/launch": z.json().parse(spec),
+        "agent/state": "running",
+        "agent/invocation": invocation,
+        "agent/attempt": z.number().parse(current.attributes["agent/attempt"]) + 1,
+        "agent/launch": z.json().parse(spec),
       });
     }, this.authority);
   }
@@ -321,37 +321,37 @@ export class Harnesses {
   }
 
   private async reconcileRuns(): Promise<void> {
-    const owned = await this.ctx.processes.listOwned("harnesses");
+    const owned = await this.ctx.processes.listOwned("agents");
     for (let run of this.runs().filter(
-      (row) => row.attributes["harness/external"] !== true && this.active(row),
+      (row) => row.attributes["agent/external"] !== true && this.active(row),
     )) {
       try {
-        if (run.attributes["harness/state"] === "ready") run = this.begin(run);
+        if (run.attributes["agent/state"] === "ready") run = this.begin(run);
         if (
-          run.attributes["harness/state"] !== "running" &&
-          run.attributes["harness/launch"] === undefined
+          run.attributes["agent/state"] !== "running" &&
+          run.attributes["agent/launch"] === undefined
         )
           continue;
 
-        const invocation = text.parse(run.attributes["harness/invocation"]);
-        const spec = launchSchema.parse(run.attributes["harness/launch"]);
+        const invocation = text.parse(run.attributes["agent/invocation"]);
+        const spec = launchSchema.parse(run.attributes["agent/launch"]);
         let fact = owned.find((entry) => entry.owner === spec.owner && entry.key === spec.key);
         fact ??= await this.ctx.processes.launch(spec);
         const current = this.run(run.id);
-        if (current.attributes["harness/invocation"] !== invocation) continue;
+        if (current.attributes["agent/invocation"] !== invocation) continue;
 
-        if (current.attributes["harness/handle"] !== fact.handle)
-          run = this.patch(run.id, { "harness/handle": fact.handle });
+        if (current.attributes["agent/handle"] !== fact.handle)
+          run = this.patch(run.id, { "agent/handle": fact.handle });
         if (fact.phase !== "terminal") continue;
 
         if (fact.launch_failure !== undefined) {
           this.patch(
             run.id,
             {
-              "harness/state": "failed",
-              "harness/substatus": "launch",
-              "harness/settled": true,
-              "harness/error": fact.launch_failure.message,
+              "agent/state": "failed",
+              "agent/substatus": "launch",
+              "agent/settled": true,
+              "agent/error": fact.launch_failure.message,
             },
             "closed",
           );
@@ -362,10 +362,10 @@ export class Harnesses {
           this.patch(
             run.id,
             {
-              "harness/state": "stopped",
-              "harness/substatus": "requested",
-              "harness/settled": false,
-              "harness/custody": z.json().parse(fact),
+              "agent/state": "stopped",
+              "agent/substatus": "requested",
+              "agent/settled": false,
+              "agent/custody": z.json().parse(fact),
             },
             "closed",
           );
@@ -376,10 +376,10 @@ export class Harnesses {
           this.patch(
             run.id,
             {
-              "harness/state": "failed",
-              "harness/substatus": "reconciliation",
-              "harness/settled": false,
-              "harness/error": "Terminal custody has no observed exit",
+              "agent/state": "failed",
+              "agent/substatus": "reconciliation",
+              "agent/settled": false,
+              "agent/error": "Terminal custody has no observed exit",
             },
             "closed",
           );
@@ -408,11 +408,11 @@ export class Harnesses {
         this.patch(
           run.id,
           {
-            "harness/state":
+            "agent/state":
               fact.cancellation !== undefined || (outcome.success && integrationError === null)
                 ? "stopped"
                 : "failed",
-            "harness/substatus":
+            "agent/substatus":
               fact.cancellation !== undefined
                 ? "requested"
                 : integrationError !== null
@@ -420,12 +420,12 @@ export class Harnesses {
                   : outcome.success
                     ? "completed"
                     : "execution",
-            ...(integrationError === null ? {} : { "harness/session-confirmed": false }),
-            "harness/settled": true,
-            "harness/result": outcome.result,
-            "harness/error":
+            ...(integrationError === null ? {} : { "agent/session-confirmed": false }),
+            "agent/settled": true,
+            "agent/result": outcome.result,
+            "agent/error":
               integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
-            "harness/custody": z.json().parse(fact),
+            "agent/custody": z.json().parse(fact),
           },
           "closed",
         );
@@ -433,10 +433,10 @@ export class Harnesses {
         this.patch(
           run.id,
           {
-            "harness/state": "failed",
-            "harness/substatus": "reconciliation",
-            "harness/error": String(error),
-            "harness/settled": run.attributes["harness/launch"] === undefined,
+            "agent/state": "failed",
+            "agent/substatus": "reconciliation",
+            "agent/error": String(error),
+            "agent/settled": run.attributes["agent/launch"] === undefined,
           },
           "closed",
         );
@@ -452,23 +452,23 @@ export class Harnesses {
 
   async cancel(id: string): Promise<Node> {
     const run = this.run(id);
-    if (run.attributes["harness/external"] === true)
+    if (run.attributes["agent/external"] === true)
       throw new Fault("custody", "External sessions grant no stop authority");
-    if (run.attributes["harness/state"] === "ready")
+    if (run.attributes["agent/state"] === "ready")
       return this.patch(
         id,
-        { "harness/state": "stopped", "harness/substatus": "abandoned", "harness/settled": true },
+        { "agent/state": "stopped", "agent/substatus": "abandoned", "agent/settled": true },
         "closed",
       );
-    const spec = launchSchema.parse(run.attributes["harness/launch"]);
+    const spec = launchSchema.parse(run.attributes["agent/launch"]);
 
     await this.ctx.processes.cancel(
-      text.parse(run.attributes["harness/handle"]),
+      text.parse(run.attributes["agent/handle"]),
       spec.owner,
       spec.key,
     );
     await this.reconcile();
-    const fact = await this.ctx.processes.get(text.parse(run.attributes["harness/handle"]));
+    const fact = await this.ctx.processes.get(text.parse(run.attributes["agent/handle"]));
     if (fact.phase !== "terminal")
       throw new Fault("custody", "Cancellation has no terminal evidence");
 
@@ -479,10 +479,10 @@ export class Harnesses {
     return this.ctx.graph.atomic(() => {
       const run = this.run(id);
       if (
-        run.attributes["harness/state"] !== "failed" ||
-        run.attributes["harness/settled"] !== true ||
-        run.attributes["harness/external"] === true ||
-        run.attributes["harness/request-id"] !== undefined ||
+        run.attributes["agent/state"] !== "failed" ||
+        run.attributes["agent/settled"] !== true ||
+        run.attributes["agent/external"] === true ||
+        run.attributes["agent/request-id"] !== undefined ||
         this.ctx.graph.edges(id, "serves").some((edge) => edge.from_id === id)
       )
         throw new Fault(
@@ -493,21 +493,21 @@ export class Harnesses {
       return this.patch(
         id,
         {
-          "harness/state": "ready",
-          "harness/substatus": "pending",
-          "harness/settled": false,
-          "harness/error": null,
-          "harness/result": null,
-          "harness/invocation": null,
-          "harness/handle": null,
-          "harness/launch": null,
-          "harness/custody": null,
-          "harness/session-id": null,
-          "harness/session-confirmed": false,
-          "harness/resumes": false,
-          "harness/identity": null,
-          "harness/integration": "unobserved",
-          "harness/observation": null,
+          "agent/state": "ready",
+          "agent/substatus": "pending",
+          "agent/settled": false,
+          "agent/error": null,
+          "agent/result": null,
+          "agent/invocation": null,
+          "agent/handle": null,
+          "agent/launch": null,
+          "agent/custody": null,
+          "agent/session-id": null,
+          "agent/session-confirmed": false,
+          "agent/resumes": false,
+          "agent/identity": null,
+          "agent/integration": "unobserved",
+          "agent/observation": null,
         },
         "active",
       );
@@ -518,9 +518,9 @@ export class Harnesses {
     return this.ctx.graph.atomic(() => {
       const parent = this.run(id);
       if (
-        parent.attributes["harness/settled"] !== true ||
-        parent.attributes["harness/session-confirmed"] !== true ||
-        parent.attributes["harness/external"] === true
+        parent.attributes["agent/settled"] !== true ||
+        parent.attributes["agent/session-confirmed"] !== true ||
+        parent.attributes["agent/external"] === true
       )
         throw new Fault(
           "resume",
@@ -532,8 +532,8 @@ export class Harnesses {
         const child = this.run(existing.from_id);
         if (
           requestId !== undefined &&
-          child.attributes["harness/request-id"] === requestId &&
-          child.attributes["harness/prompt"] === prompt
+          child.attributes["agent/request-id"] === requestId &&
+          child.attributes["agent/prompt"] === prompt
         )
           return child;
 
@@ -542,10 +542,10 @@ export class Harnesses {
       if (
         this.runs().some(
           (run) =>
-            run.attributes["harness/external"] !== true &&
+            run.attributes["agent/external"] !== true &&
             this.active(run) &&
-            run.attributes["harness/provider"] === parent.attributes["harness/provider"] &&
-            run.attributes["harness/session-id"] === parent.attributes["harness/session-id"],
+            run.attributes["agent/provider"] === parent.attributes["agent/provider"] &&
+            run.attributes["agent/session-id"] === parent.attributes["agent/session-id"],
         )
       )
         throw new Fault("resume", "Native session already has an active writer");
@@ -553,15 +553,15 @@ export class Harnesses {
       const target = this.ctx.graph.edges(id, "serves").find((edge) => edge.from_id === id)?.to_id;
       const child = this.create(
         {
-          seat: text.parse(parent.attributes["harness/seat"]),
-          cwd: text.parse(parent.attributes["harness/cwd"]),
+          seat: text.parse(parent.attributes["agent/seat"]),
+          cwd: text.parse(parent.attributes["agent/cwd"]),
           prompt,
           ...(requestId === undefined ? {} : { requestId }),
           ...(target === undefined ? {} : { target }),
           policy: z
             .enum(["stop-on-complete", "close-on-complete"])
-            .parse(parent.attributes["harness/policy"]),
-          context: attributesSchema.parse(parent.attributes["harness/context"]),
+            .parse(parent.attributes["agent/policy"]),
+          context: attributesSchema.parse(parent.attributes["agent/context"]),
         },
         parent,
       );
@@ -573,15 +573,15 @@ export class Harnesses {
 
   async acknowledge(id: string): Promise<Node> {
     const run = this.run(id);
-    if (run.attributes["harness/external"] === true || run.attributes["harness/settled"] !== true)
+    if (run.attributes["agent/external"] === true || run.attributes["agent/settled"] !== true)
       throw new Fault("custody", "Only settled managed runs may acknowledge custody");
 
-    const spec = launchSchema.parse(run.attributes["harness/launch"]);
+    const spec = launchSchema.parse(run.attributes["agent/launch"]);
     const owned = await this.ctx.processes.listOwned(spec.owner);
     const fact = owned.find((entry) => entry.key === spec.key);
     if (fact !== undefined) await this.ctx.processes.acknowledge(fact.handle, spec.owner, spec.key);
 
-    return this.patch(id, { "harness/acknowledged": true });
+    return this.patch(id, { "agent/acknowledged": true });
   }
 
   catalog(name?: string): unknown {
@@ -595,12 +595,12 @@ export class Harnesses {
 
   async startResource(): Promise<void> {
     await this.reconcile();
-    const pending = this.ctx.scheduler.pending().find((wake) => wake.key === "harnesses/reconcile");
+    const pending = this.ctx.scheduler.pending().find((wake) => wake.key === "agents/reconcile");
     if (pending === undefined)
       this.ctx.scheduler.schedule(
-        "harnesses/reconcile",
+        "agents/reconcile",
         this.ctx.clock.now() + 1000,
-        "harnesses/reconcile",
+        "agents/reconcile",
       );
   }
 

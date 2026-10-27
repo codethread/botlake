@@ -79,14 +79,14 @@ test("packed core runs alone; installed extensions require explicit selection an
       "@botlake/extension-cron",
     ]);
     await Bun.write(
-      join(agents, "harnesses.json"),
+      join(agents, "agents.json"),
       JSON.stringify({ aliases: { worker: { provider: "codex" } } }),
     );
     await Bun.write(
       join(agents, "agents.ts"),
-      `import { harnesses, harnessConfigSchema } from "@botlake/extension-harnesses";
-import config from "./harnesses.json";
-export default harnesses(harnessConfigSchema.parse(config));`,
+      `import { agents, agentConfigSchema } from "@botlake/extension-agents";
+import config from "./agents.json";
+export default agents(agentConfigSchema.parse(config));`,
     );
     await host.botlake(["lake", "start", "--workspace", agents]);
     expect(

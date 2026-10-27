@@ -1,13 +1,13 @@
-# @botlake/extension-harnesses
+# @botlake/extension-agents
 
 Tracked headless agent runs, providers, documented aliases, assignment, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity and Flags alongside this extension. Botlake supplies process custody.
 
-Select `"@botlake/extension-harnesses"` for Codex, Pi and Claude defaults. For configuration, select a local module instead:
+Select `"@botlake/extension-agents"` for Codex, Pi and Claude defaults. For configuration, select a local module instead:
 
 ```ts
-import { harnesses } from "@botlake/extension-harnesses";
+import { agents } from "@botlake/extension-agents";
 
-export default harnesses({
+export default agents({
   aliases: {
     sol: {
       doc: "Complex implementation and debugging.",
@@ -38,7 +38,7 @@ export default flags({
 });
 ```
 
-Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `harness/NAME` flag's value is explicitly false.
+Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `agent/NAME` flag's value is explicitly false.
 
 ## Catalog and routing
 
@@ -54,27 +54,27 @@ bl agent catalog reviewer         # Full candidates, settings and unavailability
 bl flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
 bl agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
 bl agent show RUN_ID
-bl flag set harness/claude false  # Keep Claude registered, but unavailable for new selection.
+bl flag set agent/claude false  # Keep Claude registered, but unavailable for new selection.
 ```
 
 `agent list` lists runs. All managed launches are headless, regardless of the seat's name.
 
-`harnessConfigSchema` and `harnessConfigJsonSchema()` describe aliases. Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
+`agentConfigSchema` and `agentConfigJsonSchema()` describe aliases. Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 
 Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.
 
 ## Provider strategies
 
-`harnesses()` accepts custom implementations of Codex, Pi and Claude through `providers`. Pass `providers: [provider("codex"), provider("pi")]` to select only those two built-ins.
+`agents()` accepts custom implementations of Codex, Pi and Claude through `providers`. Pass `providers: [provider("codex"), provider("pi")]` to select only those two built-ins.
 
 Each `Provider` supplies `name`, catalog `doc`, `prepare(run)` and `finish(run, exitCode, stdout, stderr)`. `ProviderRun` carries portable settings (`model`, `effort`, `extraArgs`, ordered `systemPrompts`) plus prompt and cwd. Fresh launches have no session ID; resumes carry a previously observed native ID. The strategy maps these to native flags in a `LaunchPlan` and parses native output into an `Outcome`; the runtime owns custody, persistence and native identity binding.
 
-`Seat`, `Alias`, `Condition`, `HarnessConfig`, `HarnessOptions`, `StartRun`, `Harnesses` and the provider contracts are public exports.
+`Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts are public exports.
 
 ## Native integration
 
-[Native adapters](../../plugins/identity/README.md) are separately delivered as `@botlake/identity`. Harnesses never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
+[Native adapters](../../plugins/identity/README.md) are separately delivered as `@botlake/identity`. Agents never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
 
 Managed launches set `BL_AGENT_SEAT` and configured `BL_MODEL`/`BL_EFFORT`, clearing inherited tracking values when unknown. `BL_ACTOR` is supplied for verified resumes; native adapters establish it for fresh sessions. `bl agent native` defaults metadata from the caller's environment, with explicit fields taking precedence.
 
-`harness/integration` distinguishes `unobserved`, `native` and `output`. Missing plugins do not fail an otherwise successful run: native output can confirm identity, but does not fabricate activity or model metadata. Resume requires confirmed session evidence and settled custody. Activity snapshots are observations, not process state; successful processes do not automatically close their tasks.
+`agent/integration` distinguishes `unobserved`, `native` and `output`. Missing plugins do not fail an otherwise successful run: native output can confirm identity, but does not fabricate activity or model metadata. Resume requires confirmed session evidence and settled custody. Activity snapshots are observations, not process state; successful processes do not automatically close their tasks.

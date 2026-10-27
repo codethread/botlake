@@ -7,7 +7,7 @@
 - Process custody lasts for the supervisor lifetime. Host/worker recovery adopts retained processes; supervisor replacement does not.
 - Managed agent launches are headless. Declared executable bins retain caller terminal I/O. Workflow, interactive agent launch, a Kanban dashboard and cross-lake identity replication are not implemented.
 
-## Harnesses
+## Agents
 
 Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration, arbitrary overlays and per-run model/effort/argv/prompt overrides are not implemented.
 
