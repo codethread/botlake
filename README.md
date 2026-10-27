@@ -109,6 +109,8 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 
 `BOTLAKE_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BOTLAKE_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
 
+Extensions read the environment supplied to `botlake lake start|restart` through `ctx.env.lake`, and each invoking `bl` or lake eval caller's environment through `ctx.env.bl`. Values stay in their own namespaces; caller values apply only to that invocation.
+
 Harnesses supports Codex, Pi and Claude. Native harnesses own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
 
 ## JavaScript evaluation

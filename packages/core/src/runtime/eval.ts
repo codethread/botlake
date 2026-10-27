@@ -21,6 +21,7 @@ async function run(): Promise<Json> {
       deadline: z.number(),
     })
     .parse(await Bun.stdin.json());
+  const env = z.record(z.string(), z.string()).parse(process.env);
   const remaining = (): number => {
     const ms = options.deadline - Date.now();
     if (ms <= 0) throw new Fault("deadline", "Eval deadline exceeded");
@@ -38,6 +39,7 @@ async function run(): Promise<Json> {
         name: z.string().min(1).parse(name),
         input: z.json().parse(input),
         cwd: options.cwd,
+        env,
         is_tty: false,
         tty_col: null,
         timeout_ms: remaining(),

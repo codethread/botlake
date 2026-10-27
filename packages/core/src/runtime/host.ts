@@ -64,11 +64,11 @@ const frameSchema = z.object({
   fatal: z.unknown().optional(),
 });
 
-async function start(workspace: string): Promise<Member> {
+async function start(workspace: string, env: Record<string, string>): Promise<Member> {
   if (members.has(workspace)) throw new Fault("member", "Workspace is already running");
 
   const worker = new Worker(new URL("./worker.ts", import.meta.url), {
-    workerData: { workspace, botlakeSocket },
+    workerData: { workspace, botlakeSocket, env },
   });
   const ready = Promise.withResolvers<void>();
   const stopped = Promise.withResolvers<void>();
@@ -137,7 +137,7 @@ async function start(workspace: string): Promise<Member> {
     if (members.get(workspace) === member) members.delete(workspace);
 
     if (!member.closing && member.wasReady) {
-      void start(workspace).catch((error: unknown) => {
+      void start(workspace, env).catch((error: unknown) => {
         process.stderr.write(`Workspace restart failed: ${String(error)}\n`);
       });
     }
@@ -178,6 +178,7 @@ async function stop(workspace: string): Promise<void> {
 const controlSchema = z.strictObject({
   action: z.enum(["start", "stop", "restart", "status", "member-status"]),
   workspace: z.string().optional(),
+  env: z.record(z.string(), z.string()).default({}),
 });
 
 const server = Bun.listen<Connection>({
@@ -257,7 +258,8 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
 
     if (control.action === "stop" || (control.action === "restart" && members.has(workspace)))
       await stop(workspace);
-    if (control.action === "start" || control.action === "restart") await start(workspace);
+    if (control.action === "start" || control.action === "restart")
+      await start(workspace, control.env);
 
     write(client, `${JSON.stringify({ ok: true, result: { ready: true } })}\n`, true);
     return;

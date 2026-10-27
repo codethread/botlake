@@ -67,6 +67,10 @@ export interface Extension {
 
 export interface Context {
   workspace: string;
+  readonly env: {
+    readonly lake: Readonly<Record<string, string | undefined>>;
+    readonly bl: Readonly<Record<string, string | undefined>>;
+  };
   graph: Graph;
   clock: Clock;
   scheduler: Scheduler;

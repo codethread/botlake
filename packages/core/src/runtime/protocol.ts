@@ -11,6 +11,7 @@ export const invocationSchema = z
     cwd: z.string().optional(),
     worktree_root: z.string().optional(),
     git_common_dir: z.string().optional(),
+    env: z.record(z.string(), z.string()).default({}),
     is_tty: z.boolean().optional(),
     tty_col: z.number().int().positive().nullable().optional(),
     timeout_ms: z.number().positive().optional(),

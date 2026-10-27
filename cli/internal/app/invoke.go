@@ -191,6 +191,7 @@ func BL(args []string) int {
 	payload := map[string]any{
 		"name": name, "argv": argv, "payloads": payloads, "timeout_ms": duration.Milliseconds(),
 		"cwd": cwd, "is_tty": isTTY, "tty_col": columns,
+		"env": environment(),
 	}
 	if p.worktree != "" {
 		payload["worktree_root"] = p.worktree
@@ -231,6 +232,15 @@ func BL(args []string) int {
 	}
 
 	return relay(req, view)
+}
+
+func environment() map[string]string {
+	env := map[string]string{}
+	for _, entry := range os.Environ() {
+		key, value, _ := strings.Cut(entry, "=")
+		env[key] = value
+	}
+	return env
 }
 
 func loadPayloads(p invocationFlags) (map[string]string, error) {

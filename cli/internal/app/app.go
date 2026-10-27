@@ -40,8 +40,13 @@ type Frame struct {
 }
 
 type Member struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	Path string            `json:"path"`
+	Name string            `json:"name"`
+	Env  map[string]string `json:"-"`
+}
+
+type lakeOptions struct {
+	Env map[string]string `json:"env"`
 }
 
 type Daemon struct {
@@ -128,8 +133,12 @@ func (d *Daemon) hostCall(path string, body any) (net.Conn, error) {
 	return conn, nil
 }
 
-func (d *Daemon) control(action, workspace string) error {
-	conn, err := d.hostCall("/control", map[string]any{"action": action, "workspace": workspace})
+func (d *Daemon) control(action, workspace string, env map[string]string) error {
+	body := map[string]any{"action": action, "workspace": workspace}
+	if env != nil {
+		body["env"] = env
+	}
+	conn, err := d.hostCall("/control", body)
 	if err != nil {
 		return err
 	}
@@ -198,7 +207,7 @@ func (d *Daemon) bootHost() error {
 		default:
 		}
 
-		if err := d.control("status", ""); err == nil {
+		if err := d.control("status", "", nil); err == nil {
 			d.mu.Lock()
 
 			select {
@@ -246,6 +255,7 @@ func (d *Daemon) restoreHost() error {
 	d.mu.Lock()
 
 	paths := make([]string, 0, len(d.members))
+	previous := d.members
 
 	for path := range d.members {
 		paths = append(paths, path)
@@ -267,6 +277,7 @@ func (d *Daemon) restoreHost() error {
 				continue
 			}
 
+			member.Env = previous[path].Env
 			candidates = append(candidates, member)
 			names[member.Name]++
 		}
@@ -277,7 +288,7 @@ func (d *Daemon) restoreHost() error {
 				continue
 			}
 
-			if startErr := d.control("start", member.Path); startErr != nil {
+			if startErr := d.control("start", member.Path, member.Env); startErr != nil {
 				err = errors.Join(err, fmt.Errorf("recover %s: %w", member.Path, startErr))
 				continue
 			}
@@ -337,7 +348,7 @@ func (d *Daemon) resolve(target, cwd string) (Member, error) {
 	return Member{}, fmt.Errorf("unknown workspace: %s", target)
 }
 
-func (d *Daemon) up(target string) (Member, error) {
+func (d *Daemon) up(target string, env map[string]string) (Member, error) {
 	d.lifecycle.Lock()
 	defer d.lifecycle.Unlock()
 	path, err := canonical(target)
@@ -359,6 +370,7 @@ func (d *Daemon) up(target string) (Member, error) {
 	if err != nil {
 		return Member{}, err
 	}
+	member.Env = env
 
 	d.mu.Lock()
 
@@ -381,7 +393,7 @@ func (d *Daemon) up(target string) (Member, error) {
 
 	d.mu.Unlock()
 
-	if err := d.control("start", path); err != nil {
+	if err := d.control("start", path, member.Env); err != nil {
 		return Member{}, err
 	}
 
@@ -536,6 +548,12 @@ func (d *Daemon) handle(conn net.Conn) {
 		go func() { _, _ = io.Copy(io.Discard, conn); _ = response.Close() }()
 		_, _ = io.Copy(conn, response)
 	case "lake-start":
+		var options lakeOptions
+		if err := decode(req.Payload, &options); err != nil {
+			encode(conn, errFrame(err))
+			return
+		}
+
 		target := req.Workspace
 		if member, err := d.resolve(target, req.CWD); err == nil {
 			target = member.Path
@@ -543,17 +561,24 @@ func (d *Daemon) handle(conn net.Conn) {
 		if !filepath.IsAbs(target) && req.CWD != "" {
 			target = filepath.Join(req.CWD, target)
 		}
-		member, err := d.up(target)
+		member, err := d.up(target, options.Env)
 		if err != nil {
 			encode(conn, errFrame(err))
 		} else {
 			encode(conn, Frame{OK: true, Result: member})
 		}
 	case "lake-restart", "lake-stop":
+		var options lakeOptions
+		if err := decode(req.Payload, &options); err != nil {
+			encode(conn, errFrame(err))
+			return
+		}
+
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
 		if err == nil && req.Operation == "lake-restart" {
 			member, err = readMember(member.Path)
+			member.Env = options.Env
 			if err == nil {
 				d.mu.Lock()
 
@@ -568,7 +593,7 @@ func (d *Daemon) handle(conn net.Conn) {
 				action = "stop"
 			}
 
-			err = d.control(action, member.Path)
+			err = d.control(action, member.Path, member.Env)
 			if req.Operation == "lake-restart" {
 				d.mu.Lock()
 
@@ -615,7 +640,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
 		if err == nil {
-			err = d.control("member-status", member.Path)
+			err = d.control("member-status", member.Path, nil)
 		}
 		d.lifecycle.Unlock()
 		if err != nil {

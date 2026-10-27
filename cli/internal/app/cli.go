@@ -72,7 +72,11 @@ func Botlake(args []string) int {
 
 			*target = selected
 		}
-		return Relay(request("lake-"+action, *target, nil))
+		var payload any
+		if action == "start" || action == "restart" {
+			payload = map[string]any{"env": environment()}
+		}
+		return Relay(request("lake-"+action, *target, payload))
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":

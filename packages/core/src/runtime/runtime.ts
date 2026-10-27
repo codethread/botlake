@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { DepGraph, DepGraphCycleError } from "dependency-graph";
 import { z } from "zod";
 
@@ -8,6 +10,7 @@ import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
+// oxlint-disable-next-line import/max-dependencies -- Runtime composes core services and invocation scope.
 import { Scheduler } from "./scheduler.ts";
 
 const unavailable: Processes = {
@@ -25,6 +28,7 @@ export class Runtime {
   readonly scheduler: Scheduler;
   readonly context: Context;
   readonly errors: unknown[] = [];
+  private readonly invocationEnv = new AsyncLocalStorage<Context["env"]>();
   private readonly queries = new Map<string, NamedQuery>();
   private readonly ops = new Map<string, Op>();
   private readonly resources: Resource[] = [];
@@ -36,12 +40,15 @@ export class Runtime {
   constructor(options: {
     database: string;
     workspace?: string;
+    env?: Record<string, string | undefined>;
     clock?: Clock;
     processes?: Processes;
     peers?: Peers;
   }) {
     const bins = new Bins();
     const clock = options.clock ?? systemClock;
+    const env = { lake: { ...(options.env ?? process.env) }, bl: {} };
+    const invocationEnv = this.invocationEnv;
 
     this.graph = new Graph(
       options.database,
@@ -57,6 +64,9 @@ export class Runtime {
 
     this.context = {
       workspace: options.workspace ?? process.cwd(),
+      get env() {
+        return invocationEnv.getStore() ?? env;
+      },
       graph: this.graph,
       scheduler: this.scheduler,
       clock,
@@ -195,6 +205,7 @@ export class Runtime {
       cwd?: string;
       worktreeRoot?: string;
       gitCommonDir?: string;
+      env?: Record<string, string | undefined>;
       terminal?: Invocation["terminal"];
     } = {},
   ): Promise<unknown> {
@@ -228,6 +239,7 @@ export class Runtime {
     }
 
     const op = requireValue(this.ops.get(name), `Unknown op: ${name}`);
+    const env = { lake: this.context.env.lake, bl: { ...options.env } };
     const timeout = options.timeoutMs ?? 30000;
     if (!Number.isFinite(timeout) || timeout <= 0)
       throw new Fault("deadline", "Deadline must be positive");
@@ -275,27 +287,33 @@ export class Runtime {
               ? await parseArgs(op.cli, zStringArray(input), options.payloads)
               : input;
           signal.throwIfAborted();
-          return op.invoke(payload, this.context, {
-            signal,
-            deadline,
-            requestId: options.requestId ?? crypto.randomUUID(),
-            cwd: options.cwd ?? this.context.workspace,
-            worktreeRoot: options.worktreeRoot,
-            gitCommonDir: options.gitCommonDir,
-            terminal: options.terminal ?? { isTTY: false, columns: null },
-          });
+          return this.invocationEnv.run(env, () =>
+            op.invoke(payload, this.context, {
+              signal,
+              deadline,
+              requestId: options.requestId ?? crypto.randomUUID(),
+              cwd: options.cwd ?? this.context.workspace,
+              worktreeRoot: options.worktreeRoot,
+              gitCommonDir: options.gitCommonDir,
+              terminal: options.terminal ?? { isTTY: false, columns: null },
+            }),
+          );
         })(),
         expired,
       ]);
       withinDeadline();
 
       if (isStream(result)) {
-        const iterator = result[Symbol.asyncIterator]();
+        const invocationEnv = this.invocationEnv;
+        const iterator = invocationEnv.run(env, () => result[Symbol.asyncIterator]());
         const errors = this.errors;
         async function* timed(): AsyncGenerator {
           try {
             while (true) {
-              const next = await Promise.race([iterator.next(), expired]);
+              const next = await Promise.race([
+                invocationEnv.run(env, () => iterator.next()),
+                expired,
+              ]);
               withinDeadline();
               if (next.done === true) break;
               yield next.value;
@@ -303,7 +321,7 @@ export class Runtime {
           } finally {
             cancel();
             controller.abort(new Fault("cancelled", "Stream closed"));
-            const closing = iterator.return?.();
+            const closing = invocationEnv.run(env, () => iterator.return?.());
             if (closing !== undefined)
               void Promise.resolve(closing).catch((error: unknown) => {
                 errors.push(error);

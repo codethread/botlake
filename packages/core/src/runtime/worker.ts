@@ -9,13 +9,20 @@ import { botlakeServices } from "./custody.ts";
 import { workerMessageSchema } from "./protocol.ts";
 import { Runtime, isStream } from "./runtime.ts";
 
-const data = z.object({ workspace: z.string(), botlakeSocket: z.string() }).parse(workerData);
+const data = z
+  .object({
+    workspace: z.string(),
+    botlakeSocket: z.string(),
+    env: z.record(z.string(), z.string()),
+  })
+  .parse(workerData);
 
 const port = requireValue(parentPort, "Workspace entry must run in a Worker");
 
 const runtime = new Runtime({
   database: resolve(data.workspace, ".botlake/world.db"),
   workspace: data.workspace,
+  env: data.env,
   ...botlakeServices(data.botlakeSocket, data.workspace),
 });
 
@@ -74,6 +81,7 @@ port.on("message", (raw: unknown) => {
           ...(request.argv === undefined ? {} : { argv: true }),
           ...(request.timeout_ms === undefined ? {} : { timeoutMs: request.timeout_ms }),
           requestId: request.request_id,
+          env: request.env,
           ...(request.payloads === undefined ? {} : { payloads: request.payloads }),
           ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
           ...(request.worktree_root === undefined ? {} : { worktreeRoot: request.worktree_root }),
