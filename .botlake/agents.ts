@@ -53,14 +53,6 @@ export default harnesses({
       effort: "high",
       when: flagNames.modelOpenai,
     },
-    grok: {
-      doc: "Grok. Greenfield implementation, API design and critical code review.",
-      parent: "cursor",
-      model: "cursor-grok-4.6",
-      effort: "high",
-      fast: true,
-      when: flagNames.modelXai,
-    },
     oracle: {
       doc: "Default seat for high-stakes guidance, diagnosis and architecture.",
       parent: "astra",

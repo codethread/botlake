@@ -1,28 +1,25 @@
 import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join, basename } from "node:path";
-
-import { z } from "zod";
+import { basename, dirname, join } from "node:path";
 
 function execute(
   file: string,
   args: string[],
-  options: { timeout?: number; maxBuffer?: number } = {},
-): Promise<{ stdout: string; stderr: string }> {
+  options: { timeout?: number; maxBuffer?: number; env?: NodeJS.ProcessEnv } = {},
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, options, (error, stdout, stderr) => {
-      if (error === null) resolve({ stdout, stderr });
+    execFile(file, args, options, (error, stdout) => {
+      if (error === null) resolve(stdout);
       else reject(new Error(error.message, { cause: error }));
     });
   });
 }
-const bindingSchema = z.object({ identity: z.string(), instruction: z.string() });
 export async function nativeProject(cwd: string): Promise<string | null> {
   let common: string;
   try {
     common = (
       await execute("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"])
-    ).stdout.trim();
+    ).trim();
   } catch {
     return null;
   }
@@ -30,41 +27,15 @@ export async function nativeProject(cwd: string): Promise<string | null> {
   const root = dirname(common);
   return existsSync(join(root, ".botlake/package.json")) ? realpathSync(root) : null;
 }
-export async function bl(workspace: string, op: string, input: unknown): Promise<unknown> {
-  const { stdout } = await execute(
-    process.env["BOTLAKE_BL_BIN"] ?? "bl",
-    ["--workspace", workspace, "--input", JSON.stringify(input), op],
-    { timeout: 8000, maxBuffer: 1024 * 1024 },
+export async function bl(
+  workspace: string,
+  input: unknown,
+  env: NodeJS.ProcessEnv,
+): Promise<unknown> {
+  const stdout = await execute(
+    env["BOTLAKE_BL_BIN"] ?? "bl",
+    ["--workspace", workspace, "--input", JSON.stringify(input), "agent"],
+    { timeout: 5000, maxBuffer: 1024 * 1024, env },
   );
   return JSON.parse(stdout);
-}
-export async function registerNative(input: {
-  provider: "codex" | "pi" | "claude" | "cursor";
-  nativeSessionId: string;
-  cwd: string;
-  unmanaged?: boolean;
-  workspace?: string;
-  parentIdentity?: string;
-  model?: string;
-  thinkingLevel?: string;
-}): Promise<z.infer<typeof bindingSchema> | null> {
-  const reference = input.unmanaged === true ? undefined : process.env["BOTLAKE_RUN_REFERENCE"];
-  const workspace =
-    input.workspace === undefined
-      ? reference === undefined
-        ? await nativeProject(input.cwd)
-        : realpathSync(z.string().min(1).parse(process.env["BOTLAKE_WORKSPACE"]))
-      : realpathSync(input.workspace);
-  if (workspace === null) return null;
-  const parts = reference?.split(":");
-  if (parts !== undefined && (parts.length !== 2 || parts.some((part) => part.length === 0)))
-    throw new Error("Malformed managed run reference");
-  const { unmanaged: _, workspace: _workspace, ...request } = input;
-  return bindingSchema.parse(
-    await bl(workspace, "agent", {
-      command: "native",
-      ...request,
-      ...(parts === undefined ? {} : { runId: parts[0], invocation: parts[1] }),
-    }),
-  );
 }

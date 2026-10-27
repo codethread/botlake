@@ -12,6 +12,7 @@
         "@botlake/extension-harnesses": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-kanban": "workspace:*",
+        "@botlake/native-session": "workspace:*",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -71,7 +72,7 @@
       "name": "@botlake/extension-harnesses",
       "version": "0.1.0",
       "dependencies": {
-        "@botlake/identity": "workspace:^",
+        "@botlake/native-session": "workspace:^",
         "ts-pattern": "^5.9.2",
         "zod": "^4.6.7",
       },
@@ -85,6 +86,7 @@
       "name": "@botlake/extension-identity",
       "version": "0.1.0",
       "dependencies": {
+        "@botlake/native-session": "workspace:^",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
@@ -114,10 +116,18 @@
         "zod": "^4.6.7",
       },
     },
+    "packages/native-session": {
+      "name": "@botlake/native-session",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+    },
     "plugins/identity": {
       "name": "@botlake/identity",
       "version": "0.1.0",
       "dependencies": {
+        "@botlake/native-session": "workspace:^",
         "zod": "^4.6.7",
       },
     },
@@ -140,6 +150,8 @@
     "@botlake/extension-kanban": ["@botlake/extension-kanban@workspace:extensions/kanban"],
 
     "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
+
+    "@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 

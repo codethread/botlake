@@ -98,7 +98,7 @@ export default harnesses(harnessConfigSchema.parse(config));`,
       z
         .object({ providers: z.array(z.string()) })
         .parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
-    ).toEqual(["codex", "pi", "claude", "cursor"]);
+    ).toEqual(["codex", "pi", "claude"]);
     expect(await host.bl("configured", "cron", { command: "status" })).toEqual([]);
 
     const shorthand = await host.workspace("shorthand", ["batteries"]);

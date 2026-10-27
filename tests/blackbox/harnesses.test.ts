@@ -25,13 +25,13 @@ test("Harnesses publishes, binds actual native sessions, fences writes, reconcil
     await Bun.write(
       childPath,
       `import {spawnSync} from "node:child_process"; import {existsSync,writeFileSync} from "node:fs";
-const session=process.env.BOTLAKE_SESSION_ID; const prompt=process.env.TEST_PROMPT; const marker=${JSON.stringify(join(workspace, "attempted"))}; const skip=prompt==="retry"&&existsSync(marker);
+const session=process.env.BOTLAKE_SESSION_ID??crypto.randomUUID(); const prompt=process.env.TEST_PROMPT; const marker=${JSON.stringify(join(workspace, "attempted"))}; const skip=prompt==="retry"&&existsSync(marker);
 if(!skip){const reply=spawnSync("bun",[${JSON.stringify(join(workspace, "node_modules/@botlake/identity/hook.ts"))},"codex"],{encoding:"utf8",input:JSON.stringify({hook_event_name:"SessionStart",session_id:session,cwd:process.cwd(),source:"startup"})});if(reply.status!==0||!JSON.parse(reply.stdout).hookSpecificOutput)throw new Error(reply.stderr+reply.stdout);}
 if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify({type:"thread.started",thread_id:session}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"done"}}));if(prompt==="retry"&&!skip){writeFileSync(marker,"attempted");console.log(JSON.stringify({type:"turn.failed",error:{message:"first failure"}}));process.exitCode=1;}else console.log(JSON.stringify({type:"turn.completed"}));}`,
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{BOTLAKE_SESSION_ID:run.sessionId,TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}},reviewers:{code:{seats:["missing","worker"],prompt:"Review changes",labels:["code"],paths:["*.ts"]}}});`,
+      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BOTLAKE_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));
@@ -49,18 +49,18 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(
       await host.bl(
         "agents",
-        "identity",
+        "agent",
         {
-          command: "startup",
-          harness: "codex",
-          nativeSessionId: first.attributes["harness/session-id"],
-          identity: first.attributes["harness/identity"],
-          reservationId: first.attributes["harness/reservation-id"],
+          command: "native",
+          provider: "codex",
+          cwd: workspace,
+          nativeSessionId: "forged",
           runId: first.id,
+          invocation: "stale",
         },
         false,
       ),
-    ).toContain("Stale native invocation");
+    ).toContain("Stale");
     const replay = row.parse(
       await host.bl("agents", "agent", {
         command: "start",
@@ -153,11 +153,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(retry.attributes["harness/substatus"]).toBe("execution");
     await host.bl("agents", "agent", { command: "retry", id: retry.id });
     retry = await settle(retry.id);
-    expect(retry.attributes["harness/substatus"]).toBe("bootstrap");
-    expect(retry.attributes["harness/session-confirmed"]).toBe(false);
-    expect(
-      await host.bl("agents", "agent", { command: "resume", id: retry.id, prompt: "wrong" }, false),
-    ).toContain("verified native session");
+    expect(retry.attributes["harness/substatus"]).toBe("completed");
+    expect(retry.attributes["harness/integration"]).toBe("output");
+    expect(retry.attributes["harness/session-confirmed"]).toBe(true);
     const parentA = await settle(
       row.parse(
         await host.bl("agents", "agent", {
@@ -230,44 +228,6 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     expect(cancelled.attributes["harness/substatus"]).toBe("requested");
     expect(cancelled.attributes["harness/settled"]).toBe(true);
-    async function git(args: string[]): Promise<void> {
-      const command = Bun.spawn(["git", "-C", workspace, ...args], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [code, error] = await Promise.all([
-        command.exited,
-        new Response(command.stderr).text(),
-      ]);
-      if (code !== 0) throw new Error(error);
-    }
-    await git(["init"]);
-    await Bun.write(join(workspace, "app.ts"), "export const value = 1;\n");
-    await git(["add", "app.ts"]);
-    await git([
-      "-c",
-      "user.name=Test",
-      "-c",
-      "user.email=test@example.invalid",
-      "commit",
-      "-m",
-      "baseline",
-    ]);
-    expect(
-      z
-        .object({ reason: z.string() })
-        .parse(await host.bl("agents", "agent", { command: "review", cwd: workspace })).reason,
-    ).toBe("empty-diff");
-    await Bun.write(join(workspace, "app.ts"), "export const value = 2;\n");
-    expect(
-      z.object({ runs: z.array(row) }).parse(
-        await host.bl("agents", "agent", {
-          command: "review",
-          cwd: workspace,
-          labels: ["code"],
-        }),
-      ).runs,
-    ).toHaveLength(1);
     const external = z.object({ runId: z.string() }).parse(
       await host.bl("agents", "agent", {
         command: "native",

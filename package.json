@@ -30,6 +30,7 @@
     "@botlake/extension-harnesses": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
     "@botlake/extension-kanban": "workspace:*",
+    "@botlake/native-session": "workspace:*",
     "@types/bun": "^1.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",

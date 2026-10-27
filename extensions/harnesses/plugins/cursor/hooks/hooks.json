@@ -1,4 +1,0 @@
-{
-  "version": 1,
-  "hooks": { "sessionStart": [{ "command": "bun \"$CURSOR_PLUGIN_ROOT/session-start.ts\"" }] }
-}

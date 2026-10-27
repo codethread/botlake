@@ -67,7 +67,9 @@ export function compileQuery(
       .with(
         { op: P.union("and", "or") },
         (node) =>
-          `(${node.args.map((arg) => visit(arg, alias, inEdge, negated)).join((node.op === "and") !== negated ? " AND " : " OR ")})`,
+          `(${node.args
+            .map((arg) => visit(arg, alias, inEdge, negated))
+            .join((node.op === "and") !== negated ? " AND " : " OR ")})`,
       )
       .with({ op: "not" }, ({ arg }) => visit(arg, alias, inEdge, !negated))
       .with({ op: "edge" }, (node) => {
@@ -119,7 +121,10 @@ export function compileQuery(
             throw new Fault("query", "in requires a nonempty array");
           return `${prefix}${negate(`${expression} IN (${value.map((entry) => bind(entry)).join(",")})`, negated)}${suffix}`;
         }
-        return `${prefix}${negate(`${expression} ${node.op === "!=" ? "<>" : node.op} ${bind(value)}`, negated)}${suffix}`;
+        return `${prefix}${negate(
+          `${expression} ${node.op === "!=" ? "<>" : node.op} ${bind(value)}`,
+          negated,
+        )}${suffix}`;
       })
       .exhaustive();
   }

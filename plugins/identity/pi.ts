@@ -1,69 +1,154 @@
-import { registerNative } from "./client.ts";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+
+import {
+  identityInstruction,
+  sessionIdentity,
+  type NativeEvent,
+  type NativeObservation,
+} from "@botlake/native-session";
+import { z } from "zod";
+
+import { reportNative, sessionEnvironment } from "./session.ts";
 
 interface PiContext {
   cwd: string;
-  sessionManager: { getSessionId(): string };
-  model?: { id: string };
+  sessionManager: {
+    getSessionId(): string;
+    getSessionFile?(): string | undefined;
+    getHeader?(): { parentSession?: string } | null;
+  };
+  model?: { id: string; provider?: string };
   thinkingLevel?: string;
+  hasUI?: boolean;
+  ui?: { setStatus(key: string, value: string | undefined): void };
+}
+interface PiEvents {
+  session_start: { reason?: string };
+  session_shutdown: { reason?: string };
+  agent_start: unknown;
+  agent_end: unknown;
+  model_select: unknown;
+  thinking_level_select: unknown;
+  before_agent_start: {
+    systemPrompt: string;
+    systemPromptOptions?: { sections: Record<string, string> };
+  };
 }
 interface PiApi {
-  on(event: "session_start", handler: (event: unknown, ctx: PiContext) => Promise<void>): void;
-  on(event: "session_shutdown", handler: () => void): void;
-  on(
-    event: "before_agent_start",
-    handler: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined,
-  ): void;
-  on(event: "input", handler: () => { action: "handled" } | undefined): void;
-  on(
-    event: "before_provider_request",
-    handler: (event: unknown, ctx: { abort(): void }) => void,
+  on<K extends keyof PiEvents>(
+    event: K,
+    handler: (
+      event: PiEvents[K],
+      ctx: PiContext,
+    ) => Promise<void> | void | { systemPrompt: string },
   ): void;
 }
+
+async function parentSession(path: string): Promise<string> {
+  const stream = createReadStream(path, { encoding: "utf8" });
+  const lines = createInterface({ input: stream });
+  try {
+    for await (const line of lines) {
+      return z.object({ type: z.literal("session"), id: z.string().min(1) }).parse(JSON.parse(line))
+        .id;
+    }
+    throw new Error("Native parent session has no header");
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+}
+
 export default function identityExtension(pi: PiApi): void {
-  let blocked = true;
-  let instruction: string | undefined;
-  let parent: { session: string; identity: string } | undefined;
-  let managedSession: string | undefined;
-  let owningWorkspace: string | undefined;
-  pi.on("session_start", async (_, ctx) => {
-    blocked = true;
-    instruction = undefined;
-    const session = ctx.sessionManager.getSessionId();
-    const child = parent !== undefined && parent.session !== session;
-    if (managedSession === undefined && process.env["BOTLAKE_RUN_ID"] !== undefined) {
-      managedSession = session;
-      owningWorkspace = process.env["BOTLAKE_WORKSPACE"];
-    }
-    const result = await registerNative({
+  let managedSession = process.env["BOTLAKE_NATIVE_SESSION_ID"];
+  let parentNativeSessionId: string | undefined;
+  function observation(ctx: PiContext, event: NativeEvent): NativeObservation {
+    return {
       provider: "pi",
-      nativeSessionId: session,
+      nativeSessionId: ctx.sessionManager.getSessionId(),
       cwd: ctx.cwd,
-      unmanaged: managedSession !== undefined && session !== managedSession,
-      ...(child && parent !== undefined ? { parentIdentity: parent.identity } : {}),
-      ...(owningWorkspace === undefined ? {} : { workspace: owningWorkspace }),
-      ...(ctx.model === undefined ? {} : { model: ctx.model.id }),
-      ...(ctx.thinkingLevel === undefined ? {} : { thinkingLevel: ctx.thinkingLevel }),
-    });
-    if (result !== null) {
-      instruction = result.instruction;
-      parent = { session, identity: result.identity };
+      event,
+      model:
+        ctx.model === undefined
+          ? null
+          : ctx.model.provider === undefined
+            ? ctx.model.id
+            : `${ctx.model.provider}/${ctx.model.id}`,
+      thinkingLevel: ctx.thinkingLevel ?? null,
+      sessionPath: ctx.sessionManager.getSessionFile?.() ?? null,
+      ...(parentNativeSessionId === undefined ? {} : { parentNativeSessionId }),
+      capabilities: ["activity", "model", "effort", "session-end", "parent"],
+    };
+  }
+  function local(ctx: PiContext): string {
+    const input = observation(ctx, "metadata");
+    Object.assign(process.env, sessionEnvironment(input));
+    const identity = sessionIdentity(input);
+    if (ctx.hasUI === true) ctx.ui?.setStatus("botlake-identity", identity);
+    return identityInstruction(identity);
+  }
+  async function report(ctx: PiContext, event: NativeEvent, nativeEvent: string): Promise<void> {
+    const input = observation(ctx, event);
+    const child = process.env["PI_SUBAGENT"] === "1";
+    if (
+      managedSession === undefined &&
+      process.env["BOTLAKE_RUN_REFERENCE"] !== undefined &&
+      !child
+    )
+      managedSession = input.nativeSessionId;
+    local(ctx);
+    const result = await reportNative(
+      { ...input, nativeEvent },
+      process.env,
+      child || (managedSession !== undefined && managedSession !== input.nativeSessionId),
+    );
+    if (ctx.hasUI === true)
+      ctx.ui?.setStatus(
+        "botlake-tracking",
+        result.tracking === "unavailable" ? "Botlake tracking unavailable" : undefined,
+      );
+  }
+  pi.on("session_start", async (_, ctx) => {
+    parentNativeSessionId =
+      process.env["PI_SUBAGENT"] === "1" && process.env["BOTLAKE_NATIVE_PROVIDER"] === "pi"
+        ? managedSession
+        : undefined;
+    const parent = ctx.sessionManager.getHeader?.()?.parentSession;
+    if (parent !== undefined) {
+      try {
+        parentNativeSessionId = await parentSession(parent);
+      } catch (error) {
+        process.stderr.write(`Botlake parent attribution unavailable: ${String(error)}\n`);
+      }
     }
-    blocked = false;
+    await report(ctx, "session-start", "session_start");
   });
-  pi.on("session_shutdown", () => {
-    blocked = true;
-    instruction = undefined;
+  pi.on("agent_start", async (_, ctx) => {
+    await report(ctx, "agent-start", "agent_start");
   });
-  pi.on("input", () => (blocked ? { action: "handled" } : undefined));
-  pi.on("before_provider_request", (_, ctx) => {
-    if (blocked) {
-      ctx.abort();
-      throw new Error("Native identity startup has not completed");
+  pi.on("agent_end", async (_, ctx) => {
+    await report(ctx, "agent-end", "agent_end");
+  });
+  pi.on("model_select", async (_, ctx) => {
+    await report(ctx, "metadata", "model_select");
+  });
+  pi.on("thinking_level_select", async (_, ctx) => {
+    await report(ctx, "metadata", "thinking_level_select");
+  });
+  pi.on("session_shutdown", async (_, ctx) => {
+    await report(ctx, "session-end", "session_shutdown");
+    if (ctx.hasUI === true) {
+      ctx.ui?.setStatus("botlake-identity", undefined);
+      ctx.ui?.setStatus("botlake-tracking", undefined);
     }
   });
-  pi.on("before_agent_start", (event) =>
-    instruction === undefined
-      ? undefined
-      : { systemPrompt: `${event.systemPrompt}\n\n${instruction}` },
-  );
+  pi.on("before_agent_start", (event, ctx) => {
+    const instruction = local(ctx);
+    if (event.systemPromptOptions !== undefined) {
+      event.systemPromptOptions.sections["botlake"] = instruction;
+      return;
+    }
+    return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
+  });
 }

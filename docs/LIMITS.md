@@ -11,9 +11,11 @@
 
 Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration, arbitrary overlays and per-run model/effort/argv/prompt overrides are not implemented.
 
-`agent catalog` inspects seats; `agent list` lists runs. A `reviewer` alias is not a review lens, and `tui` remains headless. Review lenses have their own seat selection and Git diff filters. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
+`agent catalog` inspects seats; `agent list` lists runs. All managed seats, including `tui`, remain headless. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
 
-Provider tests use deterministic subprocess fixtures, not live model accounts. Configured model names do not establish installed CLI/model availability.
+Provider tests use deterministic subprocess fixtures, not live model accounts. Configured model names do not establish installed CLI/model availability. Optional native events remain unknown when unavailable; GUI coverage requires a host that actually runs the adapters.
+
+`bun scripts/native-smoke.ts both /tmp/native-smoke.json` probes authenticated Pi and Codex against Luna: managed start/resume, direct native registration, identity context and lifecycle metadata. Use `pi` or `codex` to select one; `BOTLAKE_SMOKE_PI_MODEL` and `BOTLAKE_SMOKE_CODEX_MODEL` override models. It copies existing native credentials into disposable homes, uses packed plugins and a disposable database, and removes them on exit. It never installs plugins globally or restarts the live runtime.
 
 ## Measurements
 

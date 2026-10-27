@@ -13,6 +13,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@botlake/native-session": "workspace:^",
     "zod": "^4.6.7"
   },
   "peerDependencies": {

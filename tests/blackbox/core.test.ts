@@ -462,7 +462,7 @@ test("a due wake cancelled or replaced by an earlier handler never receives stal
 });
 
 test("events follow commit, rollback stays silent, and nested domain authority does not leak", async () => {
-  const { identity, reserveIdentity } = await import("@botlake/extension-identity");
+  const { identity, nativeStartup } = await import("@botlake/extension-identity");
   const committed: number[] = [];
   await disposable(
     async (runtime) => {
@@ -482,7 +482,10 @@ test("events follow commit, rollback stays silent, and nested domain authority d
       expect(committed).toEqual([2]);
       expect(() => {
         runtime.graph.atomic(() => {
-          const reserved = reserveIdentity(runtime.context, { harness: "codex" });
+          const reserved = nativeStartup(runtime.context, {
+            provider: "codex",
+            nativeSessionId: "actual",
+          });
           runtime.graph.update(reserved.nodeId, { title: "forged" });
         });
       }).toThrow("Identity API");

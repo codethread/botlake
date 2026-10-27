@@ -24,21 +24,17 @@ import {spawnSync} from "node:child_process";
 const args=Bun.argv.slice(2), name=process.env.FIXTURE_PROVIDER;
 const scenario=(await Bun.stdin.text()).trim();
 const option=key=>args[args.indexOf(key)+1];
-if(option("--model")!==(name==="cursor"?"fixture-medium-fast":"fixture") || !args.includes(name==="codex"?"--json": "--print")) throw new Error("Wrong prepared command: "+JSON.stringify(args));
+if(option("--model")!=="fixture" || !args.includes(name==="codex"?"--json": "--print")) throw new Error("Wrong prepared command: "+JSON.stringify(args));
 if(name==="codex" && (!args.includes('model_reasoning_effort="medium"') || !args.includes('developer_instructions="policy"'))) throw new Error("Missing Codex settings");
-if(name!=="codex" && name!=="cursor" && (option(name==="pi"?"--thinking":"--effort")!=="medium" || option("--append-system-prompt")!=="policy")) throw new Error("Missing native settings");
+if(name!=="codex" && (option(name==="pi"?"--thinking":"--effort")!=="medium" || option("--append-system-prompt")!=="policy")) throw new Error("Missing native settings");
 const resumed=name==="codex"?args.includes("resume"):args.includes(name==="pi"?"--session":"--resume");
-const session=name==="cursor"?(resumed?option("--resume"):"native-"+crypto.randomUUID()):name==="codex"?(resumed?args.at(-2):"native-"+crypto.randomUUID()):option(resumed?(name==="pi"?"--session":"--resume"):"--session-id");
-if(name==="cursor") {
-  const plugin=option("--plugin-dir");
-  const hook=spawnSync("bun",[plugin+"/session-start.ts"],{input:JSON.stringify({session_id:session}),env:{...process.env,CURSOR_PROJECT_DIR:process.cwd()},encoding:"utf8"});
-  if(hook.status!==0 || !JSON.parse(hook.stdout).additional_context.includes("policy"))throw new Error("Missing Cursor prompt hook: "+hook.stdout+hook.stderr);
-} else {
-const binding=spawnSync(process.env.BOTLAKE_BL_BIN,["--workspace",process.env.BOTLAKE_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId:process.env.BOTLAKE_RUN_ID,invocation:process.env.BOTLAKE_INVOCATION}),"agent"],{encoding:"utf8"});
+if(args.includes("--session-id"))throw new Error("Fresh sessions must be native-owned");
+const session=resumed?(name==="codex"?args.at(-2):option(name==="pi"?"--session":"--resume")):"native-"+crypto.randomUUID();
+const [runId,invocation]=process.env.BOTLAKE_RUN_REFERENCE.split(":");
+const binding=spawnSync(process.env.BOTLAKE_BL_BIN,["--workspace",process.env.BOTLAKE_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId,invocation}),"agent"],{encoding:"utf8"});
 if(binding.status!==0)throw new Error(binding.stderr);
-}
 const emit=event=>console.log(JSON.stringify(event));
-if(name==="claude" || name==="cursor") {
+if(name==="claude") {
   if(scenario==="truncated")process.stdout.write('{"session_id":');
   else emit({session_id:scenario==="no-session"?undefined:session,result:"answer",is_error:scenario==="failed"});
 } else {
@@ -59,8 +55,8 @@ if(name==="claude" || name==="cursor") {
     await Bun.write(
       join(workspace, "providers.ts"),
       `import {harnesses,provider} from "@botlake/extension-harnesses";
-const names=["codex","pi","claude","cursor"];
-export default harnesses({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",fast:true,systemPrompts:["policy"]}]))});`,
+const names=["codex","pi","claude"];
+export default harnesses({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompts:["policy"]}]))});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {
@@ -71,7 +67,7 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
       }
       throw new Error(`Provider did not settle: ${id}`);
     }
-    for (const name of ["codex", "pi", "claude", "cursor"]) {
+    for (const name of ["codex", "pi", "claude"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {
         const started = runSchema.parse(
           await host.bl("providers", "agent", {
@@ -88,14 +84,14 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
         expect(run.attributes["harness/substatus"]).toBe(
           scenario === "complete" ? "completed" : "execution",
         );
-        if ((name === "claude" || name === "cursor") && scenario === "truncated") {
+        if (name === "claude" && scenario === "truncated") {
           expect(run.attributes["harness/result"]).toBeUndefined();
         } else {
           expect(run.attributes["harness/result"]).toBe(
             name === "pi" ? "first\n\nsecond" : "answer",
           );
         }
-        if (scenario === "truncated" && name !== "claude" && name !== "cursor") {
+        if (scenario === "truncated" && name !== "claude") {
           expect(run.attributes["harness/session-confirmed"]).toBe(true);
           expect(run.attributes["harness/error"]).toContain("JSONL");
         }

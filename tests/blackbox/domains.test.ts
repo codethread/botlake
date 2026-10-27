@@ -123,13 +123,13 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     expect(runtime.graph.show(task.id).state).toBe("active");
     const native = await runtime.invoke("identity", {
       command: "startup",
-      harness: "codex",
+      provider: "codex",
       nativeSessionId: "actual",
     });
     expect(
       await runtime.invoke("identity", {
         command: "startup",
-        harness: "codex",
+        provider: "codex",
         nativeSessionId: "actual",
       }),
     ).toEqual({

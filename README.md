@@ -12,7 +12,7 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
 | [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
-| [`@botlake/extension-harnesses`](extensions/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity, Flags |
+| [`@botlake/extension-harnesses`](extensions/harnesses/README.md) | Providers, tracked runs, assignment, reconciliation | Identity, Flags |
 | [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
 | [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
@@ -39,7 +39,7 @@ The installed binaries use this checkout's core; keep the checkout and its depen
 
 The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Harnesses starts no agents automatically, and Cron has no jobs until configured.
 
-[Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.botlake/flags.ts) enable model families and gate DeepSeek with `seat/allow-china`; Claude/Cursor remain registered but disabled. Managed launches, including `tui`, are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
+[Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.botlake/flags.ts) enable model families and gate DeepSeek with `seat/allow-china`; Claude remains registered but disabled. Managed launches, including `tui`, are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 
 ```sh
 bl agent catalog
@@ -49,7 +49,7 @@ bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do 
 bl agent show RUN_ID
 ```
 
-Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
+Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
 
 In another workspace, install core and the extensions you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select extensions in `.botlake/package.json`:
 
@@ -109,7 +109,7 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 
 `BOTLAKE_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BOTLAKE_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
 
-Harnesses supports Codex, Pi, Claude and Cursor. Cursor’s bundled session hook supplies policy context and registers its native identity; Codex, Pi and Claude native identity adapters remain the separate `@botlake/identity` package in `plugins/identity`. Nothing installs plugins into user profiles automatically. Native identity, process custody and task completion remain distinct.
+Harnesses supports Codex, Pi and Claude. Native harnesses own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
 
 ## JavaScript evaluation
 

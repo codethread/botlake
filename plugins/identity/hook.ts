@@ -1,54 +1,20 @@
 import { z } from "zod";
 
-import { nativeProject, registerNative, bl } from "./client.ts";
+import { claude } from "./adapters/claude.ts";
+import { codex } from "./adapters/codex.ts";
+import { reportNative } from "./session.ts";
 
+const adapters = { codex, claude };
 const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
 try {
-  const event = z
-    .object({
-      hook_event_name: z.enum(["SessionStart", "SubagentStart"]),
-      session_id: z.string().min(1),
-      cwd: z.string().min(1),
-      agent_id: z.string().optional(),
-      model: z.string().optional(),
-    })
-    .parse(await Bun.stdin.json());
-  let nativeSessionId = event.session_id;
-  let parentIdentity: string | undefined;
-  let childWorkspace: string | undefined;
-  if (event.hook_event_name === "SubagentStart") {
-    if (provider !== "codex") throw new Error("Child hooks are supported by Codex");
-    const workspace =
-      process.env["BOTLAKE_RUN_REFERENCE"] === undefined
-        ? await nativeProject(event.cwd)
-        : z.string().min(1).parse(process.env["BOTLAKE_WORKSPACE"]);
-    if (workspace === null) process.exit(0);
-    const parent = z.object({ identity: z.string() }).parse(
-      await bl(workspace, "identity", {
-        command: "startup",
-        harness: provider,
-        nativeSessionId,
-      }),
-    );
-    parentIdentity = parent.identity;
-    childWorkspace = workspace;
-    nativeSessionId = `codex-child:v1:${Buffer.from(event.session_id).toString("base64url")}:${Buffer.from(z.string().min(1).parse(event.agent_id)).toString("base64url")}`;
-  }
-  const result = await registerNative({
-    provider,
-    nativeSessionId,
-    cwd: event.cwd,
-    ...(parentIdentity === undefined ? {} : { parentIdentity, unmanaged: true }),
-    ...(childWorkspace === undefined ? {} : { workspace: childWorkspace }),
-    ...(event.model === undefined ? {} : { model: event.model }),
-  });
-  if (result !== null)
-    process.stdout.write(
-      `${JSON.stringify({ hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext: result.instruction } })}\n`,
-    );
+  const adapter = adapters[provider];
+  const event = adapter.decode(await Bun.stdin.json());
+  const report = await reportNative(event.observation, process.env, event.unmanaged);
+  process.stdout.write(`${JSON.stringify(await adapter.deliver(event, report, process.env))}\n`);
 } catch (error) {
-  const message = `Botlake identity startup failed: ${String(error)}`;
+  // A malformed host event is visible, but an attribution integration never blocks native work.
+  process.stderr.write(`Botlake native adapter failed: ${String(error)}\n`);
   process.stdout.write(
-    `${JSON.stringify(provider === "claude" ? { systemMessage: `${message}; this session is unbound.` } : { continue: false, stopReason: message, systemMessage: message })}\n`,
+    `${JSON.stringify({ systemMessage: `Botlake native adapter failed: ${String(error)}` })}\n`,
   );
 }

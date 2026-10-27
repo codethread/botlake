@@ -57,7 +57,10 @@ export async function system(): Promise<{
     return `file:${tarball}`;
   }
   const core = await pack("packages/core", "core");
-  const packages: Record<string, string> = { "@botlake/core": core };
+  const packages: Record<string, string> = {
+    "@botlake/core": core,
+    "@botlake/native-session": await pack("packages/native-session", "native-session"),
+  };
   for (const name of ["batteries", "identity", "kanban", "cron", "flags", "harnesses"])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");

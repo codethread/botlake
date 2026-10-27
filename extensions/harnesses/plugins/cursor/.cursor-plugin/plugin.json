@@ -1,6 +1,0 @@
-{
-  "name": "harness",
-  "version": "0.1.0",
-  "description": "Supply the selected Botlake run's identity and policy context.",
-  "hooks": "./hooks/hooks.json"
-}

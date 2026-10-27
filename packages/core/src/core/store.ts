@@ -212,7 +212,9 @@ export class Graph {
       .parse(
         this.db
           .query(
-            `SELECT key,value FROM attributes WHERE node_id=?${lean ? " AND archived=0" : ""} ORDER BY key`,
+            `SELECT key,value FROM attributes WHERE node_id=?${
+              lean ? " AND archived=0" : ""
+            } ORDER BY key`,
           )
           .all(id),
       );
@@ -247,7 +249,9 @@ export class Graph {
       .parse(
         this.db
           .query(
-            `SELECT s.id FROM nodes s WHERE ${query.sql}${ready} ORDER BY s.created_at,s.id${limit === undefined ? "" : " LIMIT ?"}`,
+            `SELECT s.id FROM nodes s WHERE ${query.sql}${ready} ORDER BY s.created_at,s.id${
+              limit === undefined ? "" : " LIMIT ?"
+            }`,
           )
           .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
       );
