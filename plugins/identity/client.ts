@@ -36,10 +36,17 @@ export async function bl(
   input: unknown,
   env: NodeJS.ProcessEnv,
 ): Promise<unknown> {
+  const options = { timeout: 5000, maxBuffer: 1024 * 1024, env };
+  try {
+    await execute("botlake", ["lake", "status", "--workspace", workspace], options);
+  } catch {
+    await execute("botlake", ["lake", "start", "--workspace", workspace], options);
+  }
+
   const stdout = await execute(
     env["BL_BIN"] ?? "bl",
     ["--workspace", workspace, "--input", JSON.stringify(input), "agent"],
-    { timeout: 5000, maxBuffer: 1024 * 1024, env },
+    options,
   );
 
   return JSON.parse(stdout);

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
 const text = z.string().trim().min(1);
@@ -15,18 +16,30 @@ export const sessionSchema = z.strictObject({
 
 export type NativeSession = z.infer<typeof sessionSchema>;
 
-// The full provider/session pair is the authority; the digest is a portable attribution key.
+// The provider/session pair is authoritative; the three-word name is for attribution.
 export function sessionIdentity(session: NativeSession): string {
-  return `agent-${createHash("sha256")
-    .update(JSON.stringify([session.provider, session.nativeSessionId]))
-    .digest("hex")}`;
+  return uniqueNamesGenerator({
+    dictionaries: [adjectives, adjectives, animals],
+    separator: "-",
+    // The library treats zero as unseeded, so use a strictly positive seed.
+    seed:
+      createHash("sha256")
+        .update(JSON.stringify([session.provider, session.nativeSessionId]))
+        .digest()
+        .readUInt32BE(0) + 1,
+  });
 }
 
 export function identityInstruction(identity: string, shellEnvironment = false): string {
   const usage = shellEnvironment
-    ? "bl kanban defaults authorship and claim ownership from BL_ACTOR in your shell environment; explicit flags override it. Use bl identity show to inspect your identity."
-    : `For bl kanban add/note/claim, pass --by-identity ${identity}; for your own claims also pass --owner ${identity}. Inspect your identity with bl identity show ${identity}.`;
-  return `Your Botlake identity is ${identity}. ${usage} Identity does not grant process custody or complete tasks.`;
+    ? "Commands supporting identity attribution default to `BL_ACTOR` in your shell environment; explicit flags override it."
+    : `Where supported, pass \`--by-identity ${identity}\` for authorship and \`--owner ${identity}\` for ownership.`;
+  return [
+    `Your Botlake identity is ${identity}.`,
+    usage,
+    "Identity is attribution, not process custody or task completion.",
+    `Inspect it with \`bl identity show${shellEnvironment ? "" : ` ${identity}`}\`.`,
+  ].join(" ");
 }
 
 export const agentMetadataSchema = z.strictObject({

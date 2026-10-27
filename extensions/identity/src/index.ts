@@ -73,6 +73,12 @@ export function nativeStartup(
   return ctx.graph.atomic(() => {
     const identityId = sessionIdentity(input);
     let record = resolveIdentity(ctx.graph, identityId);
+    if (
+      record !== undefined &&
+      (record.attributes["identity/provider"] !== input.provider ||
+        record.attributes["identity/native-session-id"] !== input.nativeSessionId)
+    )
+      throw new Fault("identity", `Native identity name collision: ${identityId}`);
     const result = record === undefined ? "created" : "recovered";
 
     record ??= ctx.graph.add({

@@ -43,8 +43,10 @@ export async function system(): Promise<{
 }> {
   const dir = await mkdtemp(join(tmpdir(), "botlake-system-"));
   const home = join(dir, "botlake");
-  const botlakeBin = join(dir, "botlake-bin");
-  const blBin = join(dir, "bl-bin");
+  const bin = join(dir, "bin");
+  await mkdir(bin);
+  const botlakeBin = join(bin, "botlake");
+  const blBin = join(bin, "bl");
 
   async function pack(path: string, name: string): Promise<string> {
     const tarball = join(dir, `${name}.tgz`);
@@ -73,6 +75,7 @@ export async function system(): Promise<{
     BL_HOME: home,
     BL_CORE: join(engine, "node_modules/@botlake/core"),
     BL_BIN: blBin,
+    PATH: `${bin}:${process.env["PATH"] ?? ""}`,
   };
   for (const [name, binary] of [
     ["botlake", botlakeBin],

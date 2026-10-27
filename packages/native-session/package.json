@@ -13,6 +13,7 @@
     "access": "public"
   },
   "dependencies": {
+    "unique-names-generator": "4.7.1",
     "zod": "^4.6.7"
   }
 }
