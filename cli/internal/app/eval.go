@@ -30,8 +30,10 @@ Bindings:
   api.call(OP, INPUT) Invoke a selected operation with JSON input; returns its
                     JSON result. Streaming operations are not supported.
 
-The workspace must already be running; omission discovers it from --cwd or the
-caller's directory. The default deadline is 30s across execution and all calls.
+The workspace must already be running. Without --workspace, Git discovery from
+--cwd or the caller's directory selects the main checkout's lake, shared by linked
+worktrees. Outside Git, pass --workspace. The default deadline is 30s across
+execution and all calls.
 Console and process output go to stderr. Only the returned JSON goes to stdout.
 This is not a sandbox or a read-only API: scripts have the caller's permissions,
 operations may mutate data, and completed mutations are not rolled back on error.
@@ -74,7 +76,7 @@ func evalCLI(args []string) int {
 		return fail(err)
 	}
 	if *target == "" {
-		*target, err = enclosingWorkspace(*cwd)
+		*target, err = defaultWorkspace(*cwd)
 		if err != nil {
 			return fail(err)
 		}

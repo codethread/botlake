@@ -14,7 +14,7 @@ func initWorkspace(args []string) int {
 	fail := func(err error) int { return cliFailure(err, false) }
 	flags := flag.NewFlagSet("botlake init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	target := flags.String("workspace", ".", "workspace directory")
+	target := flags.String("workspace", "", "workspace directory (defaults to the main Git checkout)")
 	name := flags.String("name", "", "published workspace name (defaults to directory basename)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -26,7 +26,13 @@ func initWorkspace(args []string) int {
 	if flags.NArg() != 0 {
 		return fail(errors.New("usage: botlake init [--workspace DIR] [--name NAME]"))
 	}
-	path, err := canonical(*target)
+	var path string
+	var err error
+	if *target == "" {
+		path, err = defaultWorkspace("")
+	} else {
+		path, err = canonical(*target)
+	}
 	if err != nil {
 		return fail(err)
 	}

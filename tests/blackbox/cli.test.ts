@@ -397,6 +397,7 @@ export default {name:"payloads",activate(ctx){
     const nestedDir = join(workspace, "nested");
     await mkdir(nestedDir);
     const context = await host.cli([
+      ...prefix,
       "--cwd",
       nestedDir,
       "--worktree-root",

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -117,30 +116,24 @@ func BL(args []string) int {
 	if err != nil {
 		return cliFailure(err, view.json)
 	}
-	if p.workspace == "" {
-		selection := cwd
-		if p.worktree != "" {
-			selection = p.worktree
-		}
-		p.workspace, err = enclosingWorkspace(selection)
-		if err != nil {
-			return cliFailure(err, view.json)
-		}
-	}
-	if p.worktree == "" || p.common == "" {
-		// Non-Git workspaces are valid. Git fields enrich the invocation when
-		// available; explicitly supplied context always wins.
-		output, gitErr := exec.Command("git", "-C", cwd, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir").Output()
-		if gitErr == nil {
-			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-			if len(lines) != 2 {
-				return cliFailure(errors.New("unexpected Git context response"), view.json)
+	if p.workspace == "" || p.worktree == "" || p.common == "" {
+		worktree, common, gitErr := gitContext(cwd)
+		if p.workspace == "" {
+			if gitErr != nil {
+				return cliFailure(gitErr, view.json)
 			}
+			p.workspace, err = workspaceFromCommonDir(common)
+			if err != nil {
+				return cliFailure(err, view.json)
+			}
+		}
+		// Explicit workspaces can be outside Git; context flags always win.
+		if gitErr == nil {
 			if p.worktree == "" {
-				p.worktree = lines[0]
+				p.worktree = worktree
 			}
 			if p.common == "" {
-				p.common = lines[1]
+				p.common = common
 			}
 		}
 	}
@@ -204,23 +197,6 @@ func BL(args []string) int {
 	return relay(req, view)
 }
 
-func enclosingWorkspace(cwd string) (string, error) {
-	cwd, err := filepath.Abs(cwd)
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(cwd, ".botlake/config.json")); err == nil {
-			return cwd, nil
-		}
-		parent := filepath.Dir(cwd)
-		if parent == cwd {
-			return "", errors.New("no workspace; pass --workspace path|name")
-		}
-		cwd = parent
-	}
-}
-
 func loadPayloads(p invocationFlags) (map[string]string, error) {
 	paths := map[string]string{}
 	for _, spec := range p.payloads {
@@ -267,6 +243,10 @@ Global flags (before the operation):
   --dry-run               Print the request without invoking it
   --version               Print CLI/build/protocol versions
   -h, --help              Show this dispatcher help without a running workspace
+
+Without --workspace, Git's common directory selects the main checkout's lake.
+Linked worktrees share its configuration and data. Outside Git, pass --workspace.
+Git context overrides do not change workspace selection.
 
 Workspace operations:
   bl help                        List selected operations

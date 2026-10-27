@@ -62,14 +62,11 @@ func binCLI(args []string) int {
 		return fail(errors.New(binUsage))
 	}
 	if *target == "" {
-		cwd, err := os.Getwd()
+		selected, err := defaultWorkspace("")
 		if err != nil {
 			return fail(err)
 		}
-		*target, err = enclosingWorkspace(cwd)
-		if err != nil {
-			return fail(err)
-		}
+		*target = selected
 	}
 	input := map[string]any{"command": "list"}
 	if action != "list" {

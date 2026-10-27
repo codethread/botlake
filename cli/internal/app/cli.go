@@ -6,58 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
-func workspace(args []string) (string, []string, error) {
-	target := ""
-	result := []string{}
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--" {
-			result = append(result, args[i:]...)
-			break
-		}
-		value, inline := strings.CutPrefix(args[i], "--workspace=")
-		if args[i] == "--workspace" || inline {
-			if target != "" {
-				return "", nil, errors.New("--workspace may only be supplied once")
-			}
-			if inline {
-				target = value
-			} else {
-				i++
-				if i == len(args) {
-					return "", nil, errors.New("--workspace requires a value")
-				}
-				target = args[i]
-			}
-			if target == "" {
-				return "", nil, errors.New("--workspace requires a value")
-			}
-		} else {
-			result = append(result, args[i])
-		}
-	}
-	if target == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", nil, err
-		}
-		for {
-			if _, err := os.Stat(filepath.Join(cwd, ".botlake/config.json")); err == nil {
-				target = cwd
-				break
-			}
-			parent := filepath.Dir(cwd)
-			if parent == cwd {
-				return "", nil, errors.New("no workspace; pass --workspace path|name")
-			}
-			cwd = parent
-		}
-	}
-	return target, result, nil
-}
 func Botlake(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
@@ -110,15 +60,14 @@ func Botlake(args []string) int {
 		if flags.NArg() != 0 {
 			return fail(errors.New("select a workspace with --workspace PATH|NAME"))
 		}
-		selection := []string{}
-		if *target != "" {
-			selection = []string{"--workspace", *target}
+		if *target == "" {
+			selected, err := defaultWorkspace("")
+			if err != nil {
+				return fail(err)
+			}
+			*target = selected
 		}
-		selected, _, err := workspace(selection)
-		if err != nil {
-			return fail(err)
-		}
-		return Relay(request("lake-"+action, selected, nil))
+		return Relay(request("lake-"+action, *target, nil))
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":
