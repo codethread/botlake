@@ -12,11 +12,8 @@ export const codex: Provider = {
     if (run.model !== undefined) options.push("--model", run.model);
     if (run.effort !== undefined)
       options.push("--config", `model_reasoning_effort=${JSON.stringify(run.effort)}`);
-    if (run.systemPrompts.length > 0)
-      options.push(
-        "--config",
-        `developer_instructions=${JSON.stringify(run.systemPrompts.join("\n\n"))}`,
-      );
+    if (run.systemPrompt.length > 0)
+      options.push("--config", `developer_instructions=${JSON.stringify(run.systemPrompt)}`);
     return {
       command: [
         "codex",

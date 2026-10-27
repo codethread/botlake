@@ -8,12 +8,15 @@ import {
 } from "@botlake/native-session";
 import { z } from "zod";
 
+import { resolveSystemPrompt, type SystemPrompt } from "./prompt.ts";
+
 const text = z.string().min(1);
 
 export class NativeSessions {
   constructor(
     private readonly ctx: Context,
     private readonly authority: symbol,
+    private readonly unmanagedSystemPrompt: SystemPrompt | undefined,
   ) {}
 
   private runs(provider: ProviderName, sessionId: string): Node[] {
@@ -138,6 +141,17 @@ export class NativeSessions {
         instruction: binding.instruction,
         runId: run.id,
         external,
+        systemPrompt:
+          external && (input.event === "session-start" || input.event === "metadata")
+            ? resolveSystemPrompt(this.unmanagedSystemPrompt, {
+                provider: input.provider,
+                model: input.model ?? null,
+                effort: input.thinkingLevel ?? null,
+                seat: input.agentSeat ?? null,
+                cwd: input.cwd,
+                workspace: this.ctx.workspace,
+              })
+            : "",
       };
     }, this.authority);
   }

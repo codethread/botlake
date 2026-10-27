@@ -2,6 +2,7 @@ import { Fault } from "@botlake/core";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
+import { resolveSystemPrompt, systemPromptSchema, type SystemPrompt } from "./prompt.ts";
 import { providerNameSchema, type Provider } from "./providers/contract.ts";
 
 const text = z.string().trim().min(1);
@@ -10,19 +11,22 @@ const settings = {
   model: text.optional(),
   effort: text.optional(),
   extraArgs: z.array(z.string()).optional(),
-  systemPrompts: z.array(text).optional(),
 };
 
 export const seatSchema = z.strictObject({
   provider: providerNameSchema,
   ...settings,
   extraArgs: z.array(z.string()).default([]),
-  systemPrompts: z.array(text).default([]),
+  systemPrompt: z.string().default(""),
 });
 
-export type Seat = z.input<typeof seatSchema>;
+export type Seat = Omit<z.input<typeof seatSchema>, "systemPrompt"> & {
+  systemPrompt?: SystemPrompt;
+};
 
-type ResolvedSeat = z.output<typeof seatSchema>;
+type ResolvedSeat = Omit<z.output<typeof seatSchema>, "systemPrompt"> & {
+  systemPrompt: SystemPrompt;
+};
 
 export type Condition = string | ["and" | "or", Condition, ...Condition[]] | ["not", Condition];
 
@@ -35,34 +39,41 @@ const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
   ]),
 );
 
-const descriptor = {
-  doc: text.optional(),
-  when: conditionSchema.optional(),
-  ...settings,
-};
+function configSchemas<P extends z.ZodType>(prompt: P) {
+  const descriptor = {
+    doc: text.optional(),
+    when: conditionSchema.optional(),
+    ...settings,
+    systemPrompt: prompt.optional(),
+  };
+  const aliasDescriptor = z.strictObject({ parent: text, ...descriptor });
+  const candidate = z.union([
+    text,
+    aliasDescriptor,
+    z.strictObject({ provider: providerNameSchema, ...descriptor }),
+  ]);
+  const alias = z.union([candidate, z.array(candidate).min(1)]);
+  return {
+    aliasDescriptor,
+    candidate,
+    alias,
+    config: z.strictObject({
+      aliases: z.record(text, alias).default({}),
+      unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
+    }),
+  };
+}
 
-const aliasDescriptorSchema = z.strictObject({ parent: text, ...descriptor });
-
-const candidateSchema = z.union([
-  text,
-  aliasDescriptorSchema,
-  z.strictObject({ provider: providerNameSchema, ...descriptor }),
-]);
-
-const aliasSchema = z.union([candidateSchema, z.array(candidateSchema).min(1)]);
-
-export type Alias = z.input<typeof aliasSchema>;
-
-type Candidate = z.output<typeof candidateSchema>;
-
-export const agentConfigSchema = z.strictObject({
-  aliases: z.record(text, aliasSchema).default({}),
-});
+const schemas = configSchemas(systemPromptSchema);
+export const agentConfigSchema = schemas.config;
+export type Alias = z.input<typeof schemas.alias>;
+type Candidate = z.output<typeof schemas.candidate>;
 
 export type AgentConfig = z.input<typeof agentConfigSchema>;
 
 export function agentConfigJsonSchema(): unknown {
-  return z.toJSONSchema(agentConfigSchema, { io: "input" });
+  // JSON configuration supports text; callbacks belong to TypeScript configuration.
+  return z.toJSONSchema(configSchemas(z.string()).config, { io: "input" });
 }
 
 type Reason = {
@@ -125,7 +136,7 @@ export class Catalog {
     if (candidates !== undefined) {
       const reasons: Reason[] = [];
       for (const [index, raw] of candidates.entries()) {
-        const candidate: z.output<typeof aliasDescriptorSchema> =
+        const candidate: z.output<typeof schemas.aliasDescriptor> =
           typeof raw === "string"
             ? { parent: raw }
             : "provider" in raw
@@ -166,7 +177,7 @@ export class Catalog {
             ...(candidate.model === undefined ? {} : { model: candidate.model }),
             ...(candidate.effort === undefined ? {} : { effort: candidate.effort }),
             extraArgs: candidate.extraArgs ?? resolved.settings.extraArgs,
-            systemPrompts: [...resolved.settings.systemPrompts, ...(candidate.systemPrompts ?? [])],
+            systemPrompt: candidate.systemPrompt ?? "",
           },
         };
       }
@@ -187,22 +198,32 @@ export class Catalog {
     return {
       available: true,
       doc: provider.doc,
-      settings: { provider: provider.name, extraArgs: [], systemPrompts: [] },
+      settings: { provider: provider.name, extraArgs: [], systemPrompt: "" },
     };
   }
 
-  resolve(name: string): ResolvedSeat {
+  resolve(name: string, context: { cwd: string; workspace: string }): z.output<typeof seatSchema> {
     const resolved = this.availability(name);
     if (!resolved.available) throw new Fault("seat", `Seat unavailable: ${name}`, resolved.reasons);
 
-    return resolved.settings;
+    const selected = resolved.settings;
+    return {
+      ...selected,
+      systemPrompt: resolveSystemPrompt(selected.systemPrompt, {
+        ...context,
+        provider: selected.provider,
+        model: selected.model ?? null,
+        effort: selected.effort ?? null,
+        seat: name,
+      }),
+    };
   }
 
   private summary(resolved: Resolution): unknown {
     if (!resolved.available) return resolved;
 
     const {
-      settings: { extraArgs: _, systemPrompts: __, ...effective },
+      settings: { extraArgs: _, systemPrompt: __, ...effective },
       ...selection
     } = resolved;
 
@@ -221,10 +242,25 @@ export class Catalog {
   show(name: string): unknown {
     const resolved = this.availability(name);
 
+    const describe = (source: SystemPrompt | undefined) =>
+      typeof source === "function" ? { dynamic: true } : source;
+
     return {
       name,
       ...resolved,
-      candidates: this.aliases.get(name) ?? [],
+      ...(resolved.available
+        ? {
+            settings: {
+              ...resolved.settings,
+              systemPrompt: describe(resolved.settings.systemPrompt),
+            },
+          }
+        : {}),
+      candidates: (this.aliases.get(name) ?? []).map((candidate) =>
+        typeof candidate === "string" || candidate.systemPrompt === undefined
+          ? candidate
+          : { ...candidate, systemPrompt: describe(candidate.systemPrompt) },
+      ),
     };
   }
 }

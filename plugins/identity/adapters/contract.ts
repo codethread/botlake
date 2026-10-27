@@ -20,7 +20,9 @@ export function contextOutput(event: HookEvent, report: SessionReport): unknown 
     ? {
         hookSpecificOutput: {
           hookEventName: event.nativeEvent,
-          additionalContext: report.instruction,
+          additionalContext: [report.instruction, report.systemPrompt]
+            .filter((part) => part.length > 0)
+            .join("\n\n"),
         },
         ...(report.error === undefined ? {} : { systemMessage: report.error }),
       }

@@ -56,7 +56,7 @@ if(name==="claude") {
       join(workspace, "providers.ts"),
       `import {agents,provider} from "@botlake/extension-agents";
 const names=["codex","pi","claude"];
-export default agents({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompts:["policy"]}]))});`,
+export default agents({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompt:"policy"}]))});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {

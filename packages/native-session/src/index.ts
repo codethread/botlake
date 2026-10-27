@@ -88,6 +88,7 @@ export const bindingSchema = z.strictObject({
   instruction: text,
   runId: text,
   external: z.boolean(),
+  systemPrompt: z.string(),
 });
 
 export type NativeBinding = z.infer<typeof bindingSchema>;

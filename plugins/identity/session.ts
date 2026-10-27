@@ -14,6 +14,7 @@ import { bl, nativeProject } from "./client.ts";
 export interface SessionReport {
   identity: string;
   instruction: string;
+  systemPrompt: string;
   tracking: "registered" | "unavailable" | "outside-workspace";
   binding?: NativeBinding;
   error?: string;
@@ -29,7 +30,7 @@ export async function reportNative(
   if (observation.parentNativeSessionId !== undefined)
     env = { ...env, BL_AGENT_SEAT: undefined, BL_MODEL: undefined, BL_EFFORT: undefined };
   const identity = sessionIdentity(observation);
-  const local = { identity, instruction: identityInstruction(identity) };
+  const local = { identity, instruction: identityInstruction(identity), systemPrompt: "" };
 
   try {
     const explicit = env["BL_WORKSPACE"];
@@ -55,7 +56,7 @@ export async function reportNative(
     if (binding.identity !== identity)
       throw new Error("Database returned a different native identity");
 
-    return { ...local, tracking: "registered", binding };
+    return { ...local, systemPrompt: binding.systemPrompt, tracking: "registered", binding };
   } catch (error) {
     const message = `Botlake tracking unavailable: ${String(error)}`;
     process.stderr.write(`${message}\n`);

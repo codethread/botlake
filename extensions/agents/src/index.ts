@@ -28,6 +28,7 @@ export type { Seat, Alias, Condition, AgentConfig } from "./catalog.ts";
 export { Agents } from "./runs.ts";
 
 export type { AgentOptions, StartRun } from "./runs.ts";
+export type { SessionContext, SystemPrompt } from "./prompt.ts";
 export { provider } from "./providers/index.ts";
 
 export type {

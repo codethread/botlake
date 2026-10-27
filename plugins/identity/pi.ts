@@ -9,7 +9,7 @@ import {
 } from "@botlake/native-session";
 import { z } from "zod";
 
-import { reportNative, sessionEnvironment } from "./session.ts";
+import { reportNative, sessionEnvironment, type SessionReport } from "./session.ts";
 
 interface PiContext {
   cwd: string;
@@ -41,7 +41,7 @@ interface PiApi {
     handler: (
       event: PiEvents[K],
       ctx: PiContext,
-    ) => Promise<void> | void | { systemPrompt: string },
+    ) => Promise<void | { systemPrompt: string }> | void | { systemPrompt: string },
   ): void;
 }
 
@@ -81,7 +81,7 @@ export default function identityExtension(pi: PiApi): void {
       capabilities: ["activity", "model", "effort", "session-end", "parent"],
     };
   }
-  function local(ctx: PiContext): string {
+  function local(ctx: PiContext): void {
     const input = observation(ctx, "metadata");
     for (const [key, value] of Object.entries(sessionEnvironment(input, process.env))) {
       if (value === undefined) delete process.env[key];
@@ -89,9 +89,12 @@ export default function identityExtension(pi: PiApi): void {
     }
     const identity = sessionIdentity(input);
     if (ctx.hasUI === true) ctx.ui?.setStatus("botlake-identity", identity);
-    return identityInstruction(identity, true);
   }
-  async function report(ctx: PiContext, event: NativeEvent, nativeEvent: string): Promise<void> {
+  async function report(
+    ctx: PiContext,
+    event: NativeEvent,
+    nativeEvent: string,
+  ): Promise<SessionReport> {
     const input = observation(ctx, event);
     const child = process.env["PI_SUBAGENT"] === "1";
     if (managedSession === undefined && process.env["BL_RUN_REFERENCE"] !== undefined && !child)
@@ -107,6 +110,7 @@ export default function identityExtension(pi: PiApi): void {
         "botlake-tracking",
         result.tracking === "unavailable" ? "Botlake tracking unavailable" : undefined,
       );
+    return result;
   }
   pi.on("session_start", async (_, ctx) => {
     parentNativeSessionId =
@@ -142,8 +146,11 @@ export default function identityExtension(pi: PiApi): void {
       ctx.ui?.setStatus("botlake-tracking", undefined);
     }
   });
-  pi.on("before_agent_start", (event, ctx) => {
-    const instruction = local(ctx);
+  pi.on("before_agent_start", async (event, ctx) => {
+    const result = await report(ctx, "metadata", "before_agent_start");
+    const instruction = [identityInstruction(result.identity, true), result.systemPrompt]
+      .filter((part) => part.length > 0)
+      .join("\n\n");
     if (event.systemPromptOptions !== undefined) {
       event.systemPromptOptions.sections["botlake"] = instruction;
       return;

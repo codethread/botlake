@@ -11,7 +11,7 @@ export const pi: Provider = {
     const options = [...run.extraArgs];
     if (run.model !== undefined) options.push("--model", run.model);
     if (run.effort !== undefined) options.push("--thinking", run.effort);
-    for (const prompt of run.systemPrompts) options.push("--append-system-prompt", prompt);
+    if (run.systemPrompt.length > 0) options.push("--append-system-prompt", run.systemPrompt);
 
     return {
       command: [

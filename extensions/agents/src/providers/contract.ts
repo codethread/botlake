@@ -8,7 +8,7 @@ export interface ProviderSettings {
   model?: string | undefined;
   effort?: string | undefined;
   extraArgs: string[];
-  systemPrompts: string[];
+  systemPrompt: string;
 }
 
 export type ProviderRun = ProviderSettings & {

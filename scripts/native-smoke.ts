@@ -194,7 +194,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       resumes: false as const,
       model: setting.model,
       extraArgs: setting.extraArgs,
-      systemPrompts: [],
+      systemPrompt: "",
     };
     const plan = provider(name).prepare(definition);
 

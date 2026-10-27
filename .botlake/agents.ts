@@ -2,7 +2,11 @@ import { agents } from "@botlake/extension-agents";
 
 import { flagNames } from "./flags.ts";
 
+const projectPrompt =
+  "This project uses Botlake to manage work and agents. Use `bl prime agent` before delegating work.";
+
 export default agents({
+  unmanaged: { systemPrompt: projectPrompt },
   aliases: {
     deepseek: {
       doc: `DeepSeek V4.1 Flash. Fast, inexpensive coding for well-scoped acceptance
@@ -65,6 +69,7 @@ export default agents({
       doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
       parent: "astra",
       effort: "high",
+      systemPrompt: projectPrompt,
     },
     reviewer: [
       { doc: `Default targeted review seat: prefer Sol.`, parent: "sol" },
@@ -87,6 +92,7 @@ export default agents({
         headless, not interactive.`,
       parent: "sol",
       effort: "low",
+      systemPrompt: projectPrompt,
     },
   },
 });

@@ -14,6 +14,8 @@ The target workspace must select Identity, Flags and Agents. Discovery uses the 
 
 Pi and Claude shell injection sets `BL_ACTOR` to the native identity and supplies `BL_AGENT_SEAT`, `BL_MODEL` and `BL_EFFORT` when known. Pi refreshes these on metadata changes. Codex, Claude child hooks and Claude hosts without `CLAUDE_ENV_FILE` receive explicit `--by-identity`/`--owner` guidance instead. Child sessions do not borrow parent metadata.
 
+Agents' `unmanaged.systemPrompt` supplies project context for direct sessions: Pi refreshes it before each turn, Claude/Codex at session/child startup. Managed runs receive their configured prompt through launch arguments instead; adapters do not add the unmanaged prompt. Project context requires a reachable lake; local identity still works when tracking is unavailable.
+
 Claude child keys are scoped attribution, not independently resumable sessions. Missing metadata stays unknown; capabilities describe adapter support, not proof that a host emitted every event. Activity is the last observation, not liveness or task completion.
 
 Database unavailability retains deterministic local identity and displays a tracking warning; it does not block native work. Without executed hooks, Botlake cannot inject context or observe unmanaged sessions. Managed output can still establish identity, labeled `agent/integration: output`. GUI support depends on that specific host executing the integration; installation alone proves nothing.

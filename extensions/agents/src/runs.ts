@@ -63,9 +63,9 @@ export class Agents {
     private readonly ctx: Context,
     options: AgentOptions = {},
   ) {
-    this.sessions = new NativeSessions(ctx, this.authority);
     const { providers, ...config } = options;
     const configuration = agentConfigSchema.parse(config);
+    this.sessions = new NativeSessions(ctx, this.authority, configuration.unmanaged?.systemPrompt);
 
     for (const entry of providers ?? [provider("codex"), provider("pi"), provider("claude")]) {
       if (this.providers.has(entry.name))
@@ -159,7 +159,7 @@ export class Agents {
 
       const seat =
         parent === undefined
-          ? this.seats.resolve(input.seat)
+          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
           : seatSchema.parse(parent.attributes["agent/settings"]);
       if (!this.providers.has(seat.provider))
         throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
@@ -203,8 +203,8 @@ export class Agents {
           parent === undefined
             ? {
                 ...seat,
-                systemPrompts: [
-                  ...seat.systemPrompts,
+                systemPrompt: [
+                  seat.systemPrompt,
                   ...(input.target === undefined
                     ? []
                     : [
@@ -214,7 +214,9 @@ export class Agents {
                             : "Stop after reporting results; completing the process does not close the task."
                         }`,
                       ]),
-                ],
+                ]
+                  .filter((part) => part.length > 0)
+                  .join("\n\n"),
               }
             : parent.attributes["agent/settings"],
         ),
@@ -246,7 +248,7 @@ export class Agents {
       model: seat.model,
       effort: seat.effort,
       extraArgs: seat.extraArgs,
-      systemPrompts: seat.systemPrompts,
+      systemPrompt: seat.systemPrompt,
     };
   }
 
