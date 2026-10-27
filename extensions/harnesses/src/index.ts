@@ -74,7 +74,7 @@ export class Harnesses {
     this.seats = new Catalog(
       [...this.providers.values()].map((entry) => entry.name),
       this.configuration.aliases,
-      (name) => getFlag(ctx, name),
+      (name) => getFlag(ctx, name)?.value,
     );
     ctx.graph.protect((changes, token) => {
       if (token === this.authority) return;

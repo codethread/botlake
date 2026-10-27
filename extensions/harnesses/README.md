@@ -27,7 +27,18 @@ export default harnesses({
 });
 ```
 
-In a separate selected Flags module, configure defaults with `flags({ "model/openai": true, "model/anthropic": true })`. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `harness/NAME` flag is explicitly false.
+In a separate selected [Flags module](../flags/README.md), configure described defaults:
+
+```ts
+import { flags } from "@botlake/extension-flags";
+
+export default flags({
+  "model/openai": { description: "Enable OpenAI model seats.", value: true },
+  "model/anthropic": { description: "Enable Anthropic model seats.", value: true },
+});
+```
+
+Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `harness/NAME` flag's value is explicitly false.
 
 ## Catalog and routing
 

@@ -11,7 +11,7 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/core`](packages/core/README.md) | Graph, operations, activation, events, durable wakes, workers | None |
 | [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
-| [`@botlake/extension-flags`](extensions/flags/README.md) | Workspace-local runtime booleans shared by extensions | None |
+| [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
 | [`@botlake/extension-harnesses`](extensions/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity, Flags |
 | [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
 | [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
@@ -49,7 +49,7 @@ bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do 
 bl agent show RUN_ID
 ```
 
-Flags are lake-local and reset to configured defaults on lake restart. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
+Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
 
 In another workspace, install core and the extensions you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select extensions in `.botlake/package.json`:
 
