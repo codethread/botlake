@@ -1,6 +1,6 @@
 // Diagnostic only: use a copy of a seeded disposable database, after the wire benchmarks.
 // bun --cpu-prof --cpu-prof-dir /tmp/profile scripts/profiling/ts-hotpaths.ts DB QUERIES_JSON
-import { compileQuery, predicateSchema, Runtime } from "@botlake/core";
+import { sql, compileQuery, predicateSchema, Runtime } from "@botlake/core";
 import batteriesExtension from "@botlake/extension-batteries";
 import { z } from "zod";
 
@@ -27,26 +27,32 @@ async function measure(name: string, run: () => unknown): Promise<void> {
 try {
   await runtime.start([batteriesExtension]);
   records.push({
-    sqlite: runtime.graph.db.query("SELECT sqlite_version() AS version").get(),
-    journal: runtime.graph.db.query("PRAGMA journal_mode").get(),
-    synchronous: runtime.graph.db.query("PRAGMA synchronous").get(),
-    cache: runtime.graph.db.query("PRAGMA cache_size").get(),
-    mmap: runtime.graph.db.query("PRAGMA mmap_size").get(),
+    sqlite: runtime.graph.db.query(sql`SELECT sqlite_version() AS version`).get(),
+    journal: runtime.graph.db.query(sql`PRAGMA journal_mode`).get(),
+    synchronous: runtime.graph.db.query(sql`PRAGMA synchronous`).get(),
+    cache: runtime.graph.db.query(sql`PRAGMA cache_size`).get(),
+    mmap: runtime.graph.db.query(sql`PRAGMA mmap_size`).get(),
   });
   for (const [name, [op, input]] of Object.entries(queries)) {
     if (op !== "list") continue;
     const query = z.object({ where: predicateSchema, limit: z.number() }).parse(input);
     const compiled = compileQuery(query.where);
-    const sql = `SELECT s.id FROM nodes s WHERE ${compiled.sql} ORDER BY s.created_at,s.id LIMIT ?`;
-    const statement = runtime.graph.db.query(sql);
+    const querySql = sql`
+      SELECT s.id
+      FROM nodes s
+      WHERE ${compiled.sql}
+      ORDER BY s.created_at, s.id
+      LIMIT ?
+    `;
+    const statement = runtime.graph.db.query(querySql);
     const rows = runtime.graph.list(query);
     records.push({
       name,
       rows: rows.length,
-      sql,
+      sql: querySql,
       bindings: compiled.bindings,
       plan: runtime.graph.db
-        .query(`EXPLAIN QUERY PLAN ${sql}`)
+        .query(sql`EXPLAIN QUERY PLAN ${querySql}`)
         .all(...compiled.bindings, query.limit),
     });
     await measure(`${name}:prepared-id-query`, () =>

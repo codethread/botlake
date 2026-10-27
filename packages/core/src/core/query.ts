@@ -4,6 +4,7 @@ import { match, P } from "ts-pattern";
 import { z } from "zod";
 
 import { Fault, type Json } from "./json.ts";
+import { sql } from "./sql.ts";
 
 const fieldSchema = z.union([
   z.enum(["id", "title", "state", "created_at", "updated_at", "revision"]),
@@ -61,10 +62,10 @@ export function compileQuery(
           ? Number(value)
           : value,
     );
-    return "?";
+    return sql`?`;
   }
-  function negate(sql: string, negated: boolean): string {
-    return negated ? `(NOT (${sql}))` : sql;
+  function negate(expression: string, negated: boolean): string {
+    return negated ? sql`(NOT (${expression}))` : expression;
   }
   function visit(predicate: Predicate, alias: string, inEdge: boolean, negated = false): string {
     return match(predicate)
@@ -72,9 +73,9 @@ export function compileQuery(
       .with(
         { op: P.union("and", "or") },
         (node) =>
-          `(${node.args
+          sql`(${node.args
             .map((arg) => visit(arg, alias, inEdge, negated))
-            .join((node.op === "and") !== negated ? " AND " : " OR ")})`,
+            .join((node.op === "and") !== negated ? sql` AND ` : sql` OR `)})`,
       )
       .with({ op: "not" }, ({ arg }) => visit(arg, alias, inEdge, !negated))
       .with({ op: "edge" }, (node) => {
@@ -84,9 +85,16 @@ export function compileQuery(
         const from = node.direction === "out" ? "from_id" : "to_id";
         const to = node.direction === "out" ? "to_id" : "from_id";
         const rel = bind(node.relation);
-        const where = node.where === undefined ? "1" : visit(node.where, endpoint, true);
+        const where = node.where === undefined ? sql`1` : visit(node.where, endpoint, true);
         return negate(
-          `EXISTS (SELECT 1 FROM edges ${edge} JOIN nodes ${endpoint} ON ${endpoint}.id=${edge}.${to} WHERE ${edge}.${from}=${alias}.id AND ${edge}.relation=${rel} AND ${where})`,
+          sql`EXISTS (
+            SELECT 1
+            FROM edges ${edge}
+            JOIN nodes ${endpoint} ON ${endpoint}.id = ${edge}.${to}
+            WHERE ${edge}.${from} = ${alias}.id
+              AND ${edge}.relation = ${rel}
+              AND ${where}
+          )`,
           negated,
         );
       })
@@ -94,19 +102,25 @@ export function compileQuery(
         let prefix = "";
         let suffix = "";
         let expression: string;
-        if (typeof node.field === "string") expression = `${alias}.${node.field}`;
+        if (typeof node.field === "string") expression = sql`${alias}.${node.field}`;
         else {
           const attr = `a${++counter}`;
           const key = bind(node.field.attr);
           const path = bind(
             `$${node.field.path.map((part) => `.${JSON.stringify(part)}`).join("")}`,
           );
-          expression = `json_extract(${attr}.value, ${path})`;
-          prefix = `EXISTS (SELECT 1 FROM attributes ${attr} WHERE ${attr}.node_id=${alias}.id AND ${attr}.archived=0 AND ${attr}.key=${key} AND `;
-          suffix = ")";
+          expression = sql`json_extract(${attr}.value, ${path})`;
+          prefix = sql`EXISTS (
+            SELECT 1
+            FROM attributes ${attr}
+            WHERE ${attr}.node_id = ${alias}.id
+              AND ${attr}.archived = 0
+              AND ${attr}.key = ${key}
+              AND `;
+          suffix = sql`)`;
         }
         if (node.op === "exists" || node.op === "missing") {
-          const exists = `${prefix}${expression} IS NOT NULL${suffix}`;
+          const exists = sql`${prefix}${expression} IS NOT NULL${suffix}`;
           return negate(exists, (node.op === "missing") !== negated);
         }
         let value = node.value;
@@ -124,17 +138,16 @@ export function compileQuery(
         if (node.op === "in") {
           if (!Array.isArray(value) || value.length === 0)
             throw new Fault("query", "in requires a nonempty array");
-          return `${prefix}${negate(`${expression} IN (${value.map((entry) => bind(entry)).join(",")})`, negated)}${suffix}`;
+          const placeholders = value.map((entry) => bind(entry)).join(", ");
+          const comparison = sql`${expression} IN (${placeholders})`;
+          return sql`${prefix}${negate(comparison, negated)}${suffix}`;
         }
-        return `${prefix}${negate(
-          `${expression} ${node.op === "!=" ? "<>" : node.op} ${bind(value)}`,
-          negated,
-        )}${suffix}`;
+        const comparison = sql`${expression} ${node.op === "!=" ? "<>" : node.op} ${bind(value)}`;
+        return sql`${prefix}${negate(comparison, negated)}${suffix}`;
       })
       .exhaustive();
   }
-  const sql = visit(predicateSchema.parse(input), "s", false);
-  return { sql, bindings };
+  return { sql: visit(predicateSchema.parse(input), "s", false), bindings };
 }
 
 export interface NamedQuery {

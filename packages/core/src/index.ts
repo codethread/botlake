@@ -4,6 +4,7 @@ export type { Node, Edge, Mutation, Patch, Guard, GraphEvent, Selection } from "
 export { Fault, isFault, attributesSchema, canonical, encode, requireValue } from "./core/json.ts";
 
 export type { Json, Attributes } from "./core/json.ts";
+export { sql } from "./core/sql.ts";
 export { compileQuery, q, predicateSchema } from "./core/query.ts";
 
 export type { Field, Predicate, QueryParameter, NamedQuery } from "./core/query.ts";

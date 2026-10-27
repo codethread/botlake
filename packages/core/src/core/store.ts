@@ -16,6 +16,7 @@ import {
   type Attributes,
 } from "./json.ts";
 import { compileQuery, type Predicate } from "./query.ts";
+import { sql } from "./sql.ts";
 
 const stateSchema = z.enum(["active", "closed", "replaced"]);
 
@@ -109,21 +110,70 @@ export interface GraphEvent {
 
 export type Guard = (changes: readonly Mutation[], authority: symbol | undefined) => void;
 
-const ddl = `
-CREATE TABLE nodes(id TEXT PRIMARY KEY,title TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('active','closed','replaced')),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,revision INTEGER NOT NULL);
-CREATE TABLE attributes(node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL CHECK(json_valid(value)),archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),PRIMARY KEY(node_id,key));
-CREATE INDEX attrs_hot ON attributes(key,value) WHERE archived=0;
-CREATE TABLE edges(from_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,to_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,relation TEXT NOT NULL,attributes TEXT NOT NULL CHECK(json_valid(attributes)),PRIMARY KEY(from_id,to_id,relation),CHECK(from_id<>to_id));
-CREATE INDEX edges_to ON edges(to_id,relation);
-CREATE UNIQUE INDEX single_serves ON edges(from_id) WHERE relation='serves';
-CREATE TABLE acyclic_relations(relation TEXT PRIMARY KEY);
-INSERT INTO acyclic_relations VALUES ('depends-on'),('parent-of'),('supersedes'),('serves'),('notes');
-CREATE TABLE immutable_keys(key TEXT PRIMARY KEY);
-INSERT INTO immutable_keys VALUES ('note/text'),('note/at');
-CREATE TABLE burns(sequence INTEGER PRIMARY KEY AUTOINCREMENT,node_id TEXT NOT NULL,snapshot TEXT NOT NULL,at INTEGER NOT NULL);
-CREATE TABLE wakes(key TEXT PRIMARY KEY,at INTEGER NOT NULL,handler TEXT NOT NULL,payload TEXT NOT NULL,generation TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE wake_history(sequence INTEGER PRIMARY KEY AUTOINCREMENT,key TEXT NOT NULL,generation TEXT NOT NULL,status TEXT NOT NULL,at INTEGER NOT NULL,error TEXT);
-PRAGMA user_version=1;`;
+const ddl = sql`
+  CREATE TABLE nodes (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('active', 'closed', 'replaced')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    revision INTEGER NOT NULL
+  );
+
+  CREATE TABLE attributes (
+    node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL CHECK (json_valid(value)),
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    PRIMARY KEY (node_id, key)
+  );
+  CREATE INDEX attrs_hot ON attributes(key, value) WHERE archived = 0;
+
+  CREATE TABLE edges (
+    from_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    to_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    relation TEXT NOT NULL,
+    attributes TEXT NOT NULL CHECK (json_valid(attributes)),
+    PRIMARY KEY (from_id, to_id, relation),
+    CHECK (from_id <> to_id)
+  );
+  CREATE INDEX edges_to ON edges(to_id, relation);
+  CREATE UNIQUE INDEX single_serves ON edges(from_id) WHERE relation = 'serves';
+
+  CREATE TABLE acyclic_relations (relation TEXT PRIMARY KEY);
+  INSERT INTO acyclic_relations
+  VALUES ('depends-on'), ('parent-of'), ('supersedes'), ('serves'), ('notes');
+
+  CREATE TABLE immutable_keys (key TEXT PRIMARY KEY);
+  INSERT INTO immutable_keys VALUES ('note/text'), ('note/at');
+
+  CREATE TABLE burns (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+
+  CREATE TABLE wakes (
+    key TEXT PRIMARY KEY,
+    at INTEGER NOT NULL,
+    handler TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE wake_history (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    status TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    error TEXT
+  );
+
+  PRAGMA user_version = 1;
+`;
 
 export interface Selection {
   where?: Predicate | undefined;
@@ -149,12 +199,22 @@ export class Graph {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path, { create: true, strict: true });
     try {
-      this.db.run("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+      this.db.run(sql`
+        PRAGMA journal_mode = WAL;
+        PRAGMA foreign_keys = ON;
+        PRAGMA busy_timeout = 5000;
+      `);
       const version = z
         .object({ user_version: z.number() })
-        .parse(this.db.query("PRAGMA user_version").get()).user_version;
+        .parse(this.db.query(sql`PRAGMA user_version`).get()).user_version;
       if (version === 0) {
-        const tables = this.db.query("SELECT name FROM sqlite_master WHERE type='table'").all();
+        const tables = this.db
+          .query(sql`
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+          `)
+          .all();
         if (tables.length > 0) throw new Fault("schema", "Only fresh workspaces are supported");
         this.db.transaction(() => this.db.run(ddl)).immediate();
       } else if (version !== 1)
@@ -228,19 +288,27 @@ export class Graph {
 
   show(id: string, lean = false): Node {
     const row = rowSchema.parse(
-      requireValue(this.db.query("SELECT * FROM nodes WHERE id=?").get(id), `Unknown node: ${id}`),
-    );
-    const attrs = z
-      .array(z.object({ key: z.string(), value: z.string() }))
-      .parse(
+      requireValue(
         this.db
-          .query(
-            `SELECT key,value FROM attributes WHERE node_id=?${
-              lean ? " AND archived=0" : ""
-            } ORDER BY key`,
-          )
-          .all(id),
-      );
+          .query(sql`
+            SELECT *
+            FROM nodes
+            WHERE id = ?
+          `)
+          .get(id),
+        `Unknown node: ${id}`,
+      ),
+    );
+    const attrs = z.array(z.object({ key: z.string(), value: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT key, value
+          FROM attributes
+          WHERE node_id = ? ${lean ? sql`AND archived = 0` : ""}
+          ORDER BY key
+        `)
+        .all(id),
+    );
     return {
       ...row,
       attributes: Object.fromEntries(attrs.map((entry) => [entry.key, decode(entry.value)])),
@@ -264,23 +332,33 @@ export class Graph {
   private select(options: Selection, limit?: number): Node[] {
     const query =
       options.where === undefined
-        ? { sql: "1", bindings: [] }
+        ? { sql: sql`1`, bindings: [] }
         : compileQuery(options.where, options.params);
     const ready =
       options.ready === true
-        ? " AND s.state='active' AND NOT EXISTS(SELECT 1 FROM edges e JOIN nodes target ON target.id=e.to_id WHERE e.from_id=s.id AND e.relation='depends-on' AND target.state='active')"
-        : "";
-    const ids = z
-      .array(z.object({ id: z.string() }))
-      .parse(
-        this.db
-          .query(
-            `SELECT s.id FROM nodes s WHERE ${query.sql}${ready} ORDER BY s.created_at,s.id${
-              limit === undefined ? "" : " LIMIT ?"
-            }`,
+        ? sql`
+          AND s.state = 'active'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM edges e
+            JOIN nodes target ON target.id = e.to_id
+            WHERE e.from_id = s.id
+              AND e.relation = 'depends-on'
+              AND target.state = 'active'
           )
-          .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
-      );
+        `
+        : "";
+    const ids = z.array(z.object({ id: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT s.id
+          FROM nodes s
+          WHERE ${query.sql} ${ready}
+          ORDER BY s.created_at, s.id
+          ${limit === undefined ? "" : sql`LIMIT ?`}
+        `)
+        .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
+    );
     return ids.map(({ id }) => this.show(id, options.lean ?? true));
   }
   add(input: {
@@ -294,10 +372,18 @@ export class Graph {
       const id = crypto.randomUUID();
       const at = new Date(this.now()).toISOString();
       this.db
-        .query("INSERT INTO nodes VALUES(?,?,?,?,?,1)")
+        .query(sql`
+          INSERT INTO nodes
+          VALUES (?, ?, ?, ?, ?, 1)
+        `)
         .run(id, parsed.title, parsed.state ?? "active", at, at);
       for (const [key, value] of Object.entries(parsed.attributes ?? {}))
-        this.db.query("INSERT INTO attributes VALUES(?,?,?,0)").run(id, key, encode(value));
+        this.db
+          .query(sql`
+            INSERT INTO attributes
+            VALUES (?, ?, ?, 0)
+          `)
+          .run(id, key, encode(value));
 
       const after = this.show(id);
       this.record({ kind: "node", before: null, after });
@@ -317,7 +403,14 @@ export class Graph {
         });
 
       this.db
-        .query("UPDATE nodes SET title=?,state=?,updated_at=?,revision=revision+1 WHERE id=?")
+        .query(sql`
+          UPDATE nodes
+          SET title = ?,
+              state = ?,
+              updated_at = ?,
+              revision = revision + 1
+          WHERE id = ?
+        `)
         .run(
           patch.title ?? before.title,
           patch.state ?? before.state,
@@ -343,9 +436,14 @@ export class Graph {
     const before = this.show(id).attributes;
     const after = merge(before, patch);
 
-    const keys = z
-      .array(z.object({ key: z.string() }))
-      .parse(this.db.query("SELECT key FROM immutable_keys").all());
+    const keys = z.array(z.object({ key: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT key
+          FROM immutable_keys
+        `)
+        .all(),
+    );
     for (const { key } of keys)
       if (
         before[key] !== undefined &&
@@ -356,12 +454,22 @@ export class Graph {
     for (const key of Object.keys(patch)) {
       const value = after[key];
       if (value === undefined)
-        this.db.query("DELETE FROM attributes WHERE node_id=? AND key=?").run(id, key);
+        this.db
+          .query(sql`
+            DELETE FROM attributes
+            WHERE node_id = ?
+              AND key = ?
+          `)
+          .run(id, key);
       else
         this.db
-          .query(
-            "INSERT INTO attributes VALUES(?,?,?,0) ON CONFLICT(node_id,key) DO UPDATE SET value=excluded.value,archived=0",
-          )
+          .query(sql`
+            INSERT INTO attributes
+            VALUES (?, ?, ?, 0)
+            ON CONFLICT (node_id, key) DO UPDATE SET
+              value = excluded.value,
+              archived = 0
+          `)
           .run(id, key, encode(value));
     }
   }
@@ -374,13 +482,33 @@ export class Graph {
       for (const key of keys) {
         if (before.attributes[key] === undefined)
           throw new Fault("archive", `Unknown attribute: ${key}`);
-        if (this.db.query("SELECT 1 FROM immutable_keys WHERE key=?").get(key) !== null)
+        if (
+          this.db
+            .query(sql`
+              SELECT 1
+              FROM immutable_keys
+              WHERE key = ?
+            `)
+            .get(key) !== null
+        )
           throw new Fault("immutable", `Immutable attribute: ${key}`);
-        this.db.query("UPDATE attributes SET archived=1 WHERE node_id=? AND key=?").run(id, key);
+        this.db
+          .query(sql`
+            UPDATE attributes
+            SET archived = 1
+            WHERE node_id = ?
+              AND key = ?
+          `)
+          .run(id, key);
       }
 
       this.db
-        .query("UPDATE nodes SET revision=revision+1,updated_at=? WHERE id=?")
+        .query(sql`
+          UPDATE nodes
+          SET revision = revision + 1,
+              updated_at = ?
+          WHERE id = ?
+        `)
         .run(new Date(this.now()).toISOString(), id);
       const after = this.show(id);
       this.record({ kind: "node", before, after });
@@ -393,9 +521,13 @@ export class Graph {
       .array(edgeRow)
       .parse(
         this.db
-          .query(
-            "SELECT * FROM edges WHERE (? IS NULL OR from_id=? OR to_id=?) AND (? IS NULL OR relation=?) ORDER BY from_id,to_id,relation",
-          )
+          .query(sql`
+            SELECT *
+            FROM edges
+            WHERE (? IS NULL OR from_id = ? OR to_id = ?)
+              AND (? IS NULL OR relation = ?)
+            ORDER BY from_id, to_id, relation
+          `)
           .all(id ?? null, id ?? null, id ?? null, relation ?? null, relation ?? null),
       )
       .map((edge) => ({ ...edge, attributes: object(edge.attributes) }));
@@ -403,7 +535,13 @@ export class Graph {
 
   edge(from: string, to: string, relation: string): Edge | null {
     const row = this.db
-      .query("SELECT * FROM edges WHERE from_id=? AND to_id=? AND relation=?")
+      .query(sql`
+        SELECT *
+        FROM edges
+        WHERE from_id = ?
+          AND to_id = ?
+          AND relation = ?
+      `)
       .get(from, to, relation);
     if (row === null) return null;
     const parsed = edgeRow.parse(row);
@@ -418,20 +556,39 @@ export class Graph {
       const before = this.edge(from, to, relation);
 
       if (
-        this.db.query("SELECT 1 FROM acyclic_relations WHERE relation=?").get(relation) !== null
+        this.db
+          .query(sql`
+            SELECT 1
+            FROM acyclic_relations
+            WHERE relation = ?
+          `)
+          .get(relation) !== null
       ) {
         const cycle = this.db
-          .query(
-            "WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT e.to_id FROM edges e JOIN reachable r ON e.from_id=r.id WHERE e.relation=?) SELECT 1 FROM reachable WHERE id=?",
-          )
+          .query(sql`
+            WITH RECURSIVE reachable(id) AS (
+              SELECT ?
+              UNION
+              SELECT e.to_id
+              FROM edges e
+              JOIN reachable r ON e.from_id = r.id
+              WHERE e.relation = ?
+            )
+            SELECT 1
+            FROM reachable
+            WHERE id = ?
+          `)
           .get(to, relation, from);
         if (cycle !== null) throw new Fault("cycle", `Cycle in ${relation}`);
       }
 
       this.db
-        .query(
-          "INSERT INTO edges VALUES(?,?,?,?) ON CONFLICT(from_id,to_id,relation) DO UPDATE SET attributes=excluded.attributes",
-        )
+        .query(sql`
+          INSERT INTO edges
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT (from_id, to_id, relation) DO UPDATE SET
+            attributes = excluded.attributes
+        `)
         .run(from, to, relation, encode(attributes));
       const after = { from_id: from, to_id: to, relation, attributes };
       this.record({ kind: "edge", before, after });
@@ -443,7 +600,12 @@ export class Graph {
     return this.atomic(() => {
       const before = requireValue(this.edge(from, to, relation), "Unknown edge");
       this.db
-        .query("DELETE FROM edges WHERE from_id=? AND to_id=? AND relation=?")
+        .query(sql`
+          DELETE FROM edges
+          WHERE from_id = ?
+            AND to_id = ?
+            AND relation = ?
+        `)
         .run(from, to, relation);
       this.record({ kind: "edge", before, after: null });
       return before;
@@ -452,16 +614,43 @@ export class Graph {
 
   declareAcyclic(relation: string): void {
     this.atomic(() => {
-      if (this.db.query("SELECT 1 FROM acyclic_relations WHERE relation=?").get(relation) !== null)
+      if (
+        this.db
+          .query(sql`
+            SELECT 1
+            FROM acyclic_relations
+            WHERE relation = ?
+          `)
+          .get(relation) !== null
+      )
         return;
-      if (this.db.query("SELECT 1 FROM edges WHERE relation=? LIMIT 1").get(relation) !== null)
+      if (
+        this.db
+          .query(sql`
+            SELECT 1
+            FROM edges
+            WHERE relation = ?
+            LIMIT 1
+          `)
+          .get(relation) !== null
+      )
         throw new Fault("relation", "Declare acyclic relations before adding edges");
-      this.db.query("INSERT INTO acyclic_relations VALUES(?)").run(relation);
+      this.db
+        .query(sql`
+          INSERT INTO acyclic_relations
+          VALUES (?)
+        `)
+        .run(relation);
     });
   }
 
   declareImmutable(key: string): void {
-    this.db.query("INSERT OR IGNORE INTO immutable_keys VALUES(?)").run(key);
+    this.db
+      .query(sql`
+        INSERT OR IGNORE INTO immutable_keys
+        VALUES (?)
+      `)
+      .run(key);
   }
 
   supersede(id: string, replacement: string): Node {
@@ -472,7 +661,13 @@ export class Graph {
         throw new Fault("supersede", "Replacement must be a different active node");
 
       this.db
-        .query("UPDATE nodes SET state='replaced',revision=revision+1,updated_at=? WHERE id=?")
+        .query(sql`
+          UPDATE nodes
+          SET state = 'replaced',
+              revision = revision + 1,
+              updated_at = ?
+          WHERE id = ?
+        `)
         .run(new Date(this.now()).toISOString(), id);
       this.record({ kind: "node", before, after: this.show(id) });
       this.connect(replacement, id, "supersedes");
@@ -493,7 +688,11 @@ export class Graph {
       const records = ids.map((id) => {
         const node = this.show(id);
         const attributes = this.db
-          .query("SELECT key,value,archived FROM attributes WHERE node_id=?")
+          .query(sql`
+            SELECT key, value, archived
+            FROM attributes
+            WHERE node_id = ?
+          `)
           .all(id);
         return { node, attributes, edges: this.edges(id) };
       });
@@ -501,7 +700,10 @@ export class Graph {
       const removedEdges = new Map<string, Edge>();
       for (const record of records) {
         this.db
-          .query("INSERT INTO burns(node_id,snapshot,at) VALUES(?,?,?)")
+          .query(sql`
+            INSERT INTO burns (node_id, snapshot, at)
+            VALUES (?, ?, ?)
+          `)
           .run(record.node.id, encode(record), this.now());
         this.record({ kind: "node", before: record.node, after: null });
         for (const edge of record.edges)
@@ -510,13 +712,26 @@ export class Graph {
       for (const edge of removedEdges.values())
         this.record({ kind: "edge", before: edge, after: null });
 
-      for (const id of ids) this.db.query("DELETE FROM nodes WHERE id=?").run(id);
+      for (const id of ids)
+        this.db
+          .query(sql`
+            DELETE FROM nodes
+            WHERE id = ?
+          `)
+          .run(id);
       return records.map(({ node }) => node);
     });
   }
 
   tombstones(id: string): unknown[] {
-    return this.db.query("SELECT * FROM burns WHERE node_id=? ORDER BY sequence").all(id);
+    return this.db
+      .query(sql`
+        SELECT *
+        FROM burns
+        WHERE node_id = ?
+        ORDER BY sequence
+      `)
+      .all(id);
   }
   subgraph(root: string, relation = "parent-of"): { nodes: Node[]; edges: Edge[] } {
     this.show(root);
@@ -524,9 +739,18 @@ export class Graph {
       .array(z.object({ id: z.string() }))
       .parse(
         this.db
-          .query(
-            "WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT e.to_id FROM edges e JOIN tree t ON e.from_id=t.id WHERE e.relation=?) SELECT id FROM tree",
-          )
+          .query(sql`
+            WITH RECURSIVE tree(id) AS (
+              SELECT ?
+              UNION
+              SELECT e.to_id
+              FROM edges e
+              JOIN tree t ON e.from_id = t.id
+              WHERE e.relation = ?
+            )
+            SELECT id
+            FROM tree
+          `)
           .all(root, relation),
       )
       .map(({ id }) => id);

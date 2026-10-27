@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, ManualClock, type Context, type Extension } from "@botlake/core";
+import { sql, Runtime, ManualClock, type Context, type Extension } from "@botlake/core";
 import { batteries } from "@botlake/extension-batteries";
 import { Cron, defineJob, nextFire } from "@botlake/extension-cron";
 import { identity } from "@botlake/extension-identity";
@@ -353,9 +353,10 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
   await world([extension], clock, async (runtime, path) => {
     // Durable state left by an interrupted handler, before it could record an outcome.
     runtime.graph.db
-      .query(
-        "INSERT INTO cron_occurrences(id,job,scheduled_at,status,attempt) VALUES('recover/0','recover',0,'running',1)",
-      )
+      .query(sql`
+        INSERT INTO cron_occurrences (id, job, scheduled_at, status, attempt)
+        VALUES ('recover/0', 'recover', 0, 'running', 1)
+      `)
       .run();
     await runtime.stop();
     const recovered = new Runtime({ database: path, clock });

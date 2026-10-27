@@ -1,4 +1,12 @@
-import { encode, Fault, defineOp, type Json, type Context, type Extension } from "@botlake/core";
+import {
+  sql,
+  encode,
+  Fault,
+  defineOp,
+  type Json,
+  type Context,
+  type Extension,
+} from "@botlake/core";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 
@@ -85,10 +93,26 @@ export class Cron {
     jobs: Job[],
     private readonly actions: Record<string, Action>,
   ) {
-    ctx.graph.db
-      .run(`CREATE TABLE IF NOT EXISTS cron_jobs(id TEXT PRIMARY KEY,spec TEXT NOT NULL,next_at INTEGER NOT NULL,enabled INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS cron_occurrences(id TEXT PRIMARY KEY,job TEXT NOT NULL REFERENCES cron_jobs(id),scheduled_at INTEGER NOT NULL,status TEXT NOT NULL,attempt INTEGER NOT NULL DEFAULT 0,retry_at INTEGER,result TEXT,error TEXT);
-      CREATE INDEX IF NOT EXISTS cron_due ON cron_occurrences(status,retry_at);`);
+    ctx.graph.db.run(sql`
+      CREATE TABLE IF NOT EXISTS cron_jobs (
+        id TEXT PRIMARY KEY,
+        spec TEXT NOT NULL,
+        next_at INTEGER NOT NULL,
+        enabled INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cron_occurrences (
+        id TEXT PRIMARY KEY,
+        job TEXT NOT NULL REFERENCES cron_jobs(id),
+        scheduled_at INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        retry_at INTEGER,
+        result TEXT,
+        error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS cron_due ON cron_occurrences(status, retry_at);
+    `);
     for (const input of jobs) {
       const job = defineJob(input);
       if (this.jobs.has(job.id)) throw new Fault("collision", `Duplicate cron job: ${job.id}`);
@@ -109,39 +133,74 @@ export class Cron {
   start(): void {
     const now = this.ctx.clock.now();
     this.ctx.graph.atomic(() => {
-      for (const old of z
-        .array(persistedJob)
-        .parse(this.ctx.graph.db.query("SELECT * FROM cron_jobs").all()))
+      for (const old of z.array(persistedJob).parse(
+        this.ctx.graph.db
+          .query(sql`
+            SELECT *
+            FROM cron_jobs
+          `)
+          .all(),
+      ))
         if (!this.jobs.has(old.id)) {
-          this.ctx.graph.db.query("UPDATE cron_jobs SET enabled=0 WHERE id=?").run(old.id);
+          this.ctx.graph.db
+            .query(sql`
+              UPDATE cron_jobs
+              SET enabled = 0
+              WHERE id = ?
+            `)
+            .run(old.id);
           this.ctx.scheduler.cancel(`cron/${old.id}`);
           this.ctx.graph.db
-            .query(
-              "UPDATE cron_occurrences SET status='skipped',error='job removed' WHERE job=? AND status IN ('pending','running')",
-            )
+            .query(sql`
+              UPDATE cron_occurrences
+              SET status = 'skipped',
+                  error = 'job removed'
+              WHERE job = ?
+                AND status IN ('pending', 'running')
+            `)
             .run(old.id);
         }
       for (const job of this.jobs.values()) {
         const spec = encode(job);
-        const raw = this.ctx.graph.db.query("SELECT * FROM cron_jobs WHERE id=?").get(job.id);
+        const raw = this.ctx.graph.db
+          .query(sql`
+            SELECT *
+            FROM cron_jobs
+            WHERE id = ?
+          `)
+          .get(job.id);
         const old = raw === null ? undefined : persistedJob.parse(raw);
         const next =
           old?.spec === spec && old.enabled === 1 ? old.next_at : nextFire(job.schedule, now);
         if (old !== undefined && old.spec !== spec)
           this.ctx.graph.db
-            .query(
-              "UPDATE cron_occurrences SET status='skipped',error='job changed' WHERE job=? AND status IN ('pending','running')",
-            )
+            .query(sql`
+              UPDATE cron_occurrences
+              SET status = 'skipped',
+                  error = 'job changed'
+              WHERE job = ?
+                AND status IN ('pending', 'running')
+            `)
             .run(job.id);
         this.ctx.graph.db
-          .query(
-            "INSERT INTO cron_jobs VALUES(?,?,?,1) ON CONFLICT(id) DO UPDATE SET spec=excluded.spec,next_at=excluded.next_at,enabled=1",
-          )
+          .query(sql`
+            INSERT INTO cron_jobs
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT (id) DO UPDATE SET
+              spec = excluded.spec,
+              next_at = excluded.next_at,
+              enabled = 1
+          `)
           .run(job.id, spec, next);
         this.ctx.scheduler.schedule(`cron/${job.id}`, next, "cron/fire", { job: job.id });
       }
       this.ctx.graph.db
-        .query("UPDATE cron_occurrences SET status='pending',retry_at=? WHERE status='running'")
+        .query(sql`
+          UPDATE cron_occurrences
+          SET status = 'pending',
+              retry_at = ?
+          WHERE status = 'running'
+        `)
         .run(now);
     });
     this.dispatch();
@@ -152,7 +211,13 @@ export class Cron {
     if (job === undefined || this.stopping) return;
 
     const stored = persistedJob.parse(
-      this.ctx.graph.db.query("SELECT * FROM cron_jobs WHERE id=?").get(id),
+      this.ctx.graph.db
+        .query(sql`
+          SELECT *
+          FROM cron_jobs
+          WHERE id = ?
+        `)
+        .get(id),
     );
     const now = this.ctx.clock.now();
     if (stored.next_at > now) return;
@@ -178,14 +243,21 @@ export class Cron {
         const occurrence = `${job.id}/${at}`;
         const missed = job.missed === "skip" && nextFire(job.schedule, stored.next_at) <= now;
         this.ctx.graph.db
-          .query(
-            "INSERT OR IGNORE INTO cron_occurrences(id,job,scheduled_at,status,error) VALUES(?,?,?,?,?)",
-          )
+          .query(sql`
+            INSERT OR IGNORE INTO cron_occurrences (id, job, scheduled_at, status, error)
+            VALUES (?, ?, ?, ?, ?)
+          `)
           .run(occurrence, id, at, missed ? "skipped" : "pending", missed ? "missed" : null);
         at = nextFire(job.schedule, at);
         count++;
       } while (job.missed === "catch-up" && at <= now && count < 1000);
-      this.ctx.graph.db.query("UPDATE cron_jobs SET next_at=? WHERE id=?").run(at, id);
+      this.ctx.graph.db
+        .query(sql`
+          UPDATE cron_jobs
+          SET next_at = ?
+          WHERE id = ?
+        `)
+        .run(at, id);
       this.ctx.scheduler.schedule(`cron/${id}`, at, "cron/fire", { job: id });
     });
     this.dispatch();
@@ -194,15 +266,17 @@ export class Cron {
   private dispatch(): void {
     if (this.stopping) return;
 
-    const rows = z
-      .array(occurrenceSchema)
-      .parse(
-        this.ctx.graph.db
-          .query(
-            "SELECT * FROM cron_occurrences WHERE status='pending' AND (retry_at IS NULL OR retry_at<=?) ORDER BY scheduled_at,id",
-          )
-          .all(this.ctx.clock.now()),
-      );
+    const rows = z.array(occurrenceSchema).parse(
+      this.ctx.graph.db
+        .query(sql`
+          SELECT *
+          FROM cron_occurrences
+          WHERE status = 'pending'
+            AND (retry_at IS NULL OR retry_at <= ?)
+          ORDER BY scheduled_at, id
+        `)
+        .all(this.ctx.clock.now()),
+    );
     for (const occurrence of rows) {
       if (this.active.has(occurrence.id)) continue;
 
@@ -213,14 +287,23 @@ export class Cron {
       if (busy && job.overlap !== "allow") {
         if (job.overlap === "skip" && occurrence.attempt === 0)
           this.ctx.graph.db
-            .query("UPDATE cron_occurrences SET status='skipped',error='overlap' WHERE id=?")
+            .query(sql`
+              UPDATE cron_occurrences
+              SET status = 'skipped',
+                  error = 'overlap'
+              WHERE id = ?
+            `)
             .run(occurrence.id);
         continue;
       }
       this.ctx.graph.db
-        .query(
-          "UPDATE cron_occurrences SET status='running',attempt=attempt+1,retry_at=NULL WHERE id=?",
-        )
+        .query(sql`
+          UPDATE cron_occurrences
+          SET status = 'running',
+              attempt = attempt + 1,
+              retry_at = NULL
+          WHERE id = ?
+        `)
         .run(occurrence.id);
       this.runningJobs.set(occurrence.id, job.id);
       const task = this.execute(job, {
@@ -236,15 +319,16 @@ export class Cron {
       });
       this.active.set(occurrence.id, task);
     }
-    const retry = z
-      .object({ at: z.number().nullable() })
-      .parse(
-        this.ctx.graph.db
-          .query(
-            "SELECT min(retry_at) as at FROM cron_occurrences WHERE status='pending' AND retry_at>?",
-          )
-          .get(this.ctx.clock.now()),
-      );
+    const retry = z.object({ at: z.number().nullable() }).parse(
+      this.ctx.graph.db
+        .query(sql`
+          SELECT min(retry_at) as at
+          FROM cron_occurrences
+          WHERE status = 'pending'
+            AND retry_at > ?
+        `)
+        .get(this.ctx.clock.now()),
+    );
     if (retry.at !== null) this.ctx.scheduler.schedule("cron/retry", retry.at, "cron/retry");
   }
 
@@ -255,12 +339,24 @@ export class Cron {
 
       const result = await action(this.ctx, occurrence);
       this.ctx.graph.db
-        .query("UPDATE cron_occurrences SET status='succeeded',result=?,error=NULL WHERE id=?")
+        .query(sql`
+          UPDATE cron_occurrences
+          SET status = 'succeeded',
+              result = ?,
+              error = NULL
+          WHERE id = ?
+        `)
         .run(encode(result ?? null), occurrence.id);
     } catch (error) {
       const retry = occurrence.attempt <= job.retry.attempts;
       this.ctx.graph.db
-        .query("UPDATE cron_occurrences SET status=?,retry_at=?,error=? WHERE id=?")
+        .query(sql`
+          UPDATE cron_occurrences
+          SET status = ?,
+              retry_at = ?,
+              error = ?
+          WHERE id = ?
+        `)
         .run(
           retry ? "pending" : "failed",
           retry ? this.ctx.clock.now() + job.retry.delayMs : null,
@@ -271,12 +367,23 @@ export class Cron {
   }
 
   status(): unknown[] {
-    return this.ctx.graph.db.query("SELECT * FROM cron_jobs ORDER BY id").all();
+    return this.ctx.graph.db
+      .query(sql`
+        SELECT *
+        FROM cron_jobs
+        ORDER BY id
+      `)
+      .all();
   }
 
   history(job?: string): unknown[] {
     return this.ctx.graph.db
-      .query("SELECT * FROM cron_occurrences WHERE (? IS NULL OR job=?) ORDER BY scheduled_at,id")
+      .query(sql`
+        SELECT *
+        FROM cron_occurrences
+        WHERE (? IS NULL OR job = ?)
+        ORDER BY scheduled_at, id
+      `)
       .all(job ?? null, job ?? null);
   }
 

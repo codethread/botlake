@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { decode, encode, Fault, type Json } from "../core/json.ts";
+import { sql } from "../core/sql.ts";
 import type { Graph } from "../core/store.ts";
 import type { Clock } from "./clock.ts";
 
@@ -42,9 +43,16 @@ export class Scheduler {
     const generation = crypto.randomUUID();
     this.graph.atomic(() => {
       this.graph.db
-        .query(
-          "INSERT INTO wakes VALUES(?,?,?,?,?,0) ON CONFLICT(key) DO UPDATE SET at=excluded.at,handler=excluded.handler,payload=excluded.payload,generation=excluded.generation,attempts=0",
-        )
+        .query(sql`
+          INSERT INTO wakes
+          VALUES (?, ?, ?, ?, ?, 0)
+          ON CONFLICT (key) DO UPDATE SET
+            at = excluded.at,
+            handler = excluded.handler,
+            payload = excluded.payload,
+            generation = excluded.generation,
+            attempts = 0
+        `)
         .run(key, at, handler, encode(payload), generation);
       this.graph.afterCommit(() => {
         this.arm();
@@ -56,13 +64,27 @@ export class Scheduler {
 
   cancel(key: string): boolean {
     return this.graph.atomic(() => {
-      const wake = this.graph.db.query("SELECT * FROM wakes WHERE key=?").get(key);
+      const wake = this.graph.db
+        .query(sql`
+          SELECT *
+          FROM wakes
+          WHERE key = ?
+        `)
+        .get(key);
       if (wake === null) return false;
 
       const parsed = wakeSchema.parse(wake);
-      this.graph.db.query("DELETE FROM wakes WHERE key=?").run(key);
       this.graph.db
-        .query("INSERT INTO wake_history(key,generation,status,at) VALUES(?,?,'cancelled',?)")
+        .query(sql`
+          DELETE FROM wakes
+          WHERE key = ?
+        `)
+        .run(key);
+      this.graph.db
+        .query(sql`
+          INSERT INTO wake_history (key, generation, status, at)
+          VALUES (?, ?, 'cancelled', ?)
+        `)
         .run(key, parsed.generation, this.clock.now());
       this.graph.afterCommit(() => {
         this.arm();
@@ -74,12 +96,26 @@ export class Scheduler {
   pending(): Wake[] {
     return z
       .array(wakeSchema)
-      .parse(this.graph.db.query("SELECT * FROM wakes ORDER BY at,key").all())
+      .parse(
+        this.graph.db
+          .query(sql`
+            SELECT *
+            FROM wakes
+            ORDER BY at, key
+          `)
+          .all(),
+      )
       .map((wake) => ({ ...wake, payload: decode(wake.payload) }));
   }
 
   history(): unknown[] {
-    return this.graph.db.query("SELECT * FROM wake_history ORDER BY sequence").all();
+    return this.graph.db
+      .query(sql`
+        SELECT *
+        FROM wake_history
+        ORDER BY sequence
+      `)
+      .all();
   }
 
   validate(): void {
@@ -116,7 +152,13 @@ export class Scheduler {
     )) {
       const identity = `${wake.key}/${wake.generation}`;
       const claim = this.graph.db
-        .query("UPDATE wakes SET at=?,attempts=attempts+1 WHERE key=? AND generation=?")
+        .query(sql`
+          UPDATE wakes
+          SET at = ?,
+              attempts = attempts + 1
+          WHERE key = ?
+            AND generation = ?
+        `)
         .run(now + 1000, wake.key, wake.generation);
       if (claim.changes === 0) continue;
 
@@ -139,15 +181,25 @@ export class Scheduler {
       await handler({ ...wake, attempts: wake.attempts + 1 });
       this.graph.atomic(() => {
         this.graph.db
-          .query("DELETE FROM wakes WHERE key=? AND generation=?")
+          .query(sql`
+            DELETE FROM wakes
+            WHERE key = ?
+              AND generation = ?
+          `)
           .run(wake.key, wake.generation);
         this.graph.db
-          .query("INSERT INTO wake_history(key,generation,status,at) VALUES(?,?,'completed',?)")
+          .query(sql`
+            INSERT INTO wake_history (key, generation, status, at)
+            VALUES (?, ?, 'completed', ?)
+          `)
           .run(wake.key, wake.generation, this.clock.now());
       });
     } catch (error) {
       this.graph.db
-        .query("INSERT INTO wake_history(key,generation,status,at,error) VALUES(?,?,'failed',?,?)")
+        .query(sql`
+          INSERT INTO wake_history (key, generation, status, at, error)
+          VALUES (?, ?, 'failed', ?, ?)
+        `)
         .run(wake.key, wake.generation, this.clock.now(), String(error));
       this.failure(error);
     }

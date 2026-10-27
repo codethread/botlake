@@ -1,4 +1,4 @@
-import { defineOp, encode, requireValue, type Context, type Extension } from "@botlake/core";
+import { sql, defineOp, encode, requireValue, type Context, type Extension } from "@botlake/core";
 import { z } from "zod";
 
 const nameSchema = z.string().trim().min(1);
@@ -50,7 +50,13 @@ function flagState(initial: Flag | undefined, override?: Flag | null): FlagState
 
 export function inspectFlag(ctx: Context, name: string): FlagState {
   const initial = defaultsFor(ctx).get(name);
-  const row = ctx.graph.db.query("SELECT name,flag FROM flag_overrides WHERE name=?").get(name);
+  const row = ctx.graph.db
+    .query(sql`
+      SELECT name, flag
+      FROM flag_overrides
+      WHERE name = ?
+    `)
+    .get(name);
 
   return flagState(initial, row === null ? undefined : overrideSchema.parse(row).flag);
 }
@@ -63,9 +69,14 @@ export function listFlags(ctx: Context): Record<string, FlagState> {
   const initial = defaultsFor(ctx);
   const entries = new Map([...initial].map(([name, flag]) => [name, flagState(flag)]));
 
-  for (const row of z
-    .array(overrideSchema)
-    .parse(ctx.graph.db.query("SELECT name,flag FROM flag_overrides").all()))
+  for (const row of z.array(overrideSchema).parse(
+    ctx.graph.db
+      .query(sql`
+        SELECT name, flag
+        FROM flag_overrides
+      `)
+      .all(),
+  ))
     entries.set(row.name, flagState(initial.get(row.name), row.flag));
 
   return Object.fromEntries([...entries].toSorted(([a], [b]) => a.localeCompare(b)));
@@ -88,9 +99,12 @@ export function setFlag(
       ),
     });
     ctx.graph.db
-      .query(
-        "INSERT INTO flag_overrides(name,flag) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET flag=excluded.flag",
-      )
+      .query(sql`
+        INSERT INTO flag_overrides (name, flag)
+        VALUES (?, ?)
+        ON CONFLICT (name) DO UPDATE SET
+          flag = excluded.flag
+      `)
       .run(name, encode(flag));
 
     return flag;
@@ -104,9 +118,12 @@ export function unsetFlag(ctx: Context, name: string): boolean {
     if (getFlag(ctx, name) === undefined) return false;
 
     ctx.graph.db
-      .query(
-        "INSERT INTO flag_overrides(name,flag) VALUES(?,NULL) ON CONFLICT(name) DO UPDATE SET flag=NULL",
-      )
+      .query(sql`
+        INSERT INTO flag_overrides (name, flag)
+        VALUES (?, NULL)
+        ON CONFLICT (name) DO UPDATE SET
+          flag = NULL
+      `)
       .run(name);
 
     return true;
@@ -117,15 +134,23 @@ export function resetFlag(ctx: Context, name: string): boolean {
   defaultsFor(ctx);
 
   return (
-    ctx.graph.db.query("DELETE FROM flag_overrides WHERE name=?").run(nameSchema.parse(name))
-      .changes > 0
+    ctx.graph.db
+      .query(sql`
+        DELETE FROM flag_overrides
+        WHERE name = ?
+      `)
+      .run(nameSchema.parse(name)).changes > 0
   );
 }
 
 export function resetFlags(ctx: Context): number {
   defaultsFor(ctx);
 
-  return ctx.graph.db.query("DELETE FROM flag_overrides").run().changes;
+  return ctx.graph.db
+    .query(sql`
+      DELETE FROM flag_overrides
+    `)
+    .run().changes;
 }
 
 export function flags(defaults: Record<string, Flag> = {}): Extension {
@@ -133,9 +158,12 @@ export function flags(defaults: Record<string, Flag> = {}): Extension {
     name: "flags",
     activate(ctx) {
       const initial = new Map(Object.entries(flagsConfigSchema.parse(defaults)));
-      ctx.graph.db.run(
-        "CREATE TABLE IF NOT EXISTS flag_overrides(name TEXT PRIMARY KEY,flag TEXT)",
-      );
+      ctx.graph.db.run(sql`
+        CREATE TABLE IF NOT EXISTS flag_overrides (
+          name TEXT PRIMARY KEY,
+          flag TEXT
+        )
+      `);
       defaultsByContext.set(ctx, initial);
       ctx.resource({
         start() {},
