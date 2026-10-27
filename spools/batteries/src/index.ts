@@ -45,15 +45,15 @@ const guidance = {
     examples: ['strand update ID --expected-revision 2 --attributes \'{"priority":"p1"}\''],
   },
   list: {
-    description: "Select strands with a named or JSON query",
+    description: "Select strands, optionally with a named query",
     primer:
-      "Choose --query NAME or --where JSON, then bind named parameters with --params JSON. Archived values do not participate in hot selection.",
+      "Use --query NAME and --params JSON for named queries. For ad hoc predicates and composition use mill weaver eval with q and api.call('list', {where, params, limit}). The default limit is 100; a full page does not prove completeness. Archived values do not participate in hot selection.",
     examples: ["strand list --limit 20"],
   },
   ready: {
     description: "Select active strands whose dependencies are satisfied",
     primer:
-      "An active strand is ready when no outgoing depends-on target remains active. Combine readiness with a named or JSON query.",
+      "An active strand is ready when no outgoing depends-on target remains active. Use --query NAME and --params JSON, or mill weaver eval with api.call('ready', {where, params, limit}) for ad hoc predicates. The default limit is 100; a full page does not prove completeness.",
     examples: ["strand ready --limit 20"],
   },
   query: {
@@ -188,7 +188,6 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Spool {
           [],
           {
             query: { type: "string" },
-            where: { type: "json" },
             params: { type: "json" },
             limit: { type: "number" },
             lean: { type: "boolean" },

@@ -4,7 +4,7 @@ import {
   requireValue,
   strandSchema,
   defineOp,
-  equals,
+  q,
   type Attributes,
   type Json,
   type Strand,
@@ -22,6 +22,12 @@ function compare(left: string, right: string, fallback: number): number {
 const text = z.string().trim().min(1);
 const lane = z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]);
 const priority = z.enum(["p1", "p2", "p3", "p4"]);
+const pendingFeaturePredicate = q.and(
+  q.eq(q.attr("kanban/card"), true),
+  q.eq(q.attr("kanban/type"), "feature"),
+  q.eq(q.attr("kanban/lane"), "pending"),
+  q.missing(q.attr("kanban/link")),
+);
 const refsSchema = z
   .array(
     z.strictObject({
@@ -421,12 +427,10 @@ export class Kanban {
       throw new Fault("link", "Only active cards can be attached");
     return this.ctx.graph.atomic(() => {
       if (
-        this.ctx.graph
-          .all({ where: { op: "exists", field: { attr: "kanban/link", path: [] } } })
-          .some((card) => {
-            const link = linkSchema.parse(card.attributes["kanban/link"]);
-            return link.workspace === workspace && link.card === id;
-          })
+        this.ctx.graph.all({ where: q.exists(q.attr("kanban/link")) }).some((card) => {
+          const link = linkSchema.parse(card.attributes["kanban/link"]);
+          return link.workspace === workspace && link.card === id;
+        })
       )
         throw new Fault("link", "Card is already linked");
       return this.ctx.graph.add({
@@ -446,7 +450,7 @@ export class Kanban {
     const cards =
       id === undefined
         ? this.ctx.graph.all({
-            where: { op: "exists", field: { attr: "kanban/link", path: [] } },
+            where: q.exists(q.attr("kanban/link")),
           })
         : [this.target(id)];
     const result: unknown[] = [];
@@ -524,8 +528,7 @@ export class Kanban {
         status:
           task.state !== "active"
             ? "closed"
-            : this.ctx.graph.all({ ready: true, where: { op: "=", field: "id", value: task.id } })
-                  .length === 0
+            : this.ctx.graph.all({ ready: true, where: q.eq("id", task.id) }).length === 0
               ? "blocked"
               : this.history(task.id).length > 0
                 ? "doing"
@@ -554,7 +557,7 @@ export class Kanban {
       .toSorted((a, b) => compare(a.created_at, b.created_at, a.id.localeCompare(b.id)));
   }
   async board(labels: string[] = []): Promise<unknown> {
-    const cards = this.ctx.graph.all({ where: equals("kanban/card", true) }).filter((row) =>
+    const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
       labels.every((label) =>
         z
           .array(z.string())
@@ -578,18 +581,7 @@ export class Kanban {
   }
   next(): Strand[] {
     return this.ctx.graph
-      .all({
-        ready: true,
-        where: {
-          op: "and",
-          args: [
-            equals("kanban/card", true),
-            equals("kanban/type", "feature"),
-            equals("kanban/lane", "pending"),
-            { op: "missing", field: { attr: "kanban/link", path: [] } },
-          ],
-        },
-      })
+      .all({ ready: true, where: pendingFeaturePredicate })
       .toSorted((a, b) =>
         compare(
           priority.parse(a.attributes["kanban/priority"]),
@@ -606,23 +598,15 @@ export function kanban(): Spool {
     activate(ctx) {
       const board = new Kanban(ctx);
       ctx.registerQuery("kanban-cards", {
-        where: equals("kanban/card", true),
+        where: q.eq(q.attr("kanban/card"), true),
         description: "Kanban cards",
       });
       ctx.registerQuery("kanban-tasks", {
-        where: equals("kanban/task", true),
+        where: q.eq(q.attr("kanban/task"), true),
         description: "Feature tasks",
       });
       ctx.registerQuery("kanban-pending", {
-        where: {
-          op: "and",
-          args: [
-            equals("kanban/card", true),
-            equals("kanban/type", "feature"),
-            equals("kanban/lane", "pending"),
-            { op: "missing", field: { attr: "kanban/link", path: [] } },
-          ],
-        },
+        where: pendingFeaturePredicate,
         description: "Pending authoritative features",
       });
       const input = z.discriminatedUnion("command", [

@@ -60,7 +60,7 @@ func workspace(args []string) (string, []string, error) {
 }
 func Mill(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Fprintln(os.Stdout, "mill init [--workspace DIR] [--name NAME]\nmill start | status | stop | restart-host | host-status\nmill weaver start|restart|stop|status --workspace PATH|NAME\nmill weaver list\nmill bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
+		fmt.Fprintln(os.Stdout, "mill init [--workspace DIR] [--name NAME]\nmill start | status | stop | restart-host | host-status\nmill weaver start|restart|stop|status --workspace PATH|NAME\nmill weaver list\nmill weaver eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nmill bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
 		return 0
 	}
 	fail := func(err error) int {
@@ -84,9 +84,12 @@ func Mill(args []string) int {
 		return 0
 	case "weaver":
 		if len(args) < 2 {
-			return fail(errors.New("usage: mill weaver start|restart|stop|status|list"))
+			return fail(errors.New("usage: mill weaver start|restart|stop|status|list|eval"))
 		}
 		action := args[1]
+		if action == "eval" {
+			return evalCLI(args[2:])
+		}
 		if action == "list" {
 			if len(args) != 2 {
 				return fail(errors.New("usage: mill weaver list"))

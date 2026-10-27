@@ -7,7 +7,7 @@ import {
   Fault,
   requireValue,
   defineOp,
-  equals,
+  q,
   type Attributes,
   type Strand,
   type Context,
@@ -108,7 +108,7 @@ export class Harnesses {
     );
   }
   runs(): Strand[] {
-    return this.ctx.graph.all({ where: equals("harness/run", true), lean: false });
+    return this.ctx.graph.all({ where: q.eq(q.attr("harness/run"), true), lean: false });
   }
   private run(id: string): Strand {
     const run = this.ctx.graph.show(id);
@@ -241,8 +241,7 @@ export class Harnesses {
       const target = this.ctx.graph.edges(run.id, "serves").find((edge) => edge.from_id === run.id);
       if (
         target !== undefined &&
-        this.ctx.graph.all({ ready: true, where: { op: "=", field: "id", value: target.to_id } })
-          .length === 0
+        this.ctx.graph.all({ ready: true, where: q.eq("id", target.to_id) }).length === 0
       )
         return current;
       const invocation = crypto.randomUUID();
@@ -695,7 +694,7 @@ export function harnesses(options: HarnessOptions = {}): Spool {
       const service = new Harnesses(ctx, options);
       for (const state of ["ready", "running", "stopped", "failed"])
         ctx.registerQuery(`agent-run-${state}`, {
-          where: { op: "and", args: [equals("harness/run", true), equals("harness/state", state)] },
+          where: q.and(q.eq(q.attr("harness/run"), true), q.eq(q.attr("harness/state"), state)),
           description: `Agent runs in ${state} state`,
         });
       ctx.resource({ start: () => service.startResource(), stop: () => service.stop() });

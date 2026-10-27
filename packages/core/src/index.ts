@@ -2,8 +2,8 @@ export { Graph, batchSchema, strandSchema } from "./core/store.ts";
 export type { Strand, Edge, Mutation, Patch, Guard, GraphEvent, Selection } from "./core/store.ts";
 export { Fault, isFault, attributesSchema, canonical, encode, requireValue } from "./core/json.ts";
 export type { Json, Attributes } from "./core/json.ts";
-export { compileQuery, equals, predicateSchema } from "./core/query.ts";
-export type { Predicate, NamedQuery } from "./core/query.ts";
+export { compileQuery, q, predicateSchema } from "./core/query.ts";
+export type { Field, Predicate, QueryParameter, NamedQuery } from "./core/query.ts";
 export { Runtime, isStream } from "./runtime/runtime.ts";
 export type {
   Context,

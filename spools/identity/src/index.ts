@@ -2,7 +2,7 @@ import {
   Fault,
   requireValue,
   defineOp,
-  equals,
+  q,
   type Attributes,
   type Graph,
   type Strand,
@@ -28,8 +28,7 @@ export const startupSchema = z.strictObject({
 export type Startup = z.infer<typeof startupSchema>;
 export function identityRecords(graph: Graph): Strand[] {
   return graph.all({
-    where: { op: "exists", field: { attr: "identity/id", path: [] } },
-
+    where: q.exists(q.attr("identity/id")),
     lean: false,
   });
 }
@@ -249,7 +248,9 @@ export function identity(): Spool {
                     requireValue(resolveIdentity(ctx.graph, input.identity), "Unknown identity"),
                   );
               case "list":
-                return z.json().parse(ctx.graph.all({ where: equals("identity/session", true) }));
+                return z
+                  .json()
+                  .parse(ctx.graph.all({ where: q.eq(q.attr("identity/session"), true) }));
             }
           },
         }),

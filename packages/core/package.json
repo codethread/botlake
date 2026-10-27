@@ -8,7 +8,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./host": "./src/runtime/host.ts"
+    "./host": "./src/runtime/host.ts",
+    "./eval": "./src/runtime/eval.ts"
   },
   "publishConfig": {
     "access": "public"

@@ -101,6 +101,29 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 
 Harnesses supports Codex, Pi, Claude and Cursor. Cursor’s bundled session hook supplies policy context and registers its native identity; Codex, Pi and Claude native identity adapters remain the separate `@millstrand/identity` package in `plugins/identity`. Nothing installs plugins into user profiles automatically. Native identity, process custody and task completion remain distinct.
 
+## JavaScript evaluation
+
+Use `strand list|ready --query NAME --params JSON` for named queries. For ad hoc predicates, joins and projections, run JavaScript against an already-running Weaver:
+
+```sh
+mill weaver eval --workspace work - <<'JS'
+const runs = await api.call("list", {
+  where: q.and(
+    q.eq(q.attr("harness/run"), true),
+    q.eq(q.attr("harness/state"), "running"),
+  ),
+  limit: 20,
+});
+return runs.map(({ id, title }) => ({ id, title }));
+JS
+```
+
+`mill weaver eval [--workspace PATH|NAME] [--cwd DIR] [--timeout 5s] CODE|@FILE|-` accepts inline code, a caller-relative file or stdin. Source is a JavaScript async function body, not a module: use `await` and explicitly `return` a JSON value. `q` supplies the [core predicate builders](packages/core/README.md#queries); `api.call(OP, INPUT)` invokes selected operations with JSON input and returns their JSON result. No spools are implicitly selected; the example requires Batteries. Streams are rejected.
+
+Evaluation runs in a separate local Bun process, never inside the Weaver. Script output goes to stderr; only the returned JSON goes to stdout. Errors exit nonzero. The default 30s deadline covers execution and all calls, including synchronous loops. Workspace discovery and relative paths use the caller’s directory or `--cwd`; `MILLSTRAND_CORE` selects the evaluator package too.
+
+This is trusted scripting, not a sandbox or read-only access. Scripts have the caller’s OS permissions; operations may mutate data, and completed mutations are not rolled back on error or timeout. Calls are not a shared snapshot. List/ready still default to 100 results (maximum 10,000); do not mistake limited selections for complete join inputs. Their shell flags omit `--where`; programmatic input and `strand --input` still accept predicates.
+
 ## Verify
 
 ```sh

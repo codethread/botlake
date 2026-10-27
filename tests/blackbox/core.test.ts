@@ -7,6 +7,7 @@ import {
   Runtime,
   ManualClock,
   defineOp,
+  q,
   isStream,
   type GraphEvent,
   type Predicate,
@@ -46,12 +47,10 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     expect(graph.show(a.id).attributes).toEqual({ "ns/key": "", nested: { b: 2 } });
     graph.archive(a.id, ["ns/key"]);
     expect(graph.show(a.id).attributes["ns/key"]).toBe("");
-    expect(graph.list({ where: { op: "exists", field: { attr: "ns/key", path: [] } } })).toEqual(
-      [],
-    );
+    expect(graph.list({ where: q.exists(q.attr("ns/key")) })).toEqual([]);
     expect(
       graph.list({
-        where: { op: "=", field: "title", value: { param: "title" } },
+        where: q.eq("title", q.param("title")),
         params: { title: "' OR 1=1 --" },
       }),
     ).toEqual([]);
@@ -152,9 +151,9 @@ test("archival preserves immutable evidence and burn records each deletion exact
 });
 
 test("query negation requires present hot values and composes across named queries and edges", async () => {
-  const a: Predicate = { op: "=", field: { attr: "a", path: [] }, value: 1 };
-  const field = { attr: "doc", path: ["value"] };
-  const b: Predicate = { op: "=", field, value: 2 };
+  const a: Predicate = q.eq(q.attr("a"), 1);
+  const field = q.attr("doc", "value");
+  const b: Predicate = q.eq(field, 2);
   await disposable(
     async (runtime) => {
       const graph = runtime.graph;
@@ -175,29 +174,15 @@ test("query negation requires present hot values and composes across named queri
           .toSorted();
       const select = async (where: Predicate): Promise<string[]> =>
         titles(await runtime.invoke("list", { where }));
-      expect(await select({ op: "not", arg: b })).toEqual(["different", "other"]);
-      expect(await select({ op: "not", arg: { op: "in", field, value: [2] } })).toEqual([
-        "different",
-        "other",
-      ]);
-      expect(await select({ op: "not", arg: { op: "and", args: [a, b] } })).toEqual([
-        "different",
-        "other",
-        "partial",
-      ]);
-      expect(await select({ op: "not", arg: { op: "or", args: [a, b] } })).toEqual(["different"]);
-      expect(
-        await select({ op: "not", arg: { op: "not", arg: { op: "and", args: [a, b] } } }),
-      ).toEqual(["matching"]);
-      expect(await select({ op: "exists", field })).toEqual(["different", "matching", "other"]);
-      expect(await select({ op: "missing", field })).toEqual([
-        "archived",
-        "missing",
-        "null",
-        "partial",
-      ]);
-      expect(await select({ op: "=", field, value: null })).toEqual([]);
-      expect(await select({ op: "!=", field, value: null })).toEqual([]);
+      expect(await select(q.not(b))).toEqual(["different", "other"]);
+      expect(await select(q.not(q.inArray(field, [2])))).toEqual(["different", "other"]);
+      expect(await select(q.not(q.and(a, b)))).toEqual(["different", "other", "partial"]);
+      expect(await select(q.not(q.or(a, b)))).toEqual(["different"]);
+      expect(await select(q.not(q.not(q.and(a, b))))).toEqual(["matching"]);
+      expect(await select(q.exists(field))).toEqual(["different", "matching", "other"]);
+      expect(await select(q.missing(field))).toEqual(["archived", "missing", "null", "partial"]);
+      expect(await select(q.eq(field, null))).toEqual([]);
+      expect(await select(q.ne(field, null))).toEqual([]);
       expect(
         titles(await runtime.invoke("list", { query: "different", params: { value: 2 } })),
       ).toEqual(["different", "other"]);
@@ -205,29 +190,25 @@ test("query negation requires present hot values and composes across named queri
         "Missing parameter",
       );
       graph.connect(matching.id, different.id, "ref");
-      expect(
-        await select({
-          op: "edge",
-          direction: "out",
-          relation: "ref",
-          where: { op: "not", arg: b },
-        }),
-      ).toEqual(["matching"]);
-      expect(
-        await select({ op: "not", arg: { op: "edge", direction: "out", relation: "ref" } }),
-      ).toEqual(["archived", "different", "missing", "null", "other", "partial"]);
+      expect(await select(q.edgeOut("ref", q.not(b)))).toEqual(["matching"]);
+      expect(await select(q.not(q.edgeOut("ref")))).toEqual([
+        "archived",
+        "different",
+        "missing",
+        "null",
+        "other",
+        "partial",
+      ]);
       const key = 'owner") OR 1=1 --';
       graph.update(matching.id, { attributes: { [key]: { "a.b": { 'quote"key': "safe" } } } });
-      expect(
-        await select({ op: "=", field: { attr: key, path: ["a.b", 'quote"key'] }, value: "safe" }),
-      ).toEqual(["matching"]);
+      expect(await select(q.eq(q.attr(key, "a.b", 'quote"key'), "safe"))).toEqual(["matching"]);
     },
     [
       batteries({
         different: {
           description: "Present values other than the supplied value",
           params: ["value"],
-          where: { op: "not", arg: { op: "=", field, value: { param: "value" } } },
+          where: q.not(q.eq(field, q.param("value"))),
         },
       }),
     ],
