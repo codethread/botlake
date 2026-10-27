@@ -53,7 +53,7 @@ export class Bins {
       ]),
       output: z.json(),
       cli: {
-        description: "Inspect spool-declared executables and build recipes",
+        description: "Inspect extension-declared executables and build recipes",
         commands: {
           list: { description: "List declared bins" },
           plan: {

@@ -1,8 +1,9 @@
 {
-  "name": "@botlake/spool-batteries",
+  "name": "@botlake/extension-harnesses",
   "version": "0.1.0",
   "files": [
     "src",
+    "plugins",
     "README.md"
   ],
   "type": "module",
@@ -13,10 +14,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@standard-schema/spec": "^1.1.0",
+    "@botlake/identity": "workspace:^",
+    "ts-pattern": "^5.9.2",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@botlake/core": "workspace:^"
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-flags": "workspace:^",
+    "@botlake/extension-identity": "workspace:^"
   }
 }

@@ -3,18 +3,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, ManualClock, type Context, type Spool } from "@botlake/core";
-import { batteries } from "@botlake/spool-batteries";
-import { Cron, defineJob, nextFire } from "@botlake/spool-cron";
-import { identity } from "@botlake/spool-identity";
-import { kanban } from "@botlake/spool-kanban";
+import { Runtime, ManualClock, type Context, type Extension } from "@botlake/core";
+import { batteries } from "@botlake/extension-batteries";
+import { Cron, defineJob, nextFire } from "@botlake/extension-cron";
+import { identity } from "@botlake/extension-identity";
+import { kanban } from "@botlake/extension-kanban";
 import { z } from "zod";
 
 import { rejected } from "./assert.ts";
 
 const node = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
 async function world(
-  spools: Spool[],
+  extensions: Extension[],
   clock: ManualClock,
   run: (runtime: Runtime, path: string) => Promise<void>,
 ): Promise<void> {
@@ -22,7 +22,7 @@ async function world(
   const path = join(dir, "world.db");
   const runtime = new Runtime({ database: path, clock });
   try {
-    await runtime.start(spools);
+    await runtime.start(extensions);
     await run(runtime, path);
   } finally {
     await runtime.stop();
@@ -162,7 +162,7 @@ test("calendar parser handles spring and fall DST and interval jobs retain caden
   const clock = new ManualClock(0);
   const ids: string[] = [];
   let cron: Cron | undefined;
-  const spool: Spool = {
+  const extension: Extension = {
     name: "jobs",
     activate(ctx: Context) {
       const service = new Cron(
@@ -186,7 +186,7 @@ test("calendar parser handles spring and fall DST and interval jobs retain caden
       ctx.resource(service);
     },
   };
-  await world([spool], clock, async (runtime, path) => {
+  await world([extension], clock, async (runtime, path) => {
     clock.advance(3500);
     await runtime.drain();
     await cron?.drain();
@@ -195,7 +195,7 @@ test("calendar parser handles spring and fall DST and interval jobs retain caden
     await runtime.stop();
     const second = new Runtime({ database: path, clock });
     try {
-      await second.start([spool]);
+      await second.start([extension]);
       expect(z.array(z.object({ next_at: z.number() })).parse(cron?.status())[0]?.next_at).toBe(
         4000,
       );
@@ -214,7 +214,7 @@ test("cron overlap and retry outcomes retain occurrence IDs and attempt evidence
   const gate = Promise.withResolvers<void>();
   let service: Cron | undefined;
   let attempts = 0;
-  const spool: Spool = {
+  const extension: Extension = {
     name: "jobs",
     activate(ctx) {
       service = new Cron(
@@ -246,7 +246,7 @@ test("cron overlap and retry outcomes retain occurrence IDs and attempt evidence
       ctx.resource(service);
     },
   };
-  await world([spool], clock, async (runtime) => {
+  await world([extension], clock, async (runtime) => {
     clock.advance(1000);
     await runtime.drain();
     clock.advance(2000);
@@ -276,7 +276,7 @@ test("missed-run policies tolerate timer jitter and namespaced jobs do not overl
   const clock = new ManualClock(0);
   const gate = Promise.withResolvers<void>();
   let service: Cron | undefined;
-  const spool: Spool = {
+  const extension: Extension = {
     name: "policy",
     activate(ctx) {
       service = new Cron(
@@ -297,7 +297,7 @@ test("missed-run policies tolerate timer jitter and namespaced jobs do not overl
       ctx.resource(service);
     },
   };
-  await world([spool], clock, async (runtime) => {
+  await world([extension], clock, async (runtime) => {
     clock.advance(1001);
     await runtime.drain();
     expect(
@@ -326,7 +326,7 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
   const clock = new ManualClock(0);
   const seen: string[] = [];
   let service: Cron | undefined;
-  const spool: Spool = {
+  const extension: Extension = {
     name: "recovery",
     activate(ctx) {
       service = new Cron(
@@ -341,7 +341,7 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
       ctx.resource(service);
     },
   };
-  await world([spool], clock, async (runtime, path) => {
+  await world([extension], clock, async (runtime, path) => {
     // Durable state left by an interrupted handler, before it could record an outcome.
     runtime.graph.db
       .query(
@@ -351,7 +351,7 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
     await runtime.stop();
     const recovered = new Runtime({ database: path, clock });
     try {
-      await recovered.start([spool]);
+      await recovered.start([extension]);
       await service?.drain();
       expect(seen).toEqual(["recover/0"]);
       expect(
@@ -369,7 +369,7 @@ test("Cron allows explicitly concurrent occurrences and persists exhausted failu
   const clock = new ManualClock(0);
   const gate = Promise.withResolvers<void>();
   let service: Cron | undefined;
-  const spool: Spool = {
+  const extension: Extension = {
     name: "concurrent-jobs",
     activate(ctx) {
       service = new Cron(
@@ -395,7 +395,7 @@ test("Cron allows explicitly concurrent occurrences and persists exhausted failu
       ctx.resource(service);
     },
   };
-  await world([spool], clock, async (runtime) => {
+  await world([extension], clock, async (runtime) => {
     try {
       clock.advance(1000);
       await runtime.drain();

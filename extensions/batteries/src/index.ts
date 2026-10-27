@@ -7,7 +7,7 @@ import {
   type NamedQuery,
   type Command,
   type Context,
-  type Spool,
+  type Extension,
 } from "@botlake/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
@@ -105,7 +105,7 @@ const guidance = {
     examples: ["bl edge add TASK_ID PREREQUISITE_ID depends-on", "bl edge list ID"],
   },
 };
-export function batteries(queries: Record<string, NamedQuery> = {}): Spool {
+export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
   return {
     name: "batteries",
     activate(ctx) {

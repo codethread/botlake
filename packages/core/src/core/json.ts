@@ -32,7 +32,7 @@ export function merge(base: Attributes, patch: Attributes): Attributes {
   }
   return Object.fromEntries(result);
 }
-// A worker and its installed spools can resolve separate copies of this package.
+// A worker and its installed extensions can resolve separate copies of this package.
 const faultBrand = Symbol.for("@botlake/core/Fault");
 export class Fault extends Error {
   readonly [faultBrand] = true;

@@ -262,6 +262,6 @@ Examples (with Batteries selected):
   printf '{"title":"Title"}' | bl --input - add
 
 Help is formatted for a terminal. Redirected output remains JSON/NDJSON.
-Operation arguments belong to the selected spool; -- ends its flag parsing.
+Operation arguments belong to the selected extension; -- ends its flag parsing.
 NO_COLOR disables color. BOTLAKE_ERROR_FORMAT selects plain|pretty|json errors.
 `

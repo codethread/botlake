@@ -1,5 +1,5 @@
 {
-  "name": "@botlake/spool-cron",
+  "name": "@botlake/extension-kanban",
   "version": "0.1.0",
   "files": [
     "src",
@@ -13,10 +13,11 @@
     "access": "public"
   },
   "dependencies": {
-    "cron-parser": "^5.10.2",
+    "ts-pattern": "^5.9.2",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@botlake/core": "workspace:^"
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-identity": "workspace:^"
   }
 }

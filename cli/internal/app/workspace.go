@@ -38,8 +38,8 @@ func readMember(path string) (Member, error) {
 		return Member{}, errors.New(".botlake/package.json must contain a botlake object")
 	}
 	var config struct {
-		Name   json.RawMessage `json:"name"`
-		Spools []string        `json:"spools"`
+		Name       json.RawMessage `json:"name"`
+		Extensions []string        `json:"extensions"`
 	}
 	if err := decode(raw, &config); err != nil {
 		return Member{}, fmt.Errorf(".botlake/package.json botlake: %w", err)

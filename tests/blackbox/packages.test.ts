@@ -8,7 +8,7 @@ import { install, system } from "./fixtures/system.ts";
 
 const catalog = z.array(z.object({ name: z.string() }));
 
-test("packed core runs alone; installed spools require explicit selection and own their configuration", async () => {
+test("packed core runs alone; installed extensions require explicit selection and own their configuration", async () => {
   const host = await system();
   try {
     const bare = join(host.dir, "bare");
@@ -26,7 +26,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
       join(bare, ".botlake"),
       Object.fromEntries(
         Object.entries(host.packages).filter(
-          ([name]) => name === "@botlake/core" || name === "@botlake/spool-batteries",
+          ([name]) => name === "@botlake/core" || name === "@botlake/extension-batteries",
         ),
       ),
     );
@@ -35,7 +35,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
       manifest,
       JSON.stringify({
         ...z.record(z.string(), z.unknown()).parse(await manifest.json()),
-        botlake: { spools: ["@botlake/spool-batteries"] },
+        botlake: { extensions: ["@botlake/extension-batteries"] },
       }),
     );
     await host.botlake(["lake", "restart", "--workspace", "bare"]);
@@ -46,7 +46,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
       { title: "Configuration-local dependency" },
     ]);
 
-    const board = await host.workspace("board", ["@botlake/spool-kanban"]);
+    const board = await host.workspace("board", ["@botlake/extension-kanban"]);
     expect(await host.botlake(["lake", "start", "--workspace", board], false)).toContain(
       "requires explicitly selected identity",
     );
@@ -55,7 +55,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
       JSON.stringify({
         botlake: {
           name: "board",
-          spools: ["@botlake/spool-kanban", "@botlake/spool-identity"],
+          extensions: ["@botlake/extension-kanban", "@botlake/extension-identity"],
         },
       }),
     );
@@ -73,10 +73,10 @@ test("packed core runs alone; installed spools require explicit selection and ow
     ).toBe("No Batteries");
 
     const agents = await host.workspace("configured", [
-      "@botlake/spool-identity",
-      "@botlake/spool-flags",
+      "@botlake/extension-identity",
+      "@botlake/extension-flags",
       "./agents.ts",
-      "@botlake/spool-cron",
+      "@botlake/extension-cron",
     ]);
     await Bun.write(
       join(agents, "harnesses.json"),
@@ -84,7 +84,7 @@ test("packed core runs alone; installed spools require explicit selection and ow
     );
     await Bun.write(
       join(agents, "agents.ts"),
-      `import { harnesses, harnessConfigSchema } from "@botlake/spool-harnesses";
+      `import { harnesses, harnessConfigSchema } from "@botlake/extension-harnesses";
 import config from "./harnesses.json";
 export default harnesses(harnessConfigSchema.parse(config));`,
     );

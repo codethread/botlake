@@ -7,7 +7,7 @@ export type { Field, Predicate, QueryParameter, NamedQuery } from "./core/query.
 export { Runtime, isStream } from "./runtime/runtime.ts";
 export type {
   Context,
-  Spool,
+  Extension,
   Resource,
   Processes,
   ProcessFact,

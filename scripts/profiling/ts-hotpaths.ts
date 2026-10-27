@@ -1,7 +1,7 @@
 // Diagnostic only: use a copy of a seeded disposable database, after the wire benchmarks.
 // bun --cpu-prof --cpu-prof-dir /tmp/profile scripts/profiling/ts-hotpaths.ts DB QUERIES_JSON
 import { compileQuery, predicateSchema, Runtime } from "@botlake/core";
-import batteriesSpool from "@botlake/spool-batteries";
+import batteriesExtension from "@botlake/extension-batteries";
 import { z } from "zod";
 
 const [database, queriesPath] = z.tuple([z.string(), z.string()]).parse(Bun.argv.slice(2));
@@ -24,7 +24,7 @@ async function measure(name: string, run: () => unknown): Promise<void> {
   records.push({ name, n: samples.length, medianMs: samples[Math.floor(samples.length / 2)] });
 }
 try {
-  await runtime.start([batteriesSpool]);
+  await runtime.start([batteriesExtension]);
   records.push({
     sqlite: runtime.graph.db.query("SELECT sqlite_version() AS version").get(),
     journal: runtime.graph.db.query("PRAGMA journal_mode").get(),

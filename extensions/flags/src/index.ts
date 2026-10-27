@@ -1,4 +1,4 @@
-import { defineOp, requireValue, type Context, type Spool } from "@botlake/core";
+import { defineOp, requireValue, type Context, type Extension } from "@botlake/core";
 import { z } from "zod";
 
 const nameSchema = z.string().trim().min(1);
@@ -9,7 +9,7 @@ export function flagsConfigJsonSchema(): unknown {
 const states = new WeakMap<Context, Map<string, boolean>>();
 
 function state(ctx: Context): Map<string, boolean> {
-  return requireValue(states.get(ctx), "Flags requires the explicitly selected flags spool");
+  return requireValue(states.get(ctx), "Flags requires the explicitly selected flags extension");
 }
 export function getFlag(ctx: Context, name: string): boolean | undefined {
   return state(ctx).get(name);
@@ -23,7 +23,7 @@ export function setFlag(ctx: Context, name: string, value: boolean): void {
 export function unsetFlag(ctx: Context, name: string): boolean {
   return state(ctx).delete(nameSchema.parse(name));
 }
-export function flags(defaults: Record<string, boolean> = {}): Spool {
+export function flags(defaults: Record<string, boolean> = {}): Extension {
   return {
     name: "flags",
     activate(ctx) {
@@ -38,7 +38,7 @@ export function flags(defaults: Record<string, boolean> = {}): Spool {
         defineOp({
           name: "flag",
           primer:
-            "Flags are workspace-local booleans shared by selected spools. Get distinguishes an unset flag from false. Set and unset last until lake restart; configured defaults are reapplied on restart. Flag meanings and effects belong to consumers, not Flags.",
+            "Flags are workspace-local booleans shared by selected extensions. Get distinguishes an unset flag from false. Set and unset last until lake restart; configured defaults are reapplied on restart. Flag meanings and effects belong to consumers, not Flags.",
           input: z.discriminatedUnion("command", [
             z.strictObject({ command: z.literal("list") }),
             z.strictObject({ command: z.literal("get"), name: nameSchema }),

@@ -9,13 +9,13 @@ import { system } from "./fixtures/system.ts";
 test("real Go Botlake pools independent workers, routes names, and retains command custody across host recovery", async () => {
   const host = await system();
   try {
-    const spool = `import { defineOp } from "@botlake/core"; import { z } from "zod"; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.object({command:z.enum(["launch","list"])}),output:z.json(),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(host.dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));} };`;
+    const extension = `import { defineOp } from "@botlake/core"; import { z } from "zod"; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.object({command:z.enum(["launch","list"])}),output:z.json(),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(host.dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));} };`;
     // A FIFO gives the process an explicit release point without timing assumptions.
     const fifo = Bun.spawn(["mkfifo", join(host.dir, "release")]);
     expect(await fifo.exited).toBe(0);
     for (const name of ["alpha", "beta"]) {
-      const workspace = await host.workspace(name, ["@botlake/spool-batteries", "./probe.ts"]);
-      await Bun.write(join(workspace, "probe.ts"), spool);
+      const workspace = await host.workspace(name, ["@botlake/extension-batteries", "./probe.ts"]);
+      await Bun.write(join(workspace, "probe.ts"), extension);
       await host.botlake(["lake", "start", "--workspace", name]);
     }
     await host.cli(["--workspace", "./alpha", "add", "A"]);
@@ -89,13 +89,16 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
 
 test("Botlake lake lifecycle publishes validated names and refreshes routes on member and host replacement", async () => {
   const host = await system();
-  const spools = ["@botlake/spool-batteries"];
+  const extensions = ["@botlake/extension-batteries"];
   try {
-    const alpha = await host.workspace("alpha", spools);
-    const beta = await host.workspace("beta", spools);
-    const healthy = await host.workspace("healthy", spools);
+    const alpha = await host.workspace("alpha", extensions);
+    const beta = await host.workspace("beta", extensions);
+    const healthy = await host.workspace("healthy", extensions);
     const configure = (path: string, name?: string): Promise<number> =>
-      Bun.write(join(path, ".botlake/package.json"), JSON.stringify({ botlake: { name, spools } }));
+      Bun.write(
+        join(path, ".botlake/package.json"),
+        JSON.stringify({ botlake: { name, extensions } }),
+      );
     await configure(alpha);
     expect(await host.botlake(["lake", "start", "--workspace", alpha])).toMatchObject({
       name: "alpha",

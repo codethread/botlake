@@ -1,9 +1,8 @@
 {
-  "name": "@botlake/spool-harnesses",
+  "name": "@botlake/extension-flags",
   "version": "0.1.0",
   "files": [
     "src",
-    "plugins",
     "README.md"
   ],
   "type": "module",
@@ -14,13 +13,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@botlake/identity": "workspace:^",
-    "ts-pattern": "^5.9.2",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@botlake/core": "workspace:^",
-    "@botlake/spool-flags": "workspace:^",
-    "@botlake/spool-identity": "workspace:^"
+    "@botlake/core": "workspace:^"
   }
 }

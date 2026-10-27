@@ -34,7 +34,7 @@ export async function system(): Promise<{
   blBin: string;
   env: Record<string, string | undefined>;
   packages: Record<string, string>;
-  workspace(name: string, spools: string[]): Promise<string>;
+  workspace(name: string, extensions: string[]): Promise<string>;
   botlake(args: string[], ok?: boolean): Promise<unknown>;
   bl(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
   cli(args: string[], ok?: boolean): Promise<unknown>;
@@ -59,7 +59,7 @@ export async function system(): Promise<{
   const core = await pack("packages/core", "core");
   const packages: Record<string, string> = { "@botlake/core": core };
   for (const name of ["batteries", "identity", "kanban", "cron", "flags", "harnesses"])
-    packages[`@botlake/spool-${name}`] = await pack(`spools/${name}`, name);
+    packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
   const engine = join(dir, "engine");
   await install(engine, { "@botlake/core": core });
@@ -112,12 +112,12 @@ export async function system(): Promise<{
     blBin,
     env,
     packages,
-    async workspace(name, spools) {
+    async workspace(name, extensions) {
       const path = join(dir, name);
       await mkdir(join(path, ".botlake"), { recursive: true });
       await Bun.write(
         join(path, ".botlake/package.json"),
-        JSON.stringify({ private: true, type: "module", botlake: { name, spools } }),
+        JSON.stringify({ private: true, type: "module", botlake: { name, extensions } }),
       );
       await install(path, { ...packages, zod: "^4.6.7" });
       return path;

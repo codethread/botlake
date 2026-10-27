@@ -62,7 +62,7 @@ async function runTerminal(
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
   const host = await system();
   try {
-    const workspace = await host.workspace("nodes", ["@botlake/spool-batteries"]);
+    const workspace = await host.workspace("nodes", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const committed = z
       .object({
@@ -123,7 +123,10 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
 test("bl preserves payloads, caller-relative files and literal arguments", async () => {
   const host = await system();
   try {
-    const workspace = await host.workspace("cli", ["@botlake/spool-batteries", "./commands.ts"]);
+    const workspace = await host.workspace("cli", [
+      "@botlake/extension-batteries",
+      "./commands.ts",
+    ]);
     await Bun.write(
       join(workspace, "commands.ts"),
       `import {defineOp} from "@botlake/core";
@@ -302,21 +305,21 @@ test("botlake init bootstraps a fresh empty workspace without replacing selected
     expect(await config.json()).toEqual({
       private: true,
       type: "module",
-      botlake: { name: "fresh", spools: [] },
+      botlake: { name: "fresh", extensions: [] },
     });
     await host.botlake(["lake", "start", "--workspace", workspace]);
     expect(await host.cli(["--workspace", "fresh", "bins", "list"])).toMatchObject({ bins: [] });
     await host.botlake(["lake", "stop", "--workspace", "fresh"]);
     await Bun.write(
       config,
-      '{"private":true,"botlake":{"name":"renamed","spools":["./selected.ts"]}}\n',
+      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
     );
     expect(await host.botlake(["init", "--workspace", workspace])).toMatchObject({
       created: false,
       name: "renamed",
     });
     expect(await config.text()).toBe(
-      '{"private":true,"botlake":{"name":"renamed","spools":["./selected.ts"]}}\n',
+      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
     );
     expect(
       await host.botlake(["init", "--workspace", workspace, "--name", "other"], false),
@@ -340,7 +343,7 @@ export default {name:"payloads",activate(ctx){
   ctx.register(defineOp({name:"json",input:z.object({value:z.json()}),output:z.json(),
     cli:{description:"JSON",flags:{value:{type:"json",required:true}}},handler:input=>input.value}));
   ctx.register(defineOp({name:"owned",input:z.object({workspace:z.string(),timeout:z.string()}),output:z.json(),
-    cli:{description:"Spool-owned flags",flags:{workspace:{type:"string",required:true},timeout:{type:"string",required:true}}},handler:input=>input}));
+    cli:{description:"Extension-owned flags",flags:{workspace:{type:"string",required:true},timeout:{type:"string",required:true}}},handler:input=>input}));
   ctx.register(defineOp({name:"context",input:z.object({}),output:z.json(),cli:{description:"Invocation context"},
     handler:(_,ctx,request)=>({cwd:request.cwd,root:request.worktreeRoot??null,common:request.gitCommonDir??null,terminal:request.terminal})}));
 }};`,

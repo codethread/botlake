@@ -19,9 +19,13 @@ const view = z.object({
 test("coordinator links use canonical workspace identity and preserve honest live and unavailable views", async () => {
   const host = await system();
   try {
-    const spools = ["@botlake/spool-batteries", "@botlake/spool-identity", "@botlake/spool-kanban"];
-    const coordinator = await host.workspace("board", spools);
-    const downstream = await host.workspace("work", spools);
+    const extensions = [
+      "@botlake/extension-batteries",
+      "@botlake/extension-identity",
+      "@botlake/extension-kanban",
+    ];
+    const coordinator = await host.workspace("board", extensions);
+    const downstream = await host.workspace("work", extensions);
     for (const workspace of [coordinator, downstream])
       await host.botlake(["lake", "start", "--workspace", workspace]);
 
@@ -94,7 +98,7 @@ test("coordinator links use canonical workspace identity and preserve honest liv
 
     await Bun.write(
       join(downstream, ".botlake/package.json"),
-      JSON.stringify({ botlake: { name: "renamed", spools } }),
+      JSON.stringify({ botlake: { name: "renamed", extensions } }),
     );
     await host.botlake(["lake", "restart", "--workspace", downstream]);
     await host.bl("renamed", "update", { id: card.id, title: "Live title" });

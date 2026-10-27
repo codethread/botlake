@@ -9,9 +9,9 @@ import {
   type Json,
   type Node,
   type Context,
-  type Spool,
+  type Extension,
 } from "@botlake/core";
-import { attribute, attribution } from "@botlake/spool-identity";
+import { attribute, attribution } from "@botlake/extension-identity";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -591,7 +591,7 @@ export class Kanban {
       );
   }
 }
-export function kanban(): Spool {
+export function kanban(): Extension {
   return {
     name: "kanban",
     requires: ["identity"],

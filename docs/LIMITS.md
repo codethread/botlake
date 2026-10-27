@@ -1,7 +1,7 @@
 # Runtime limits
 
 - Fresh databases only; no migrations or compatibility layer. Each lake stores nodes in `.botlake/world.db`.
-- `botlake init` creates empty JSON configuration without installing or selecting spools. Names come from configuration or the workspace basename. Durable auto-start registration, temporary databases and shell completion are not implemented.
+- `botlake init` creates empty JSON configuration without installing or selecting extensions. Names come from configuration or the workspace basename. Durable auto-start registration, temporary databases and shell completion are not implemented.
 - Operation deadlines signal cancellation cooperatively. Evaluation runs in a separate caller-side process with an enforced overall deadline; it is trusted code, not a sandbox. Completed mutations are not rolled back if a script fails.
 - Wakes and crash-recovered Cron actions are at least once. Deduplicate external effects using occurrence IDs.
 - Process custody lasts for the supervisor lifetime. Host/worker recovery adopts retained processes; supervisor replacement does not.

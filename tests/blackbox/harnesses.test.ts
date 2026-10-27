@@ -15,11 +15,11 @@ test("Harnesses publishes, binds actual native sessions, fences writes, reconcil
   const host = await system();
   try {
     const workspace = await host.workspace("agents", [
-      "@botlake/spool-batteries",
-      "@botlake/spool-identity",
-      "@botlake/spool-flags",
+      "@botlake/extension-batteries",
+      "@botlake/extension-identity",
+      "@botlake/extension-flags",
       "./providers.ts",
-      "@botlake/spool-kanban",
+      "@botlake/extension-kanban",
     ]);
     const childPath = join(workspace, "child.ts");
     await Bun.write(
@@ -31,7 +31,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/spool-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{BOTLAKE_SESSION_ID:run.sessionId,TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}},reviewers:{code:{seats:["missing","worker"],prompt:"Review changes",labels:["code"],paths:["*.ts"]}}});`,
+      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{BOTLAKE_SESSION_ID:run.sessionId,TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}},reviewers:{code:{seats:["missing","worker"],prompt:"Review changes",labels:["code"],paths:["*.ts"]}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));

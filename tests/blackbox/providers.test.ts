@@ -12,8 +12,8 @@ test("native providers preserve complete evidence on interrupted output and requ
   const host = await system();
   try {
     const workspace = await host.workspace("providers", [
-      "@botlake/spool-identity",
-      "@botlake/spool-flags",
+      "@botlake/extension-identity",
+      "@botlake/extension-flags",
       "./providers.ts",
     ]);
     const executable = join(workspace, "native-cli");
@@ -58,7 +58,7 @@ if(name==="claude" || name==="cursor") {
     await chmod(executable, 0o755);
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/spool-harnesses";
+      `import {harnesses,provider} from "@botlake/extension-harnesses";
 const names=["codex","pi","claude","cursor"];
 export default harnesses({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",fast:true,systemPrompts:["policy"]}]))});`,
     );

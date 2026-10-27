@@ -1,22 +1,22 @@
 # Botlake
 
-A programmable lake of connected nodes. Each lake owns a Bun worker, SQLite connection, configuration and independently selected spools. The Go `botlake` CLI supervises lakes and launched processes; `bl` invokes structured data operations with JSON/NDJSON results. Trusted JavaScript evaluation and process execution stay in `botlake`, not `bl`.
+A programmable lake of connected nodes. Each lake owns a Bun worker, SQLite connection, configuration and independently selected extensions. The Go `botlake` CLI supervises lakes and launched processes; `bl` invokes structured data operations with JSON/NDJSON results. Trusted JavaScript evaluation and process execution stay in `botlake`, not `bl`.
 
 Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 
 ## Packages
 
-| Package | Owns | Required selected spools |
+| Package | Owns | Required selected extensions |
 | --- | --- | --- |
 | [`@botlake/core`](packages/core/README.md) | Graph, operations, activation, events, durable wakes, workers | None |
-| [`@botlake/spool-batteries`](spools/batteries/README.md) | Everyday graph commands | None |
-| [`@botlake/spool-identity`](spools/identity/README.md) | Native session identity and attribution | None |
-| [`@botlake/spool-flags`](spools/flags/README.md) | Workspace-local runtime booleans shared by spools | None |
-| [`@botlake/spool-harnesses`](spools/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity, Flags |
-| [`@botlake/spool-kanban`](spools/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
-| [`@botlake/spool-cron`](spools/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
+| [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
+| [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
+| [`@botlake/extension-flags`](extensions/flags/README.md) | Workspace-local runtime booleans shared by extensions | None |
+| [`@botlake/extension-harnesses`](extensions/harnesses/README.md) | Providers, tracked runs, assignment/review, reconciliation | Identity, Flags |
+| [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
+| [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
-Core does not import or install spools. Spools import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each spool; Identity is also a peer of Harnesses and Kanban; Flags is a peer of Harnesses. Installation does not imply activation.
+Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Harnesses and Kanban; Flags is a peer of Harnesses. Installation does not imply activation.
 
 Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core, Identity and Flags to their tarball paths as well as listing them in `dependencies`.
 
@@ -37,7 +37,7 @@ bl list
 
 The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run `bun run install:local` after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
 
-The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped spools. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Harnesses starts no agents automatically, and Cron has no jobs until configured.
+The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Harnesses starts no agents automatically, and Cron has no jobs until configured.
 
 [Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.botlake/flags.ts) enable model families and gate DeepSeek with `seat/allow-china`; Claude/Cursor remain registered but disabled. Managed launches, including `tui`, are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 
@@ -49,9 +49,9 @@ bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do 
 bl agent show RUN_ID
 ```
 
-Flags are lake-local and reset to configured defaults on lake restart. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](spools/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
+Flags are lake-local and reset to configured defaults on lake restart. They affect new seat selection, not accepted runs. The `reviewer` alias is a launch seat, not an `agent review` lens. See [catalog authoring](extensions/harnesses/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
 
-In another workspace, install core and the spools you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select spools in `.botlake/package.json`:
+In another workspace, install core and the extensions you need using local tarballs. Run `botlake init --workspace /absolute/workspace --name work`, then select extensions in `.botlake/package.json`:
 
 ```json
 {
@@ -59,22 +59,22 @@ In another workspace, install core and the spools you need using local tarballs.
   "type": "module",
   "botlake": {
     "name": "work",
-    "spools": [
-      "@botlake/spool-batteries",
-      "@botlake/spool-identity",
-      "@botlake/spool-kanban",
-      "./spools.ts"
+    "extensions": [
+      "@botlake/extension-batteries",
+      "@botlake/extension-identity",
+      "@botlake/extension-kanban",
+      "./extensions.ts"
     ]
   }
 }
 ```
 
-The `botlake` field is required; its `name` is optional and defaults to the workspace directory basename, independently of the package's own `name`. Each spool entry must default-export a `Spool`. Package names resolve from `.botlake`, which can declare its dependencies in the same manifest; normal package lookup also reaches workspace-root dependencies. Relative paths resolve from the workspace root. Omitted or empty `spools` activates nothing; there are no built-in aliases. Prerequisites must be explicitly selected, in any order. Imports are inert; activation registers operations; resources start only after dependency and collision validation.
+The `botlake` field is required; its `name` is optional and defaults to the workspace directory basename, independently of the package's own `name`. Each extension entry must default-export an `Extension`. Package names resolve from `.botlake`, which can declare its dependencies in the same manifest; normal package lookup also reaches workspace-root dependencies. Relative paths resolve from the workspace root. Omitted or empty `extensions` activates nothing; there are no built-in aliases. Prerequisites must be explicitly selected, in any order. Imports are inert; activation registers operations; resources start only after dependency and collision validation.
 
-Spool-specific configuration belongs to that spool, not core's JSON schema. Use a local module to call a configured factory, then select that module:
+Extension-specific configuration belongs to that extension, not core's JSON schema. Use a local module to call a configured factory, then select that module:
 
 ```ts
-import { defineOp, type Spool } from "@botlake/core";
+import { defineOp, type Extension } from "@botlake/core";
 import { z } from "zod";
 
 const length = defineOp({
@@ -92,18 +92,18 @@ export default {
   activate(ctx) {
     ctx.register(length);
   },
-} satisfies Spool;
+} satisfies Extension;
 ```
 
 ## Operate
 
 `bl help|about|prime|primer OP [SUBCOMMAND...]` discovers commands. Terminal help shows usage, arguments, flags and examples; pipes retain JSON/NDJSON. `--json` forces machine output and `NO_COLOR` disables color. `bl --help` lists global flags without a running workspace.
 
-Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` sets a deadline; `--dry-run` prints the request. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the spool; `--` ends its flag parsing.
+Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` sets a deadline; `--dry-run` prints the request. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the extension; `--` ends its flag parsing.
 
-`botlake init [--workspace DIR] [--name NAME]` adds an empty `botlake` field to `.botlake/package.json`, creating a private module package if missing, without installing or selecting spools. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing package fields and selected configuration are preserved. `botlake --version` reports the CLI/build/protocol versions.
+`botlake init [--workspace DIR] [--name NAME]` adds an empty `botlake` field to `.botlake/package.json`, creating a private module package if missing, without installing or selecting extensions. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing package fields and selected configuration are preserved. `botlake --version` reports the CLI/build/protocol versions.
 
-`botlake bin list|build|run [--workspace PATH|NAME] [BIN] [ARGS...]` lists, builds or executes spool-declared programs. Runs inherit the caller’s working directory, stdin/stdout/stderr and terminal, overlay the declared environment, and preserve the program’s exit status. All arguments after BIN pass through literally. Builds run only when explicitly requested, in their declared directory.
+`botlake bin list|build|run [--workspace PATH|NAME] [BIN] [ARGS...]` lists, builds or executes extension-declared programs. Runs inherit the caller’s working directory, stdin/stdout/stderr and terminal, overlay the declared environment, and preserve the program’s exit status. All arguments after BIN pass through literally. Builds run only when explicitly requested, in their declared directory.
 
 `botlake lake start|restart|stop|status --workspace PATH|NAME` manages one worker; `botlake lake list` lists published routes. Without `--workspace`, CLI commands read `.git` and linked-worktree `commondir` metadata directly—no Git subprocess—to select the main checkout's `.botlake/package.json` and database, ignoring worktree-local configs. Invocation context still reports the actual worktree. Non-Git directories and layouts whose common directory is not named `.git` require `--workspace`. Explicit paths or published names bypass discovery, allowing isolated lakes. Names default to the workspace directory basename; duplicate names fail before activation. Bare selections prefer published names; explicit paths select paths. Replacement reloads configuration and publishes the new name only after readiness. `botlake status`, `restart-host`, `host-status`, and `stop` manage the daemon/pool.
 
@@ -128,7 +128,7 @@ return runs.map(({ id, title }) => ({ id, title }));
 JS
 ```
 
-`botlake lake eval [--workspace PATH|NAME] [--cwd DIR] [--timeout 5s] CODE|@FILE|-` accepts inline code, a caller-relative file or stdin. Source is a JavaScript async function body, not a module: use `await` and explicitly `return` a JSON value. `q` supplies the [core predicate builders](packages/core/README.md#queries); `api.call(OP, INPUT)` invokes selected operations with JSON input and returns their JSON result. No spools are implicitly selected; the example requires Batteries. Streams are rejected.
+`botlake lake eval [--workspace PATH|NAME] [--cwd DIR] [--timeout 5s] CODE|@FILE|-` accepts inline code, a caller-relative file or stdin. Source is a JavaScript async function body, not a module: use `await` and explicitly `return` a JSON value. `q` supplies the [core predicate builders](packages/core/README.md#queries); `api.call(OP, INPUT)` invokes selected operations with JSON input and returns their JSON result. No extensions are implicitly selected; the example requires Batteries. Streams are rejected.
 
 Evaluation runs in a separate local Bun process, never inside the lake. Script output goes to stderr; only the returned JSON goes to stdout. Errors exit nonzero. The default 30s deadline covers execution and all calls, including synchronous loops. Workspace discovery and relative paths use the caller’s directory or `--cwd`; `BOTLAKE_CORE` selects the evaluator package too.
 

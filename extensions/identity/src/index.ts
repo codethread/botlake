@@ -7,7 +7,7 @@ import {
   type Graph,
   type Node,
   type Context,
-  type Spool,
+  type Extension,
 } from "@botlake/core";
 import { z } from "zod";
 
@@ -175,7 +175,7 @@ export function nativeStartup(
 export function codexChildSessionId(parent: string, agent: string): string {
   return `codex-child:v1:${Buffer.from(text.parse(parent)).toString("base64url")}:${Buffer.from(text.parse(agent)).toString("base64url")}`;
 }
-export function identity(): Spool {
+export function identity(): Extension {
   return {
     name: "identity",
     activate(ctx) {

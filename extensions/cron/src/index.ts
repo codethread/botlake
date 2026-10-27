@@ -1,4 +1,4 @@
-import { encode, Fault, defineOp, type Json, type Context, type Spool } from "@botlake/core";
+import { encode, Fault, defineOp, type Json, type Context, type Extension } from "@botlake/core";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 
@@ -260,7 +260,7 @@ export class Cron {
     await this.drain();
   }
 }
-export function cron(options: { jobs: Job[]; actions: Record<string, Action> }): Spool {
+export function cron(options: { jobs: Job[]; actions: Record<string, Action> }): Extension {
   return {
     name: "cron",
     activate(ctx) {

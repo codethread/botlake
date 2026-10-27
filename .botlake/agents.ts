@@ -1,4 +1,4 @@
-import { harnesses } from "@botlake/spool-harnesses";
+import { harnesses } from "@botlake/extension-harnesses";
 
 export default harnesses({
   aliases: {

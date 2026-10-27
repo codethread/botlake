@@ -6,12 +6,12 @@
       "name": "botlake",
       "devDependencies": {
         "@botlake/core": "workspace:*",
-        "@botlake/spool-batteries": "workspace:*",
-        "@botlake/spool-cron": "workspace:*",
-        "@botlake/spool-flags": "workspace:*",
-        "@botlake/spool-harnesses": "workspace:*",
-        "@botlake/spool-identity": "workspace:*",
-        "@botlake/spool-kanban": "workspace:*",
+        "@botlake/extension-batteries": "workspace:*",
+        "@botlake/extension-cron": "workspace:*",
+        "@botlake/extension-flags": "workspace:*",
+        "@botlake/extension-harnesses": "workspace:*",
+        "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-kanban": "workspace:*",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -27,12 +27,80 @@
       "name": "@botlake/dogfood",
       "dependencies": {
         "@botlake/core": "workspace:*",
-        "@botlake/spool-batteries": "workspace:*",
-        "@botlake/spool-cron": "workspace:*",
-        "@botlake/spool-flags": "workspace:*",
-        "@botlake/spool-harnesses": "workspace:*",
-        "@botlake/spool-identity": "workspace:*",
-        "@botlake/spool-kanban": "workspace:*",
+        "@botlake/extension-batteries": "workspace:*",
+        "@botlake/extension-cron": "workspace:*",
+        "@botlake/extension-flags": "workspace:*",
+        "@botlake/extension-harnesses": "workspace:*",
+        "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-kanban": "workspace:*",
+      },
+    },
+    "extensions/batteries": {
+      "name": "@botlake/extension-batteries",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/cron": {
+      "name": "@botlake/extension-cron",
+      "version": "0.1.0",
+      "dependencies": {
+        "cron-parser": "^5.10.2",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/flags": {
+      "name": "@botlake/extension-flags",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/harnesses": {
+      "name": "@botlake/extension-harnesses",
+      "version": "0.1.0",
+      "dependencies": {
+        "@botlake/identity": "workspace:^",
+        "ts-pattern": "^5.9.2",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-flags": "workspace:^",
+        "@botlake/extension-identity": "workspace:^",
+      },
+    },
+    "extensions/identity": {
+      "name": "@botlake/extension-identity",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/kanban": {
+      "name": "@botlake/extension-kanban",
+      "version": "0.1.0",
+      "dependencies": {
+        "ts-pattern": "^5.9.2",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-identity": "workspace:^",
       },
     },
     "packages/core": {
@@ -53,93 +121,25 @@
         "zod": "^4.6.7",
       },
     },
-    "spools/batteries": {
-      "name": "@botlake/spool-batteries",
-      "version": "0.1.0",
-      "dependencies": {
-        "@standard-schema/spec": "^1.1.0",
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-      },
-    },
-    "spools/cron": {
-      "name": "@botlake/spool-cron",
-      "version": "0.1.0",
-      "dependencies": {
-        "cron-parser": "^5.10.2",
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-      },
-    },
-    "spools/flags": {
-      "name": "@botlake/spool-flags",
-      "version": "0.1.0",
-      "dependencies": {
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-      },
-    },
-    "spools/harnesses": {
-      "name": "@botlake/spool-harnesses",
-      "version": "0.1.0",
-      "dependencies": {
-        "@botlake/identity": "workspace:^",
-        "ts-pattern": "^5.9.2",
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-        "@botlake/spool-flags": "workspace:^",
-        "@botlake/spool-identity": "workspace:^",
-      },
-    },
-    "spools/identity": {
-      "name": "@botlake/spool-identity",
-      "version": "0.1.0",
-      "dependencies": {
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-      },
-    },
-    "spools/kanban": {
-      "name": "@botlake/spool-kanban",
-      "version": "0.1.0",
-      "dependencies": {
-        "ts-pattern": "^5.9.2",
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-        "@botlake/spool-identity": "workspace:^",
-      },
-    },
   },
   "packages": {
     "@botlake/core": ["@botlake/core@workspace:packages/core"],
 
     "@botlake/dogfood": ["@botlake/dogfood@workspace:.botlake"],
 
+    "@botlake/extension-batteries": ["@botlake/extension-batteries@workspace:extensions/batteries"],
+
+    "@botlake/extension-cron": ["@botlake/extension-cron@workspace:extensions/cron"],
+
+    "@botlake/extension-flags": ["@botlake/extension-flags@workspace:extensions/flags"],
+
+    "@botlake/extension-harnesses": ["@botlake/extension-harnesses@workspace:extensions/harnesses"],
+
+    "@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
+
+    "@botlake/extension-kanban": ["@botlake/extension-kanban@workspace:extensions/kanban"],
+
     "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
-
-    "@botlake/spool-batteries": ["@botlake/spool-batteries@workspace:spools/batteries"],
-
-    "@botlake/spool-cron": ["@botlake/spool-cron@workspace:spools/cron"],
-
-    "@botlake/spool-flags": ["@botlake/spool-flags@workspace:spools/flags"],
-
-    "@botlake/spool-harnesses": ["@botlake/spool-harnesses@workspace:spools/harnesses"],
-
-    "@botlake/spool-identity": ["@botlake/spool-identity@workspace:spools/identity"],
-
-    "@botlake/spool-kanban": ["@botlake/spool-kanban@workspace:spools/kanban"],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 

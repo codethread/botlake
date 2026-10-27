@@ -1,4 +1,4 @@
-import { flags } from "@botlake/spool-flags";
+import { flags } from "@botlake/extension-flags";
 
 export default flags({
   "harness/claude": false,

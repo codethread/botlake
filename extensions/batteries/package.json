@@ -1,5 +1,5 @@
 {
-  "name": "@botlake/spool-kanban",
+  "name": "@botlake/extension-batteries",
   "version": "0.1.0",
   "files": [
     "src",
@@ -13,11 +13,10 @@
     "access": "public"
   },
   "dependencies": {
-    "ts-pattern": "^5.9.2",
+    "@standard-schema/spec": "^1.1.0",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@botlake/core": "workspace:^",
-    "@botlake/spool-identity": "workspace:^"
+    "@botlake/core": "workspace:^"
   }
 }

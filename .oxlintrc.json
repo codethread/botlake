@@ -57,7 +57,7 @@
   "ignorePatterns": ["node_modules/", "dist/", "out/", "coverage/"],
   "overrides": [
     {
-      "files": ["spools/*/src/**/*.{ts,mts,cts,js,mjs,cjs}"],
+      "files": ["extensions/*/src/**/*.{ts,mts,cts,js,mjs,cjs}"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -84,8 +84,8 @@
                 "message": "Use a declared package dependency and its public exports, not a relative import across package boundaries."
               },
               {
-                "group": ["@botlake/spool-*", "@botlake/identity"],
-                "message": "Core must not depend on spools or native plugins. Load explicitly selected spools through workspace configuration."
+                "group": ["@botlake/extension-*", "@botlake/identity"],
+                "message": "Core must not depend on extensions or native plugins. Load explicitly selected extensions through workspace configuration."
               }
             ]
           }

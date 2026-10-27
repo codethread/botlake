@@ -4,22 +4,22 @@
   "type": "module",
   "dependencies": {
     "@botlake/core": "workspace:*",
-    "@botlake/spool-batteries": "workspace:*",
-    "@botlake/spool-cron": "workspace:*",
-    "@botlake/spool-flags": "workspace:*",
-    "@botlake/spool-harnesses": "workspace:*",
-    "@botlake/spool-identity": "workspace:*",
-    "@botlake/spool-kanban": "workspace:*"
+    "@botlake/extension-batteries": "workspace:*",
+    "@botlake/extension-cron": "workspace:*",
+    "@botlake/extension-flags": "workspace:*",
+    "@botlake/extension-harnesses": "workspace:*",
+    "@botlake/extension-identity": "workspace:*",
+    "@botlake/extension-kanban": "workspace:*"
   },
   "botlake": {
     "name": "botlake",
-    "spools": [
-      "@botlake/spool-batteries",
-      "@botlake/spool-identity",
+    "extensions": [
+      "@botlake/extension-batteries",
+      "@botlake/extension-identity",
       "./.botlake/flags.ts",
       "./.botlake/agents.ts",
-      "@botlake/spool-kanban",
-      "@botlake/spool-cron"
+      "@botlake/extension-kanban",
+      "@botlake/extension-cron"
     ]
   }
 }

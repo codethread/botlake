@@ -108,8 +108,8 @@ port.on("message", (raw: unknown) => {
   });
 });
 try {
-  const { spools } = await loadWorkspace(data.workspace);
-  await runtime.start(spools);
+  const { extensions } = await loadWorkspace(data.workspace);
+  await runtime.start(extensions);
   port.postMessage({ ready: true });
 } catch (error) {
   port.postMessage({ fatal: errorFrame(error) });

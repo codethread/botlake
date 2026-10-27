@@ -17,7 +17,7 @@ test("external Bun package imports stay inert; worker deps, cleanup, wire stream
     await Bun.write(
       join(library, "package.json"),
       JSON.stringify({
-        name: "outside-spool",
+        name: "outside-extension",
         type: "module",
         exports: "./index.ts",
         dependencies: {
@@ -63,15 +63,15 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await Bun.file(marker).text()).toBe("stopped");
     for (const name of ["alpha", "beta"]) {
       const workspace = await host.workspace(name, [
-        "@botlake/spool-batteries",
-        "@botlake/spool-identity",
-        "@botlake/spool-kanban",
-        "outside-spool",
+        "@botlake/extension-batteries",
+        "@botlake/extension-identity",
+        "@botlake/extension-kanban",
+        "outside-extension",
         "./deps.ts",
       ]);
       await install(workspace, {
         ...host.packages,
-        "outside-spool": `file:${library}`,
+        "outside-extension": `file:${library}`,
         zod: "^4.6.7",
       });
       await mkdir(join(workspace, "node_modules/private-value"), { recursive: true });
@@ -180,13 +180,13 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
         .object({ link: z.object({ status: z.string() }) })
         .parse(await host.bl("alpha", "kanban", { command: "card", id: mirror.id })).link.status,
     ).toBe("unavailable");
-    const healthy = await host.workspace("healthy", ["@botlake/spool-batteries"]);
+    const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
     await Bun.write(
       join(host.dir, "alpha/.botlake/package.json"),
-      '{"botlake":{"name":"alpha","spools":["missing-spool"]}}',
+      '{"botlake":{"name":"alpha","extensions":["missing-extension"]}}',
     );
-    expect(await host.botlake(["restart-host"], false)).toContain("missing-spool");
+    expect(await host.botlake(["restart-host"], false)).toContain("missing-extension");
     expect(await host.bl("healthy", "list", {})).toEqual([]);
     expect(await host.bl("alpha", "list", {}, false)).toContain("unknown workspace");
   } finally {

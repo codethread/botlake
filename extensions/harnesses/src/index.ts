@@ -12,10 +12,10 @@ import {
   type Node,
   type Context,
   type ProcessSpec,
-  type Spool,
+  type Extension,
 } from "@botlake/core";
-import { getFlag } from "@botlake/spool-flags";
-import { nativeStartup, reserveIdentity } from "@botlake/spool-identity";
+import { getFlag } from "@botlake/extension-flags";
+import { nativeStartup, reserveIdentity } from "@botlake/extension-identity";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -686,7 +686,7 @@ export class Harnesses {
     await this.reconcileTask;
   }
 }
-export function harnesses(options: HarnessOptions = {}): Spool {
+export function harnesses(options: HarnessOptions = {}): Extension {
   return {
     name: "harnesses",
     requires: ["identity", "flags"],

@@ -62,7 +62,7 @@ func initWorkspace(args []string) int {
 	if !workspaceName.MatchString(publishedName) {
 		return fail(errors.New("invalid workspace name; pass --name starting with a letter, followed by letters, digits, underscores or hyphens"))
 	}
-	config := map[string]any{"spools": []string{}}
+	config := map[string]any{"extensions": []string{}}
 	if *name != "" {
 		config["name"] = *name
 	}

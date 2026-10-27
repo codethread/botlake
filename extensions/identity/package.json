@@ -1,5 +1,5 @@
 {
-  "name": "@botlake/spool-flags",
+  "name": "@botlake/extension-identity",
   "version": "0.1.0",
   "files": [
     "src",

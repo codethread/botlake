@@ -7,7 +7,7 @@ import { Graph, type GraphEvent } from "../core/store.ts";
 import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
-import type { Context, Invocation, Op, Peers, Processes, Resource, Spool } from "./context.ts";
+import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const unavailable: Processes = {
@@ -92,30 +92,33 @@ export class Runtime {
   private collecting(): void {
     if (this.phase !== "registering") throw new Fault("lifecycle", "Registrations are closed");
   }
-  async start(spools: Spool[]): Promise<void> {
+  async start(extensions: Extension[]): Promise<void> {
     this.collecting();
     try {
-      const selected = new DepGraph<Spool>();
-      for (const spool of spools) {
-        if (selected.hasNode(spool.name))
-          throw new Fault("collision", `Duplicate spool: ${spool.name}`);
-        selected.addNode(spool.name, spool);
+      const selected = new DepGraph<Extension>();
+      for (const extension of extensions) {
+        if (selected.hasNode(extension.name))
+          throw new Fault("collision", `Duplicate extension: ${extension.name}`);
+        selected.addNode(extension.name, extension);
       }
-      for (const spool of spools)
-        for (const dependency of spool.requires ?? []) {
+      for (const extension of extensions)
+        for (const dependency of extension.requires ?? []) {
           if (!selected.hasNode(dependency))
             throw new Fault(
               "dependency",
-              `${spool.name} requires explicitly selected ${dependency}`,
+              `${extension.name} requires explicitly selected ${dependency}`,
             );
-          selected.addDependency(spool.name, dependency);
+          selected.addDependency(extension.name, dependency);
         }
       let ordered: string[];
       try {
         ordered = selected.overallOrder();
       } catch (error) {
         if (error instanceof DepGraphCycleError)
-          throw new Fault("dependency", `Spool dependency cycle: ${error.cyclePath.join(" -> ")}`);
+          throw new Fault(
+            "dependency",
+            `Extension dependency cycle: ${error.cyclePath.join(" -> ")}`,
+          );
         throw error;
       }
       for (const name of ordered) await selected.getNodeData(name).activate(this.context);

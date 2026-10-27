@@ -1,11 +1,11 @@
-# @botlake/spool-harnesses
+# @botlake/extension-harnesses
 
-Tracked headless agent runs, providers, documented aliases, assignment/review, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/spool-identity` and `@botlake/spool-flags` peers; explicitly select Identity and Flags alongside this spool. Botlake supplies process custody.
+Tracked headless agent runs, providers, documented aliases, assignment/review, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity and Flags alongside this extension. Botlake supplies process custody.
 
-Select `"@botlake/spool-harnesses"` for Codex, Pi, Claude and Cursor defaults. For configuration, select a local module instead:
+Select `"@botlake/extension-harnesses"` for Codex, Pi, Claude and Cursor defaults. For configuration, select a local module instead:
 
 ```ts
-import { harnesses } from "@botlake/spool-harnesses";
+import { harnesses } from "@botlake/extension-harnesses";
 
 export default harnesses({
   aliases: {

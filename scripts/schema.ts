@@ -1,7 +1,7 @@
 import { configJsonSchema } from "@botlake/core";
-import { jobJsonSchema } from "@botlake/spool-cron";
-import { flagsConfigJsonSchema } from "@botlake/spool-flags";
-import { harnessConfigJsonSchema } from "@botlake/spool-harnesses";
+import { jobJsonSchema } from "@botlake/extension-cron";
+import { flagsConfigJsonSchema } from "@botlake/extension-flags";
+import { harnessConfigJsonSchema } from "@botlake/extension-harnesses";
 import { z } from "zod";
 const name = z.enum(["workspace", "job", "harnesses", "flags"]).parse(Bun.argv[2]);
 const schemas = {

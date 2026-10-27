@@ -11,9 +11,9 @@ import {
   isStream,
   type GraphEvent,
   type Predicate,
-  type Spool,
+  type Extension,
 } from "@botlake/core";
-import { batteries } from "@botlake/spool-batteries";
+import { batteries } from "@botlake/extension-batteries";
 import * as v from "valibot";
 import { z } from "zod";
 
@@ -21,12 +21,12 @@ import { rejected } from "./assert.ts";
 
 async function disposable(
   run: (runtime: Runtime) => Promise<void>,
-  spools: Spool[] = [batteries()],
+  extensions: Extension[] = [batteries()],
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "botlake-"));
   const runtime = new Runtime({ database: join(dir, "world.db") });
   try {
-    await runtime.start(spools);
+    await runtime.start(extensions);
     await run(runtime);
   } finally {
     await runtime.stop();
@@ -462,7 +462,7 @@ test("a due wake cancelled or replaced by an earlier handler never receives stal
 });
 
 test("events follow commit, rollback stays silent, and nested domain authority does not leak", async () => {
-  const { identity, reserveIdentity } = await import("@botlake/spool-identity");
+  const { identity, reserveIdentity } = await import("@botlake/extension-identity");
   const committed: number[] = [];
   await disposable(
     async (runtime) => {

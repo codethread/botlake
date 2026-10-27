@@ -52,7 +52,7 @@ export interface Resource {
   start(): void | Promise<void>;
   stop(): void | Promise<void>;
 }
-export interface Spool {
+export interface Extension {
   name: string;
   requires?: string[];
   activate(ctx: Context): void | Promise<void>;

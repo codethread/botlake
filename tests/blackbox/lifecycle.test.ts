@@ -8,12 +8,12 @@ import { system } from "./fixtures/system.ts";
 test("workers publish readiness after registration and report cleanup failures while preserving sibling workspaces", async () => {
   const host = await system();
   try {
-    const healthy = await host.workspace("healthy", ["@botlake/spool-batteries"]);
+    const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
-    const late = await host.workspace("late", ["./spool.ts"]);
+    const late = await host.workspace("late", ["./extension.ts"]);
     const disposed = join(late, "disposed");
     await Bun.write(
-      join(late, "spool.ts"),
+      join(late, "extension.ts"),
       `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 export default {name:"late",activate(ctx){ctx.resource({
@@ -30,10 +30,10 @@ export default {name:"late",activate(ctx){ctx.resource({
       z.array(z.object({ name: z.string() })).parse(await host.botlake(["lake", "list"])),
     ).toEqual([{ name: "healthy" }]);
 
-    const failing = await host.workspace("failing", ["./spool.ts"]);
+    const failing = await host.workspace("failing", ["./extension.ts"]);
     const cleaned = join(failing, "cleaned");
     await Bun.write(
-      join(failing, "spool.ts"),
+      join(failing, "extension.ts"),
       `export default {name:"cleanup",activate(ctx){
       ctx.resource({start(){},stop(){return Bun.write(${JSON.stringify(cleaned)},"cleaned").then(()=>{});}});
       ctx.resource({start(){},stop(){throw new Error("cleanup-boom");}});
@@ -57,9 +57,9 @@ test("unexpected member exit replaces only that worker without replaying its int
   const host = await system();
   try {
     for (const name of ["alpha", "beta"]) {
-      const path = await host.workspace(name, ["./spool.ts"]);
+      const path = await host.workspace(name, ["./extension.ts"]);
       await Bun.write(
-        join(path, "spool.ts"),
+        join(path, "extension.ts"),
         `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 const instance=crypto.randomUUID();

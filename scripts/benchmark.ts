@@ -40,13 +40,13 @@ try {
   const baseline = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const startup: number[] = [];
   const workspaces: string[] = [];
-  const spool = `import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"benchmark",activate(ctx){ctx.graph.db.run("CREATE TABLE IF NOT EXISTS benchmark(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT OR IGNORE INTO benchmark VALUES(1,0)");ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"load"},handler(){const start=performance.now();const update=ctx.graph.db.query("UPDATE benchmark SET value=value+1 WHERE id=1");ctx.graph.db.transaction(()=>{for(let index=0;index<100000;index++)update.run();}).immediate();return performance.now()-start;}}));ctx.register(defineOp({name:"lag",input:z.object({}),output:z.number(),cli:{description:"event loop delay"},async handler(){const start=performance.now();await new Promise(resolve=>setTimeout(resolve,0));return performance.now()-start;}}));}};`;
+  const extension = `import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"benchmark",activate(ctx){ctx.graph.db.run("CREATE TABLE IF NOT EXISTS benchmark(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT OR IGNORE INTO benchmark VALUES(1,0)");ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"load"},handler(){const start=performance.now();const update=ctx.graph.db.query("UPDATE benchmark SET value=value+1 WHERE id=1");ctx.graph.db.transaction(()=>{for(let index=0;index<100000;index++)update.run();}).immediate();return performance.now()-start;}}));ctx.register(defineOp({name:"lag",input:z.object({}),output:z.number(),cli:{description:"event loop delay"},async handler(){const start=performance.now();await new Promise(resolve=>setTimeout(resolve,0));return performance.now()-start;}}));}};`;
   for (let index = 0; index < count; index++) {
     const workspace = await host.workspace(`w${index}`, [
-      "@botlake/spool-batteries",
+      "@botlake/extension-batteries",
       "./benchmark.ts",
     ]);
-    await Bun.write(join(workspace, "benchmark.ts"), spool);
+    await Bun.write(join(workspace, "benchmark.ts"), extension);
     workspaces.push(workspace);
   }
   const began = performance.now();
