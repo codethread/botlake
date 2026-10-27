@@ -7,6 +7,7 @@ export function jsonLines(stdout: string): {
   error: string | null;
 } {
   const events: Record<string, unknown>[] = [];
+
   for (const line of stdout.split("\n").filter((value) => value.trim().length > 0)) {
     try {
       events.push(z.record(z.string(), z.unknown()).parse(JSON.parse(line)));

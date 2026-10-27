@@ -27,6 +27,7 @@ async function disposable(
   const runtime = new Runtime({ database: join(dir, "world.db") });
   try {
     await runtime.start(extensions);
+
     await run(runtime);
   } finally {
     await runtime.stop();
@@ -40,11 +41,13 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     const a = graph.add({ title: "A", attributes: { "ns/key": "", nested: { a: 1, b: 2 } } });
     const b = graph.add({ title: "B" });
     graph.connect(a.id, b.id, "depends-on");
+
     expect(graph.list({ ready: true }).map((row) => row.id)).toEqual([b.id]);
     expect(() => graph.connect(b.id, a.id, "depends-on")).toThrow("Cycle");
     expect(() => graph.update(a.id, { title: "stale", expectedRevision: 100 })).toThrow("Stale");
     graph.update(a.id, { attributes: { nested: { a: null }, "ns/key": "" } });
     expect(graph.show(a.id).attributes).toEqual({ "ns/key": "", nested: { b: 2 } });
+
     graph.archive(a.id, ["ns/key"]);
     expect(graph.show(a.id).attributes["ns/key"]).toBe("");
     expect(graph.list({ where: q.exists(q.attr("ns/key")) })).toEqual([]);

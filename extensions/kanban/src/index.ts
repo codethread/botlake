@@ -17,17 +17,23 @@ import { z } from "zod";
 
 function compare(left: string, right: string, fallback: number): number {
   const order = left.localeCompare(right);
+
   return order === 0 ? fallback : order;
 }
+
 const text = z.string().trim().min(1);
+
 const lane = z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]);
+
 const priority = z.enum(["p1", "p2", "p3", "p4"]);
+
 const pendingFeaturePredicate = q.and(
   q.eq(q.attr("kanban/card"), true),
   q.eq(q.attr("kanban/type"), "feature"),
   q.eq(q.attr("kanban/lane"), "pending"),
   q.missing(q.attr("kanban/link")),
 );
+
 const refsSchema = z
   .array(
     z.strictObject({
@@ -39,7 +45,9 @@ const refsSchema = z
     if (new Set(refs.map((ref) => ref.url)).size !== refs.length)
       ctx.addIssue({ code: "custom", message: "Duplicate reference URL" });
   });
+
 const linkSchema = z.strictObject({ workspace: text, card: text });
+
 const claimInput = z.strictObject({
   id: text,
   owner: text,
@@ -48,6 +56,7 @@ const claimInput = z.strictObject({
   runId: text.optional(),
   byIdentity: text.optional(),
 });
+
 const addInput = z.strictObject({
   title: text,
   type: z.enum(["feature", "epic"]).default("feature"),
@@ -59,8 +68,10 @@ const addInput = z.strictObject({
   reportedBy: text.optional(),
   labels: z.array(text).optional(),
 });
+
 export class Kanban {
   private readonly authority = Symbol("kanban");
+
   constructor(private readonly ctx: Context) {
     ctx.graph.protect((changes, token) => {
       for (const change of changes) {
@@ -110,22 +121,27 @@ export class Kanban {
       }
     });
   }
+
   private target(id: string): Node {
     const record = this.ctx.graph.show(id);
     if (record.attributes["kanban/card"] !== true && record.attributes["kanban/task"] !== true)
       throw new Fault("kanban", "Expected card or task");
     return record;
   }
+
   private writable(id: string): Node {
     const record = this.target(id);
     if (record.attributes["kanban/link"] !== undefined)
       throw new Fault("linked-card", "Change the authoritative downstream card");
     return record;
   }
+
   private parent(id: string): Node | undefined {
     const edge = this.ctx.graph.edges(id, "parent-of").find((entry) => entry.to_id === id);
+
     return edge === undefined ? undefined : this.ctx.graph.show(edge.from_id);
   }
+
   history(id: string): Node[] {
     return this.ctx.graph
       .edges(id, "claims")
@@ -139,6 +155,7 @@ export class Kanban {
         ),
       );
   }
+
   owner(id: string): Json {
     const direct = this.history(id).at(-1);
     const parent = this.parent(id);
@@ -146,6 +163,7 @@ export class Kanban {
       direct === undefined && parent !== undefined ? this.history(parent.id).at(-1) : undefined;
     const claim = direct ?? inherited;
     if (claim === undefined) return null;
+
     return {
       ...attribution(this.ctx.graph, text.parse(claim.attributes["kanban/owner"])),
       source: direct === undefined ? "inherited" : "direct",
@@ -155,8 +173,10 @@ export class Kanban {
       worktree: claim.attributes["kanban/worktree"] ?? null,
     };
   }
+
   add(raw: z.input<typeof addInput>): Node {
     const input = addInput.parse(raw);
+
     return this.ctx.graph.atomic(() => {
       if (input.epic !== undefined) {
         const epic = this.writable(input.epic);
@@ -167,6 +187,7 @@ export class Kanban {
         )
           throw new Fault("kanban", "Features attach to an active epic");
       }
+
       const attrs: Attributes = {
         "kanban/card": true,
         "kanban/type": input.type,
@@ -176,30 +197,38 @@ export class Kanban {
       };
       if (input.body !== undefined) attrs["kanban/body"] = input.body;
       if (input.byIdentity !== undefined) attrs["identity/by-identity"] = input.byIdentity;
+
       const reporter = input.reportedBy ?? input.byIdentity;
       if (reporter !== undefined) attrs["kanban/reported-by"] = reporter;
+
       const card = this.ctx.graph.add({ title: input.title, attributes: attrs });
       if (input.epic !== undefined) this.ctx.graph.connect(input.epic, card.id, "parent-of");
       if (input.byIdentity !== undefined)
         attribute(this.ctx, card.id, input.byIdentity, "attributed");
       if (reporter !== undefined) attribute(this.ctx, card.id, reporter, "reported");
+
       return card;
     }, this.authority);
   }
+
   task(feature: string, title: string, dependencies: string[] = []): Node {
     return this.ctx.graph.atomic(() => {
       const parent = this.writable(feature);
       if (parent.attributes["kanban/type"] !== "feature" || parent.state !== "active")
         throw new Fault("kanban", "Tasks require an active feature");
+
       const task = this.ctx.graph.add({ title, attributes: { "kanban/task": true } });
       this.ctx.graph.connect(feature, task.id, "parent-of");
       for (const dependency of dependencies)
         this.ctx.graph.connect(task.id, dependency, "depends-on");
+
       return task;
     }, this.authority);
   }
+
   claim(raw: z.infer<typeof claimInput>): { result: string; claim: Node } {
     const input = claimInput.parse(raw);
+
     return this.ctx.graph.atomic(() => {
       const target = this.writable(input.id);
       if (target.state !== "active" || target.attributes["kanban/type"] === "epic")
@@ -215,6 +244,7 @@ export class Kanban {
       if (input.worktree !== undefined) attrs["kanban/worktree"] = input.worktree;
       if (input.runId !== undefined) attrs["kanban/run-id"] = input.runId;
       if (input.byIdentity !== undefined) attrs["identity/by-identity"] = input.byIdentity;
+
       const previous = this.history(input.id).at(-1);
       if (previous?.attributes["kanban/owner"] === input.owner) {
         for (const key of [
@@ -227,6 +257,7 @@ export class Kanban {
             throw new Fault("claim", "Same owner with changed context is ambiguous");
         return { result: "unchanged", claim: previous };
       }
+
       if (previous !== undefined)
         attrs["kanban/claimed-at"] = new Date(
           Math.max(
@@ -245,18 +276,22 @@ export class Kanban {
         attribute(this.ctx, claim.id, input.byIdentity, "attributed");
       if (target.attributes["kanban/card"] === true)
         this.ctx.graph.update(input.id, { attributes: { "kanban/lane": "claimed" } });
+
       return { result: "claimed", claim };
     }, this.authority);
   }
+
   finish(id: string, outcome = "done"): Node {
     return this.ctx.graph.atomic(() => {
       const card = this.writable(id);
       if (card.state !== "active") throw new Fault("finish", "Card is not active");
+
       if (
         card.attributes["kanban/type"] === "epic" &&
         !["pending", "refinement"].includes(lane.parse(card.attributes["kanban/lane"]))
       )
         throw new Fault("finish", "Epic must be pending or refinement");
+
       const descendants = this.ctx.graph
         .subgraph(id)
         .nodes.filter(
@@ -277,6 +312,7 @@ export class Kanban {
             "kanban/cascade-root": id,
           },
         });
+
       return this.ctx.graph.update(id, {
         state: "closed",
         attributes: {
@@ -287,10 +323,12 @@ export class Kanban {
       });
     }, this.authority);
   }
+
   reopen(id: string): Node {
     return this.ctx.graph.atomic(() => {
       const card = this.writable(id);
       if (card.state !== "closed") throw new Fault("reopen", "Card must be closed");
+
       if (
         card.attributes["kanban/type"] === "epic" &&
         card.attributes["kanban/outcome"] !== "abandoned"
@@ -330,19 +368,24 @@ export class Kanban {
       });
     }, this.authority);
   }
+
   note(id: string, body: string, attributes: Attributes = {}): Node {
     return this.ctx.graph.atomic(() => {
       this.target(id);
       const note = this.ctx.graph.note(id, body, attributes);
       const actor = attributes["identity/by-identity"];
       if (typeof actor === "string") attribute(this.ctx, note.id, actor, "attributed");
+
       return note;
     });
   }
+
   annotate(id: string, attributes: Attributes): Node {
     this.target(id);
+
     return this.ctx.graph.update(id, { attributes });
   }
+
   references(
     id: string,
     operation: "list" | "add" | "remove",
@@ -354,6 +397,7 @@ export class Kanban {
       const card = this.target(id);
       let refs = refsSchema.parse(card.attributes["kanban/external-refs"] ?? []);
       if (operation === "list") return { card: id, refs };
+
       const target = requireValue(url, "Reference URL required");
       const existing = refs.find((ref) => ref.url === target);
       if (operation === "add") {
@@ -368,6 +412,7 @@ export class Kanban {
         }
         refs = [...refs, next];
       } else refs = refs.filter((ref) => ref.url !== target);
+
       return {
         card: this.ctx.graph.update(id, {
           expectedRevision: expectedRevision ?? card.revision,
@@ -377,6 +422,7 @@ export class Kanban {
       };
     }, this.authority);
   }
+
   private snapshot(card: Pick<Node, "title" | "state" | "attributes">, owner: Json): Attributes {
     return {
       title: card.title,
@@ -387,15 +433,18 @@ export class Kanban {
       "observed-at": new Date(this.ctx.clock.now()).toISOString(),
     };
   }
+
   private async linkWorkspace(workspace: string): Promise<string> {
     const peer = await this.ctx.peers.resolve(workspace);
     if (peer.path === this.ctx.workspace)
       throw new Fault("link", "Link must name another workspace");
     return peer.path;
   }
+
   async attach(workspace: string, id: string): Promise<Node> {
     return this.mirror(await this.linkWorkspace(workspace), id);
   }
+
   async addLink(workspace: string, title: string): Promise<Node> {
     workspace = await this.linkWorkspace(workspace);
     const { id } = z
@@ -411,6 +460,7 @@ export class Kanban {
       });
     }
   }
+
   private async mirror(workspace: string, id: string): Promise<Node> {
     const source = z
       .object({
@@ -429,6 +479,7 @@ export class Kanban {
       if (
         this.ctx.graph.all({ where: q.exists(q.attr("kanban/link")) }).some((card) => {
           const link = linkSchema.parse(card.attributes["kanban/link"]);
+
           return link.workspace === workspace && link.card === id;
         })
       )
@@ -446,6 +497,7 @@ export class Kanban {
       });
     }, this.authority);
   }
+
   async refresh(id?: string): Promise<unknown[]> {
     const cards =
       id === undefined
@@ -480,6 +532,7 @@ export class Kanban {
     }
     return result;
   }
+
   async card(
     id: string,
     workspace?: string,
@@ -535,6 +588,7 @@ export class Kanban {
                 : "ready",
         latestNote: this.notes(task.id).at(-1) ?? null,
       }));
+
     return {
       card,
       owner,
@@ -549,6 +603,7 @@ export class Kanban {
       ...(link === undefined ? {} : { link }),
     };
   }
+
   private notes(id: string): Node[] {
     return this.ctx.graph
       .edges(id, "notes")
@@ -556,6 +611,7 @@ export class Kanban {
       .map((edge) => this.ctx.graph.show(edge.from_id))
       .toSorted((a, b) => compare(a.created_at, b.created_at, a.id.localeCompare(b.id)));
   }
+
   async board(labels: string[] = []): Promise<unknown> {
     const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
       labels.every((label) =>
@@ -566,6 +622,7 @@ export class Kanban {
       ),
     );
     const views = await Promise.all(cards.map((card) => this.card(card.id)));
+
     return {
       lanes: Object.fromEntries(
         lane.options.map((name) => [
@@ -579,6 +636,7 @@ export class Kanban {
       epics: views.filter((view) => view.card.attributes["kanban/type"] === "epic"),
     };
   }
+
   next(): Node[] {
     return this.ctx.graph
       .all({ ready: true, where: pendingFeaturePredicate })
@@ -591,6 +649,7 @@ export class Kanban {
       );
   }
 }
+
 export function kanban(): Extension {
   return {
     name: "kanban",
@@ -806,10 +865,12 @@ export function kanban(): Extension {
             const result = await match(commandInput)
               .with({ command: "add" }, (value) => {
                 const { command: _, ...request } = value;
+
                 return board.add(request);
               })
               .with({ command: "claim" }, (value) => {
                 const { command: _, ...request } = value;
+
                 return board.claim(request);
               })
               .with({ command: "board" }, ({ labels }) => board.board(labels))
@@ -825,6 +886,7 @@ export function kanban(): Extension {
                 if (value.byIdentity !== undefined)
                   attrs["identity/by-identity"] = value.byIdentity;
                 if (value.kind !== undefined) attrs["note/kind"] = value.kind;
+
                 return board.note(value.id, value.text, attrs);
               })
               .with({ command: "ref" }, (value) =>
@@ -850,6 +912,7 @@ export function kanban(): Extension {
                 board.attach(workspace, id),
               )
               .exhaustive();
+
             return z.json().parse(result);
           },
         }),

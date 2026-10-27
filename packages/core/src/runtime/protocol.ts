@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 export const invocationSchema = z
   .strictObject({
     workspace: z.string(),
@@ -17,6 +18,7 @@ export const invocationSchema = z
   .refine((value) => value.argv === undefined || !Object.hasOwn(value, "input"), {
     message: "Choose argv or input, not both",
   });
+
 export const workerMessageSchema = z.union([
   invocationSchema,
   z.strictObject({ cancel: z.string() }),

@@ -9,9 +9,13 @@ const fieldSchema = z.union([
   z.enum(["id", "title", "state", "created_at", "updated_at", "revision"]),
   z.strictObject({ attr: z.string().min(1), path: z.array(z.string().min(1)).default([]) }),
 ]);
+
 const valueSchema = z.union([z.json(), z.strictObject({ param: z.string().min(1) })]);
+
 export type Field = z.infer<typeof fieldSchema>;
+
 export type QueryParameter = { param: string };
+
 export type Predicate =
   | { op: "and" | "or"; args: Predicate[] }
   | { op: "not"; arg: Predicate }
@@ -23,6 +27,7 @@ export type Predicate =
       value: Json | { param: string };
     }
   | { op: "edge"; direction: "in" | "out"; relation: string; where?: Predicate | undefined };
+
 export const predicateSchema: z.ZodType<Predicate> = z.lazy(() =>
   z.union([
     z.strictObject({ op: z.enum(["and", "or"]), args: z.array(predicateSchema).min(1) }),
@@ -137,6 +142,7 @@ export interface NamedQuery {
   params?: string[] | undefined;
   description: string;
 }
+
 export const namedQuerySchema = z.strictObject({
   where: predicateSchema,
   params: z.array(z.string().min(1)).optional(),
@@ -147,48 +153,63 @@ export const q = {
   attr(attr: string, ...path: string[]): Field {
     return { attr, path };
   },
+
   param(param: string): QueryParameter {
     return { param };
   },
+
   and(...args: [Predicate, ...Predicate[]]): Predicate {
     return { op: "and", args };
   },
+
   or(...args: [Predicate, ...Predicate[]]): Predicate {
     return { op: "or", args };
   },
+
   not(arg: Predicate): Predicate {
     return { op: "not", arg };
   },
+
   exists(field: Field): Predicate {
     return { op: "exists", field };
   },
+
   missing(field: Field): Predicate {
     return { op: "missing", field };
   },
+
   eq(field: Field, value: Json | QueryParameter): Predicate {
     return { op: "=", field, value };
   },
+
   ne(field: Field, value: Json | QueryParameter): Predicate {
     return { op: "!=", field, value };
   },
+
   lt(field: Field, value: Json | QueryParameter): Predicate {
     return { op: "<", field, value };
   },
+
   lte(field: Field, value: Json | QueryParameter): Predicate {
     return { op: "<=", field, value };
   },
+
   gt(field: Field, value: Json | QueryParameter): Predicate {
     return { op: ">", field, value };
   },
+
   gte(field: Field, value: Json | QueryParameter): Predicate {
     return { op: ">=", field, value };
   },
+
   inArray(field: Field, value: readonly Json[] | QueryParameter): Predicate {
     return { op: "in", field, value: "param" in value ? value : [...value] };
   },
+
   edgeOut(relation: string, where?: Predicate): Predicate {
     return { op: "edge", direction: "out", relation, ...(where === undefined ? {} : { where }) };
   },
+
   edgeIn(relation: string, where?: Predicate): Predicate {
     return { op: "edge", direction: "in", relation, ...(where === undefined ? {} : { where }) };
   },

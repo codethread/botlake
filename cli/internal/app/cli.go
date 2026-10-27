@@ -11,11 +11,14 @@ import (
 func Botlake(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
+
 		return 0
 	}
+
 	fail := func(err error) int {
 		return cliFailure(err, false)
 	}
+
 	switch args[0] {
 	case "--version":
 		if len(args) != 1 {
@@ -44,6 +47,7 @@ func Botlake(args []string) int {
 			if len(args) != 2 {
 				return fail(errors.New("usage: botlake lake list"))
 			}
+
 			return Relay(request("lake-list", "", nil))
 		}
 		switch action {
@@ -65,6 +69,7 @@ func Botlake(args []string) int {
 			if err != nil {
 				return fail(err)
 			}
+
 			*target = selected
 		}
 		return Relay(request("lake-"+action, *target, nil))

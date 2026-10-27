@@ -33,6 +33,8 @@ export interface Outcome {
 export interface Provider {
   name: ProviderName;
   doc: string;
+
   prepare(run: ProviderRun): LaunchPlan;
+
   finish(run: ProviderRun, exitCode: number, stdout: string, stderr: string): Outcome;
 }

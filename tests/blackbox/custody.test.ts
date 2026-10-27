@@ -36,6 +36,7 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
 }}));}};`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
+
     const pipe = join(host.dir, "release");
     expect(await Bun.spawn(["mkfifo", pipe]).exited).toBe(0);
     const owner = { owner: "one", key: "task" };
@@ -46,6 +47,7 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
     };
     const first = fact.parse(await host.bl("custody", "process", launch));
     expect(fact.parse(await host.bl("custody", "process", launch)).handle).toBe(first.handle);
+
     expect(
       await host.bl("custody", "process", { ...launch, argv: ["sh", "-c", "exit 1"] }, false),
     ).toContain("different launch spec");
@@ -62,6 +64,7 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
     expect(
       await host.bl("custody", "process", { ...owner, command: "list", owner: "two" }),
     ).toEqual([]);
+
     expect(await Bun.spawn(["sh", "-c", 'printf "release\\n" > "$1"', "sh", pipe]).exited).toBe(0);
     let terminal = first;
     for (let attempt = 0; attempt < 100 && terminal.phase !== "terminal"; attempt++)
@@ -94,6 +97,7 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
     expect(missing.phase).toBe("terminal");
     expect(missing.launch_failure?.message).toBeString();
     expect(missing.exit).toBeUndefined();
+
     const cancellable = fact.parse(
       await host.bl("custody", "process", { ...launch, key: "cancel" }),
     );

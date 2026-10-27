@@ -80,6 +80,7 @@ export class Harnesses {
     );
     ctx.graph.protect((changes, token) => {
       if (token === this.authority) return;
+
       for (const change of changes) {
         if (
           change.kind === "node" &&
@@ -119,6 +120,7 @@ export class Harnesses {
   private run(id: string): Node {
     const run = this.ctx.graph.show(id);
     if (run.attributes["harness/run"] !== true) throw new Fault("run", "Expected tracked run");
+
     return run;
   }
 
@@ -136,6 +138,7 @@ export class Harnesses {
     const request = Object.fromEntries(
       Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
     );
+
     const hash = fingerprint({
       operation: parent === undefined ? "start" : "resume",
       parent: parent?.id ?? null,
@@ -223,13 +226,16 @@ export class Harnesses {
       }
 
       const run = this.ctx.graph.add({ title: `Agent ${input.seat}`, attributes: attrs });
+
       if (input.target !== undefined) this.ctx.graph.connect(run.id, input.target, "serves");
+
       return run;
     }, this.authority);
   }
 
   private providerRun(run: Node): ProviderRun {
     const seat = seatSchema.parse(run.attributes["harness/settings"]);
+
     return {
       provider: seat.provider,
       cwd: text.parse(run.attributes["harness/cwd"]),
@@ -283,6 +289,7 @@ export class Harnesses {
           BOTLAKE_RUN_REFERENCE: `${current.id}:${invocation}`,
         },
       };
+
       return this.patch(current.id, {
         "harness/state": "running",
         "harness/invocation": invocation,
@@ -294,9 +301,11 @@ export class Harnesses {
 
   async reconcile(): Promise<void> {
     if (this.reconcileTask !== undefined) return this.reconcileTask;
+
     this.reconcileTask = this.reconcileRuns().finally(() => {
       this.reconcileTask = undefined;
     });
+
     return this.reconcileTask;
   }
 
@@ -312,6 +321,7 @@ export class Harnesses {
           run.attributes["harness/launch"] === undefined
         )
           continue;
+
         const invocation = text.parse(run.attributes["harness/invocation"]);
         const spec = launchSchema.parse(run.attributes["harness/launch"]);
         let fact = owned.find((entry) => entry.owner === spec.owner && entry.key === spec.key);
@@ -425,6 +435,7 @@ export class Harnesses {
 
   native(raw: z.input<typeof registrationSchema>): unknown {
     const input: NativeRegistration = registrationSchema.parse(raw);
+
     return this.sessions.observe({ ...input, cwd: realpathSync(input.cwd) });
   }
 
@@ -449,6 +460,7 @@ export class Harnesses {
     const fact = await this.ctx.processes.get(text.parse(run.attributes["harness/handle"]));
     if (fact.phase !== "terminal")
       throw new Fault("custody", "Cancellation has no terminal evidence");
+
     return this.run(id);
   }
 
@@ -503,6 +515,7 @@ export class Harnesses {
           "resume",
           "Resume requires a settled managed run with verified native session",
         );
+
       const existing = this.ctx.graph.edges(id, "continues").find((edge) => edge.to_id === id);
       if (existing !== undefined) {
         const child = this.run(existing.from_id);
@@ -512,6 +525,7 @@ export class Harnesses {
           child.attributes["harness/prompt"] === prompt
         )
           return child;
+
         throw new Fault("resume", "Run already has an accepted continuation");
       }
       if (
@@ -541,6 +555,7 @@ export class Harnesses {
         parent,
       );
       this.ctx.graph.connect(child.id, id, "continues");
+
       return child;
     }, this.authority);
   }
@@ -549,15 +564,18 @@ export class Harnesses {
     const run = this.run(id);
     if (run.attributes["harness/external"] === true || run.attributes["harness/settled"] !== true)
       throw new Fault("custody", "Only settled managed runs may acknowledge custody");
+
     const spec = launchSchema.parse(run.attributes["harness/launch"]);
     const owned = await this.ctx.processes.listOwned(spec.owner);
     const fact = owned.find((entry) => entry.key === spec.key);
     if (fact !== undefined) await this.ctx.processes.acknowledge(fact.handle, spec.owner, spec.key);
+
     return this.patch(id, { "harness/acknowledged": true });
   }
 
   catalog(name?: string): unknown {
     if (name !== undefined) return this.seats.show(name);
+
     return {
       providers: [...this.providers.keys()],
       aliases: this.seats.list(),

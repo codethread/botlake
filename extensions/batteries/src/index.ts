@@ -13,12 +13,14 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 
 const id = z.string().min(1);
+
 const patch = {
   title: z.string().min(1).optional(),
   state: z.enum(["active", "closed"]).optional(),
   attributes: attributesSchema.optional(),
   expectedRevision: z.number().int().positive().optional(),
 };
+
 const queryInput = z.strictObject({
   query: z.string().optional(),
   where: predicateSchema.optional(),
@@ -26,6 +28,7 @@ const queryInput = z.strictObject({
   limit: z.number().int().positive().optional(),
   lean: z.boolean().optional(),
 });
+
 const guidance = {
   add: {
     description: "Create a node with a title and attributes",
@@ -105,6 +108,7 @@ const guidance = {
     examples: ["bl edge add TASK_ID PREREQUISITE_ID depends-on", "bl edge list ID"],
   },
 };
+
 export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
   return {
     name: "batteries",
@@ -177,7 +181,9 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
             if (input.query !== undefined) {
               const named = ctx.namedQuery(input.query);
               if (named === undefined) throw new Fault("query", `Unknown query: ${input.query}`);
+
               if (where !== undefined) throw new Fault("query", "Choose named or ad hoc query");
+
               for (const param of named.params ?? [])
                 if (input.params?.[param] === undefined)
                   throw new Fault("query", `Missing parameter: ${param}`);

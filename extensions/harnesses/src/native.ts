@@ -45,6 +45,7 @@ export class NativeSessions {
       run.attributes["harness/cwd"] !== input.cwd
     )
       throw new Fault("native", "Native startup cwd differs from its run");
+
     if (
       this.runs(input.provider, input.nativeSessionId).some(
         (other) =>
@@ -63,6 +64,7 @@ export class NativeSessions {
       if (input.runId !== undefined) {
         const referenced = this.ctx.graph.show(input.runId);
         const previous = referenced.attributes["harness/session-id"];
+
         // Native clear/fork can switch sessions while retaining the launching environment.
         // Only an already registered external session may bypass that inherited reference.
         const detached =
@@ -74,6 +76,7 @@ export class NativeSessions {
         run = detached ?? this.managed(input);
       } else {
         const matches = this.runs(input.provider, input.nativeSessionId);
+
         if (
           matches.some(
             (entry) =>
@@ -99,8 +102,10 @@ export class NativeSessions {
             },
           });
       }
+
       const binding = observeIdentity(this.ctx, input);
       const session = this.ctx.graph.show(binding.nodeId);
+
       this.ctx.graph.update(run.id, {
         attributes: {
           "harness/identity": binding.identity,
@@ -119,6 +124,7 @@ export class NativeSessions {
         },
       });
       const external = run.attributes["harness/external"] === true;
+
       recordParticipation(
         this.ctx,
         binding.identity,
@@ -148,6 +154,7 @@ export class NativeSessions {
       };
       const current = this.managed(input);
       if (current.attributes["harness/integration"] === "native") return;
+
       const binding = nativeStartup(this.ctx, input);
       this.ctx.graph.update(run.id, {
         attributes: {
@@ -157,6 +164,7 @@ export class NativeSessions {
           "harness/integration": "output",
         },
       });
+
       recordParticipation(this.ctx, binding.identity, run.id, input.invocation ?? "external");
     }, this.authority);
   }

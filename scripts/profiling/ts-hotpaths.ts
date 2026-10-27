@@ -10,6 +10,7 @@ const queries = z
   .parse(await Bun.file(queriesPath).json());
 const runtime = new Runtime({ database });
 const records: unknown[] = [];
+
 async function measure(name: string, run: () => unknown): Promise<void> {
   const warmup = performance.now() + 500;
   while (performance.now() < warmup) await run();

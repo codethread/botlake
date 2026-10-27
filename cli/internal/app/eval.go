@@ -50,63 +50,78 @@ func evalCLI(args []string) int {
 	fail := func(err error) int { return cliFailure(err, true) }
 	flags := flag.NewFlagSet("botlake lake eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+
 	target := flags.String("workspace", "", "workspace path or published name")
 	cwd := flags.String("cwd", "", "caller working directory")
 	timeout := flags.String("timeout", "30s", "overall evaluation deadline")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(os.Stdout, evalUsage)
+
 			return 0
 		}
+
 		return fail(err)
 	}
+
 	if flags.NArg() != 1 {
 		return fail(errors.New(evalUsage))
 	}
+
 	duration, err := time.ParseDuration(*timeout)
 	if err != nil || duration.Milliseconds() <= 0 {
 		return fail(fmt.Errorf("invalid --timeout %q: expected a duration of at least 1ms", *timeout))
 	}
+
 	if *cwd == "" {
 		*cwd, err = os.Getwd()
 	} else {
 		*cwd, err = canonical(*cwd)
 	}
+
 	if err != nil {
 		return fail(err)
 	}
+
 	if *target == "" {
 		*target, err = defaultWorkspace(*cwd)
 		if err != nil {
 			return fail(err)
 		}
 	}
+
 	source, filename := flags.Arg(0), "botlake-lake-eval.js"
 	if source == "-" {
 		raw, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return fail(err)
 		}
+
 		source = string(raw)
 	} else if strings.HasPrefix(source, "@") {
 		filename = source[1:]
 		if !filepath.IsAbs(filename) {
 			filename = filepath.Join(*cwd, filename)
 		}
+
 		raw, err := os.ReadFile(filename)
 		if err != nil {
 			return fail(err)
 		}
+
 		source = string(raw)
 	}
+
 	core, err := filepath.Abs(Core())
 	if err != nil {
 		return fail(err)
 	}
+
 	socketPath, err := filepath.Abs(socket())
 	if err != nil {
 		return fail(err)
 	}
+
 	interrupt, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(interrupt, duration)
@@ -119,11 +134,13 @@ func evalCLI(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+
 	// A separate result descriptor keeps arbitrary script stdout out of JSON output.
 	result, err := os.CreateTemp("", "botlake-eval-*")
 	if err != nil {
 		return fail(err)
 	}
+
 	defer result.Close()
 	defer os.Remove(result.Name())
 	cmd := exec.CommandContext(ctx, "bun", filepath.Join(core, "src/runtime/eval.ts"))
@@ -143,22 +160,28 @@ func evalCLI(args []string) int {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fail(errors.New("eval deadline exceeded; completed operations are not rolled back"))
 	}
+
 	if ctx.Err() != nil {
 		return fail(errors.New("eval interrupted; completed operations are not rolled back"))
 	}
+
 	if _, err := result.Seek(0, io.SeekStart); err != nil {
 		return fail(err)
 	}
+
 	raw, err := io.ReadAll(result)
 	if err != nil {
 		return fail(err)
 	}
+
 	if len(raw) == 0 {
 		if runErr != nil {
 			return fail(runErr)
 		}
+
 		return fail(errors.New("eval exited without a result; use return instead of process.exit"))
 	}
+
 	var frame struct {
 		OK     bool            `json:"ok"`
 		Result json.RawMessage `json:"result"`
@@ -167,11 +190,14 @@ func evalCLI(args []string) int {
 	if err := decode(raw, &frame); err != nil {
 		return fail(err)
 	}
+
 	if !frame.OK {
 		return renderError(frame.Error, true)
 	}
+
 	if runErr != nil {
 		return fail(runErr)
 	}
+
 	return renderResult(frame.Result, presentation{json: true})
 }

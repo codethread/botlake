@@ -6,6 +6,7 @@ const scheduleSchema = z.union([
   z.strictObject({ everyMs: z.number().int().positive() }),
   z.strictObject({ expression: z.string().min(1), timezone: z.string().min(1) }),
 ]);
+
 const jobSchema = z.strictObject({
   id: z.string().min(1),
   action: z.string().min(1),
@@ -21,7 +22,9 @@ const jobSchema = z.strictObject({
     })
     .default({ attempts: 0, delayMs: 1000 }),
 });
+
 export type Job = z.infer<typeof jobSchema>;
+
 export interface Occurrence {
   id: string;
   job: string;
@@ -29,10 +32,14 @@ export interface Occurrence {
   attempt: number;
   payload: Json;
 }
+
 export type Action = (ctx: Context, occurrence: Occurrence) => Promise<Json | void> | Json | void;
+
 export function nextFire(schedule: Job["schedule"], after: number): number {
   if ("everyMs" in schedule) return after + schedule.everyMs;
+
   new Intl.DateTimeFormat("en", { timeZone: schedule.timezone }).format(0);
+
   return CronExpressionParser.parse(schedule.expression, {
     currentDate: after,
     tz: schedule.timezone,
@@ -40,17 +47,22 @@ export function nextFire(schedule: Job["schedule"], after: number): number {
     .next()
     .getTime();
 }
+
 export function defineJob(input: z.input<typeof jobSchema>): Job {
   const job = jobSchema.parse(input);
+
   nextFire(job.schedule, 0);
+
   return job;
 }
+
 const persistedJob = z.object({
   id: z.string(),
   spec: z.string(),
   next_at: z.number(),
   enabled: z.number(),
 });
+
 const occurrenceSchema = z.object({
   id: z.string(),
   job: z.string(),
@@ -61,11 +73,13 @@ const occurrenceSchema = z.object({
   result: z.string().nullable(),
   error: z.string().nullable(),
 });
+
 export class Cron {
   private readonly jobs = new Map<string, Job>();
   private readonly active = new Map<string, Promise<void>>();
   private stopping = false;
   private readonly runningJobs = new Map<string, string>();
+
   constructor(
     private readonly ctx: Context,
     jobs: Job[],
@@ -78,6 +92,7 @@ export class Cron {
     for (const input of jobs) {
       const job = defineJob(input);
       if (this.jobs.has(job.id)) throw new Fault("collision", `Duplicate cron job: ${job.id}`);
+
       if (actions[job.action] === undefined)
         throw new Fault("dependency", `Unknown cron action: ${job.action}`);
       this.jobs.set(job.id, job);
@@ -90,6 +105,7 @@ export class Cron {
       this.dispatch();
     });
   }
+
   start(): void {
     const now = this.ctx.clock.now();
     this.ctx.graph.atomic(() => {
@@ -130,14 +146,17 @@ export class Cron {
     });
     this.dispatch();
   }
+
   private fire(id: string): void {
     const job = this.jobs.get(id);
     if (job === undefined || this.stopping) return;
+
     const stored = persistedJob.parse(
       this.ctx.graph.db.query("SELECT * FROM cron_jobs WHERE id=?").get(id),
     );
     const now = this.ctx.clock.now();
     if (stored.next_at > now) return;
+
     this.ctx.graph.atomic(() => {
       let at = stored.next_at;
       if (job.missed !== "catch-up") {
@@ -171,8 +190,10 @@ export class Cron {
     });
     this.dispatch();
   }
+
   private dispatch(): void {
     if (this.stopping) return;
+
     const rows = z
       .array(occurrenceSchema)
       .parse(
@@ -184,8 +205,10 @@ export class Cron {
       );
     for (const occurrence of rows) {
       if (this.active.has(occurrence.id)) continue;
+
       const job = this.jobs.get(occurrence.job);
       if (job === undefined) continue;
+
       const busy = [...this.runningJobs.values()].includes(job.id);
       if (busy && job.overlap !== "allow") {
         if (job.overlap === "skip" && occurrence.attempt === 0)
@@ -224,10 +247,12 @@ export class Cron {
       );
     if (retry.at !== null) this.ctx.scheduler.schedule("cron/retry", retry.at, "cron/retry");
   }
+
   private async execute(job: Job, occurrence: Occurrence): Promise<void> {
     try {
       const action = this.actions[job.action];
       if (action === undefined) throw new Fault("dependency", `Unknown action ${job.action}`);
+
       const result = await action(this.ctx, occurrence);
       this.ctx.graph.db
         .query("UPDATE cron_occurrences SET status='succeeded',result=?,error=NULL WHERE id=?")
@@ -244,22 +269,27 @@ export class Cron {
         );
     }
   }
+
   status(): unknown[] {
     return this.ctx.graph.db.query("SELECT * FROM cron_jobs ORDER BY id").all();
   }
+
   history(job?: string): unknown[] {
     return this.ctx.graph.db
       .query("SELECT * FROM cron_occurrences WHERE (? IS NULL OR job=?) ORDER BY scheduled_at,id")
       .all(job ?? null, job ?? null);
   }
+
   async drain(): Promise<void> {
     while (this.active.size > 0) await Promise.all(this.active.values());
   }
+
   async stop(): Promise<void> {
     this.stopping = true;
     await this.drain();
   }
 }
+
 export function cron(options: { jobs: Job[]; actions: Record<string, Action> }): Extension {
   return {
     name: "cron",

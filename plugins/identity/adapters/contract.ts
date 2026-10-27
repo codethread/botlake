@@ -8,6 +8,7 @@ export interface HookEvent {
   context: boolean;
   nativeEvent: string;
 }
+
 export interface HookAdapter {
   provider: ProviderName;
   decode(raw: unknown): HookEvent;

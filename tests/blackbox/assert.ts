@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 export async function rejected(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;

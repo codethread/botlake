@@ -12,6 +12,7 @@ import (
 
 func registerProcessExitDarwin(kqueue int, change unix.Kevent_t) error {
 	_, err := unix.Kevent(kqueue, []unix.Kevent_t{change}, nil, nil)
+
 	return err
 }
 
@@ -34,6 +35,7 @@ func observeProcessExitWith(
 	if err != nil {
 		return fmt.Errorf("create process exit kqueue: %w", err)
 	}
+
 	defer func() { _ = unix.Close(kqueue) }()
 	change := unix.Kevent_t{Ident: uint64(pid), Filter: unix.EVFILT_PROC, Flags: unix.EV_ADD | unix.EV_ONESHOT, Fflags: unix.NOTE_EXIT}
 	if err := registerProcessExit(kqueue, change); err != nil {
@@ -45,21 +47,27 @@ func observeProcessExitWith(
 			if waitErr == nil && waitable {
 				return nil
 			}
+
 			if waitErr != nil {
 				return fmt.Errorf("watch process %d exit: %w", pid, errors.Join(err, waitErr))
 			}
 		}
+
 		return fmt.Errorf("watch process %d exit: %w", pid, err)
 	}
+
 	events := make([]unix.Kevent_t, 1)
+
 	for {
 		n, err := unix.Kevent(kqueue, nil, events, nil)
 		if err == unix.EINTR {
 			continue
 		}
+
 		if err != nil {
 			return fmt.Errorf("observe process %d exit: %w", pid, err)
 		}
+
 		if n == 1 {
 			return nil
 		}
@@ -82,6 +90,7 @@ func processExitWaitableDarwin(pid int) (bool, error) {
 	if err != 0 {
 		return false, fmt.Errorf("check process %d waitability: %w", pid, err)
 	}
+
 	return info.pid == int32(pid), nil
 }
 
@@ -106,6 +115,7 @@ func processGroupHasLiveMembers(pgid, leaderPID int) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read process table: %w", err)
 	}
+
 	for _, process := range processes {
 		// The leader is intentionally left as the sole allowed zombie: it pins
 		// the PGID until this cleanup has finished. Descendant zombies still
@@ -115,5 +125,6 @@ func processGroupHasLiveMembers(pgid, leaderPID int) (bool, error) {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }

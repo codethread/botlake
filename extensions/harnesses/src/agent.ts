@@ -107,6 +107,7 @@ export function registerAgent(ctx: Context, service: Harnesses): void {
             const { command: _, ...request } = commandInput;
             const run = service.start(request);
             await service.reconcile();
+
             return ctx.graph.show(run.id);
           })
           .with({ command: "list" }, () => service.runs())
@@ -114,25 +115,30 @@ export function registerAgent(ctx: Context, service: Harnesses): void {
           .with({ command: "catalog" }, ({ name }) => service.catalog(name))
           .with({ command: "reconcile" }, async () => {
             await service.reconcile();
+
             return service.runs();
           })
           .with({ command: "cancel" }, ({ id }) => service.cancel(id))
           .with({ command: "retry" }, async ({ id }) => {
             const run = service.retry(id);
             await service.reconcile();
+
             return run;
           })
           .with({ command: "resume" }, async ({ id, prompt, requestId }) => {
             const run = service.resume(id, prompt, requestId);
             await service.reconcile();
+
             return run;
           })
           .with({ command: "acknowledge" }, ({ id }) => service.acknowledge(id))
           .with({ command: "native" }, (commandInput) => {
             const { command: _, ...request } = commandInput;
+
             return service.native(request);
           })
           .exhaustive();
+
         return z.json().parse(result);
       },
     }),

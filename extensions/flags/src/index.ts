@@ -2,19 +2,27 @@ import { defineOp, encode, requireValue, type Context, type Extension } from "@b
 import { z } from "zod";
 
 const nameSchema = z.string().trim().min(1);
+
 const flagSchema = z.strictObject({ description: z.string().trim().min(1), value: z.boolean() });
+
 const flagUpdateSchema = flagSchema.partial({ description: true });
+
 const storedFlagSchema = flagSchema.readonly();
+
 export type Flag = z.infer<typeof storedFlagSchema>;
+
 export type FlagState = {
   current: Flag | null;
   default: Flag | null;
   overridden: boolean;
 };
+
 export const flagsConfigSchema = z.record(nameSchema, storedFlagSchema);
+
 export function flagsConfigJsonSchema(): unknown {
   return z.toJSONSchema(flagsConfigSchema);
 }
+
 const overrideSchema = z.object({
   name: nameSchema,
   flag: z
@@ -22,6 +30,7 @@ const overrideSchema = z.object({
     .transform((text) => storedFlagSchema.parse(JSON.parse(text)))
     .nullable(),
 });
+
 const defaultsByContext = new WeakMap<Context, Map<string, Flag>>();
 
 function defaultsFor(ctx: Context): Map<string, Flag> {
@@ -30,6 +39,7 @@ function defaultsFor(ctx: Context): Map<string, Flag> {
     "Flags requires the explicitly selected flags extension",
   );
 }
+
 function flagState(initial: Flag | undefined, override?: Flag | null): FlagState {
   return {
     current: (override === undefined ? initial : override) ?? null,
@@ -37,29 +47,37 @@ function flagState(initial: Flag | undefined, override?: Flag | null): FlagState
     overridden: override !== undefined,
   };
 }
+
 export function inspectFlag(ctx: Context, name: string): FlagState {
   const initial = defaultsFor(ctx).get(name);
   const row = ctx.graph.db.query("SELECT name,flag FROM flag_overrides WHERE name=?").get(name);
+
   return flagState(initial, row === null ? undefined : overrideSchema.parse(row).flag);
 }
+
 export function getFlag(ctx: Context, name: string): Flag | undefined {
   return inspectFlag(ctx, name).current ?? undefined;
 }
+
 export function listFlags(ctx: Context): Record<string, FlagState> {
   const initial = defaultsFor(ctx);
   const entries = new Map([...initial].map(([name, flag]) => [name, flagState(flag)]));
+
   for (const row of z
     .array(overrideSchema)
     .parse(ctx.graph.db.query("SELECT name,flag FROM flag_overrides").all()))
     entries.set(row.name, flagState(initial.get(row.name), row.flag));
+
   return Object.fromEntries([...entries].toSorted(([a], [b]) => a.localeCompare(b)));
 }
+
 export function setFlag(
   ctx: Context,
   name: string,
   update: z.input<typeof flagUpdateSchema>,
 ): Flag {
   name = nameSchema.parse(name);
+
   return ctx.graph.atomic(() => {
     const current = getFlag(ctx, name);
     const flag = storedFlagSchema.parse({
@@ -74,32 +92,42 @@ export function setFlag(
         "INSERT INTO flag_overrides(name,flag) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET flag=excluded.flag",
       )
       .run(name, encode(flag));
+
     return flag;
   });
 }
+
 export function unsetFlag(ctx: Context, name: string): boolean {
   name = nameSchema.parse(name);
+
   return ctx.graph.atomic(() => {
     if (getFlag(ctx, name) === undefined) return false;
+
     ctx.graph.db
       .query(
         "INSERT INTO flag_overrides(name,flag) VALUES(?,NULL) ON CONFLICT(name) DO UPDATE SET flag=NULL",
       )
       .run(name);
+
     return true;
   });
 }
+
 export function resetFlag(ctx: Context, name: string): boolean {
   defaultsFor(ctx);
+
   return (
     ctx.graph.db.query("DELETE FROM flag_overrides WHERE name=?").run(nameSchema.parse(name))
       .changes > 0
   );
 }
+
 export function resetFlags(ctx: Context): number {
   defaultsFor(ctx);
+
   return ctx.graph.db.query("DELETE FROM flag_overrides").run().changes;
 }
+
 export function flags(defaults: Record<string, Flag> = {}): Extension {
   return {
     name: "flags",

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { rejected } from "./assert.ts";
 
 const node = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+
 async function world(
   extensions: Extension[],
   clock: ManualClock,
@@ -23,6 +24,7 @@ async function world(
   const runtime = new Runtime({ database: path, clock });
   try {
     await runtime.start(extensions);
+
     await run(runtime, path);
   } finally {
     await runtime.stop();
@@ -34,12 +36,14 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     const invoke = (input: unknown): Promise<unknown> => runtime.invoke("kanban", input);
     const epic = node.parse(await invoke({ command: "add", title: "Epic", type: "epic" }));
     const feature = node.parse(await invoke({ command: "add", title: "Feature", epic: epic.id }));
+
     expect(
       z
         .array(node)
         .parse(await runtime.invoke("ready", { query: "kanban-pending" }))
         .map((row) => row.id),
     ).toEqual([feature.id]);
+
     const task = node.parse(await invoke({ command: "task", feature: feature.id, title: "Task" }));
     const claim = z
       .object({ result: z.string(), claim: node })
@@ -53,6 +57,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
           await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
         ).result,
     ).toBe("unchanged");
+
     expect(() => runtime.graph.update(claim.claim.id, { title: "forged" })).toThrow("immutable");
     expect(() => runtime.graph.batch({ refs: { claim: claim.claim.id }, burn: ["claim"] })).toThrow(
       "immutable",
@@ -74,6 +79,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
       "second",
       "unresolved",
     ]);
+
     const times = history.map((entry) =>
       Date.parse(z.string().parse(entry.attributes["kanban/claimed-at"])),
     );
@@ -86,12 +92,14 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
       .parse(await invoke({ command: "card", id: feature.id }));
     expect(view.tasks[0]?.status).toBe("ready");
     expect(view.tasks[0]?.owner.source).toBe("inherited");
+
     await invoke({ command: "claim", id: task.id, owner: "worker" });
     expect(
       z
         .object({ tasks: z.array(z.object({ status: z.string() })) })
         .parse(await invoke({ command: "card", id: feature.id })).tasks[0]?.status,
     ).toBe("doing");
+
     await invoke({
       command: "ref",
       operation: "add",
@@ -116,6 +124,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
         attributes: { "kanban/external-refs": [{ url: "file:///etc/passwd" }] },
       }),
     ).toThrow();
+
     await invoke({ command: "finish", id: epic.id, outcome: "abandoned" });
     expect(runtime.graph.show(task.id).attributes["kanban/outcome"]).toBe("unactioned");
     await invoke({ command: "reopen", id: epic.id });

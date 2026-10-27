@@ -6,11 +6,13 @@ import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 export const pi: Provider = {
   name: "pi",
   doc: "Pi CLI. Model names may include a provider prefix, such as openai-codex/.",
+
   prepare(run) {
     const options = [...run.extraArgs];
     if (run.model !== undefined) options.push("--model", run.model);
     if (run.effort !== undefined) options.push("--thinking", run.effort);
     for (const prompt of run.systemPrompts) options.push("--append-system-prompt", prompt);
+
     return {
       command: [
         "pi",
@@ -24,6 +26,7 @@ export const pi: Provider = {
       env: {},
     };
   },
+
   finish(_run, exitCode, stdout, stderr) {
     // Report evidence from this invocation, never the requested resume id.
     let sessionId: string | null = null;
@@ -37,6 +40,7 @@ export const pi: Provider = {
       const messages = events.flatMap((event) => {
         const role = z.object({ role: z.string() }).safeParse(event["message"]);
         if (!role.success || role.data.role !== "assistant") return [];
+
         return [
           {
             type: event["type"],
@@ -71,6 +75,7 @@ export const pi: Provider = {
         );
 
       const success = exitCode === 0 && !failed && decoded.error === null && observed !== null;
+
       return result(
         success,
         success ? texts.at(-1) : texts.findLast((value) => value.length > 0),

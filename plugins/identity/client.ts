@@ -14,6 +14,7 @@ function execute(
     });
   });
 }
+
 export async function nativeProject(cwd: string): Promise<string | null> {
   let common: string;
   try {
@@ -23,10 +24,13 @@ export async function nativeProject(cwd: string): Promise<string | null> {
   } catch {
     return null;
   }
+
   if (basename(common) !== ".git") return null;
+
   const root = dirname(common);
   return existsSync(join(root, ".botlake/package.json")) ? realpathSync(root) : null;
 }
+
 export async function bl(
   workspace: string,
   input: unknown,
@@ -37,5 +41,6 @@ export async function bl(
     ["--workspace", workspace, "--input", JSON.stringify(input), "agent"],
     { timeout: 5000, maxBuffer: 1024 * 1024, env },
   );
+
   return JSON.parse(stdout);
 }

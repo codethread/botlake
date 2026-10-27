@@ -45,6 +45,7 @@ export async function system(): Promise<{
   const home = join(dir, "botlake");
   const botlakeBin = join(dir, "botlake-bin");
   const blBin = join(dir, "bl-bin");
+
   async function pack(path: string, name: string): Promise<string> {
     const tarball = join(dir, `${name}.tgz`);
     const child = Bun.spawn(["bun", "pm", "pack", "--ignore-scripts", "--filename", tarball], {
@@ -64,6 +65,7 @@ export async function system(): Promise<{
   for (const name of ["batteries", "identity", "kanban", "cron", "flags", "harnesses"])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
+
   const engine = join(dir, "engine");
   await install(engine, { "@botlake/core": core });
   const env = {
@@ -84,6 +86,7 @@ export async function system(): Promise<{
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     if (code !== 0) throw new Error(stderr);
   }
+
   const daemon = Bun.spawn([botlakeBin, "start"], { env, stdout: "pipe", stderr: "pipe" });
   const stderr = new Response(daemon.stderr).text();
   const reader = daemon.stdout.getReader();
@@ -91,6 +94,7 @@ export async function system(): Promise<{
   reader.releaseLock();
   if (!new TextDecoder().decode(first.value).includes('"ready":true'))
     throw new Error(await stderr);
+
   async function run(binary: string, args: string[], ok = true): Promise<unknown> {
     const child = Bun.spawn([binary, ...args], { cwd: dir, env, stdout: "pipe", stderr: "pipe" });
     const [code, output, error] = await Promise.all([
@@ -102,10 +106,12 @@ export async function system(): Promise<{
       if (code === 0) throw new Error(`Expected failure: ${args.join(" ")}`);
       return error;
     }
+
     if (code !== 0)
       throw new Error(
         `${args.join(" ")}: ${error}\n${await Bun.file(join(home, "host.log")).text()}`,
       );
+
     return JSON.parse(output);
   }
   return {

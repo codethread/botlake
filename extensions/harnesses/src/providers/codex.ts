@@ -6,6 +6,7 @@ import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 export const codex: Provider = {
   name: "codex",
   doc: "Codex CLI. Uses the provider's default model unless an alias selects one.",
+
   prepare(run) {
     const options = [...run.extraArgs];
     if (run.model !== undefined) options.push("--model", run.model);
@@ -28,6 +29,7 @@ export const codex: Provider = {
       env: {},
     };
   },
+
   finish(_run, exitCode, stdout, stderr) {
     // Report evidence from this invocation, never the requested resume id.
     let sessionId: string | null = null;

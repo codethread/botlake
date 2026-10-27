@@ -10,6 +10,7 @@ export interface Argument {
   multiple?: boolean;
   description?: string;
 }
+
 export interface Command {
   description: string;
   examples?: string[];
@@ -19,6 +20,7 @@ export interface Command {
   positionals?: Argument[];
   commands?: Record<string, Command>;
 }
+
 const argumentShape = {
   key: z.string().min(1).exactOptional(),
   type: z.enum(["string", "number", "boolean", "json"]),
@@ -26,6 +28,7 @@ const argumentShape = {
   multiple: z.boolean().exactOptional(),
   description: z.string().exactOptional(),
 };
+
 const commandSchema: z.ZodType<Command> = z.lazy(() =>
   z.strictObject({
     description: z.string(),
@@ -39,6 +42,7 @@ const commandSchema: z.ZodType<Command> = z.lazy(() =>
     commands: z.record(z.string().min(1), commandSchema).exactOptional(),
   }),
 );
+
 export function validateCommand(input: Command): Command {
   const command = commandSchema.parse(input);
   function visit(node: Command, selectors: string[]): void {
@@ -67,9 +71,11 @@ export function validateCommand(input: Command): Command {
           throw new Fault("cli", `Argument conflicts with command selector: ${key}`);
     }
   }
+
   visit(command, []);
   return command;
 }
+
 function parseValue(text: string, type: Argument["type"]): Json {
   switch (type) {
     case "string":
@@ -85,12 +91,14 @@ function parseValue(text: string, type: Argument["type"]): Json {
       return z.json().parse(JSON.parse(text));
   }
 }
+
 export async function parseArgs(
   rootCommand: Command,
   rawArgs: string[],
   payloads: Record<string, string> = {},
 ): Promise<Record<string, Json>> {
   const used = new Set<string>();
+
   function reference(text: string): string | undefined {
     if (text === ":stdin") return "stdin";
     if (text.startsWith(":payload/")) return text.slice(9);
@@ -104,6 +112,7 @@ export async function parseArgs(
     used.add(slot);
     return payload;
   }
+
   function expand(value: Json): Json {
     if (typeof value === "string") return resolvePayload(value);
     if (Array.isArray(value)) return value.map((entry) => expand(entry));
@@ -119,6 +128,7 @@ export async function parseArgs(
       const child = name === undefined ? undefined : command.commands[name];
       if (child === undefined)
         throw new Fault("argv", `Expected subcommand: ${Object.keys(command.commands).join(", ")}`);
+
       return {
         [command.selector ?? "command"]: child.value ?? name ?? "",
         ...(await node(child, args)),
@@ -131,6 +141,7 @@ export async function parseArgs(
       if (reference(text) !== undefined) return parseValue(resolvePayload(text), type);
       return expand(parseValue(text, type));
     }
+
     while (args.length > 0) {
       const arg = args.shift();
       if (arg === undefined) break;
@@ -138,6 +149,7 @@ export async function parseArgs(
         literal = true;
         continue;
       }
+
       if (!literal && arg.startsWith("--")) {
         const split = arg.indexOf("=");
         const name = arg.slice(2, split < 0 ? undefined : split);
@@ -170,16 +182,20 @@ export async function parseArgs(
         }
       }
     }
+
     for (const [name, spec] of Object.entries(command.flags ?? {}))
       if (spec.required === true && result[spec.key ?? name] === undefined)
         throw new Fault("argv", `Required flag: --${name}`);
     for (const spec of command.positionals ?? [])
       if (spec.required === true && result[spec.key ?? spec.name] === undefined)
         throw new Fault("argv", `Required positional: ${spec.name}`);
+
     return result;
   }
+
   const result = await node(rootCommand, rawArgs);
   for (const slot of Object.keys(payloads))
     if (!used.has(slot)) throw new Fault("payload", `Unused payload: ${slot}`);
+
   return result;
 }

@@ -22,6 +22,7 @@ export const factSchema = z.object({
     .optional(),
   launch_failure: z.object({ message: z.string() }).optional(),
 });
+
 interface ControlData {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -30,11 +31,13 @@ interface ControlData {
   output: Uint8Array;
   offset: number;
 }
+
 function flush(client: Bun.Socket<ControlData>): void {
   if (client.data.offset === client.data.output.byteLength) return;
   const written = client.write(client.data.output.subarray(client.data.offset));
   if (written > 0) client.data.offset += written;
 }
+
 export function botlakeServices(
   socket: string,
   workspace: string,

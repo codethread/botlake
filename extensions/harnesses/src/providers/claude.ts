@@ -6,11 +6,13 @@ import { malformedOutput, result } from "./output.ts";
 export const claude: Provider = {
   name: "claude",
   doc: "Claude Code CLI. Uses the provider's default model unless an alias selects one.",
+
   prepare(run) {
     const options = [...run.extraArgs];
     if (run.model !== undefined) options.push("--model", run.model);
     if (run.effort !== undefined) options.push("--effort", run.effort);
     for (const prompt of run.systemPrompts) options.push("--append-system-prompt", prompt);
+
     return {
       command: [
         "claude",
@@ -24,6 +26,7 @@ export const claude: Provider = {
       env: {},
     };
   },
+
   finish(_run, exitCode, stdout, stderr) {
     // Report evidence from this invocation, never the requested resume id.
     try {
@@ -35,6 +38,7 @@ export const claude: Provider = {
         })
         .parse(JSON.parse(stdout));
       const observed = envelope.session_id !== undefined && envelope.session_id.trim().length > 0;
+
       return result(
         exitCode === 0 && envelope.is_error !== true && observed,
         envelope.result,

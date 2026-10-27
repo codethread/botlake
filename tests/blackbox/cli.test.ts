@@ -64,6 +64,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
   try {
     const workspace = await host.workspace("nodes", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", workspace]);
+
     const committed = z
       .object({
         refs: z.object({ root: z.string(), child: z.string() }),
@@ -78,6 +79,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
           edges: [{ op: "upsert", from: "root", to: "child", relation: "parent-of" }],
         }),
       );
+
     expect(committed.changes.map(({ kind }) => kind)).toEqual(["node", "node", "edge"]);
     const subgraph = z
       .object({
@@ -91,6 +93,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     expect(subgraph.edges).toEqual([
       { from_id: committed.refs.root, to_id: committed.refs.child, relation: "parent-of" },
     ]);
+
     const evaluated = await runCli(
       host,
       [
@@ -111,6 +114,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     expect(rejected.code).toBe(1);
     expect(rejected.stdout).toBe("");
     expect(JSON.parse(rejected.stderr)).toMatchObject({ code: "not-found" });
+
     await host.botlake(["lake", "restart", "--workspace", workspace]);
     expect(await host.bl("nodes", "show", { id: committed.refs.child })).toMatchObject({
       title: "Child",

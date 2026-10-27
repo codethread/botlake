@@ -10,13 +10,17 @@ import { workerMessageSchema } from "./protocol.ts";
 import { Runtime, isStream } from "./runtime.ts";
 
 const data = z.object({ workspace: z.string(), botlakeSocket: z.string() }).parse(workerData);
+
 const port = requireValue(parentPort, "Workspace entry must run in a Worker");
+
 const runtime = new Runtime({
   database: resolve(data.workspace, ".botlake/world.db"),
   workspace: data.workspace,
   ...botlakeServices(data.botlakeSocket, data.workspace),
 });
+
 const controllers = new Map<string, AbortController>();
+
 function errorFrame(error: unknown): unknown {
   return {
     type: "error",
@@ -33,6 +37,7 @@ port.on("message", (raw: unknown) => {
   if (raw === "stop") {
     for (const controller of controllers.values())
       controller.abort(new Fault("cancelled", "Worker stopped"));
+
     void (async () => {
       try {
         await runtime.stop();
@@ -45,18 +50,21 @@ port.on("message", (raw: unknown) => {
     })();
     return;
   }
+
   void (async () => {
     const message = workerMessageSchema.parse(raw);
     if ("cancel" in message) {
       controllers.get(message.cancel)?.abort(new Fault("cancelled", "Caller disconnected"));
       return;
     }
+
     const request = message;
     const controller = new AbortController();
     controllers.set(request.request_id, controller);
     function send(frame: unknown): void {
       port.postMessage({ request_id: request.request_id, frame: `${encode(frame)}\n` });
     }
+
     let streaming = false;
     try {
       const result = await runtime.invoke(
@@ -74,6 +82,7 @@ port.on("message", (raw: unknown) => {
           signal: controller.signal,
         },
       );
+
       if (isStream(result)) {
         streaming = true;
         send({ protocol_version: 1, request_id: request.request_id, stream: true });

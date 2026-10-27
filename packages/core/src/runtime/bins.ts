@@ -9,7 +9,9 @@ import type { Op } from "./context.ts";
 import { defineOp } from "./ops.ts";
 
 const absolutePath = z.string().min(1).refine(isAbsolute, "Expected an absolute path");
+
 const environment = z.record(z.string().regex(/^[^=\0]+$/u), z.string());
+
 const binSchema = z.strictObject({
   description: z.string().min(1),
   exec: z.union([
@@ -20,6 +22,7 @@ const binSchema = z.strictObject({
     .strictObject({ argv: z.array(z.string().min(1)).min(1), cwd: absolutePath })
     .exactOptional(),
 });
+
 export type Bin = z.input<typeof binSchema>;
 
 async function runnable(path: string): Promise<boolean> {
@@ -39,11 +42,13 @@ async function runnable(path: string): Promise<boolean> {
 
 export class Bins {
   private readonly entries = new Map<string, z.output<typeof binSchema>>();
+
   register(name: string, bin: Bin): void {
     z.string().regex(/^\S+$/u).parse(name);
     if (this.entries.has(name)) throw new Fault("collision", `Duplicate bin: ${name}`);
     this.entries.set(name, binSchema.parse(bin));
   }
+
   operation(): Op {
     return defineOp({
       name: "bins",

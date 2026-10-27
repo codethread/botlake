@@ -102,7 +102,9 @@ export class Catalog {
 
   private condition(value: Condition): boolean {
     if (typeof value === "string") return this.flag(value) === true;
+
     const [operator, first, ...rest] = value;
+
     return match(operator)
       .with("and", () => [first, ...rest].every((part) => this.condition(part)))
       .with("or", () => [first, ...rest].some((part) => this.condition(part)))
@@ -181,6 +183,7 @@ export class Catalog {
         doc: provider.doc,
         reasons: [{ name, reason: "disabled", flag }],
       };
+
     return {
       available: true,
       doc: provider.doc,
@@ -191,15 +194,18 @@ export class Catalog {
   resolve(name: string): ResolvedSeat {
     const resolved = this.availability(name);
     if (!resolved.available) throw new Fault("seat", `Seat unavailable: ${name}`, resolved.reasons);
+
     return resolved.settings;
   }
 
   private summary(resolved: Resolution): unknown {
     if (!resolved.available) return resolved;
+
     const {
       settings: { extraArgs: _, systemPrompts: __, ...effective },
       ...selection
     } = resolved;
+
     return { ...selection, ...effective };
   }
 
@@ -214,6 +220,7 @@ export class Catalog {
 
   show(name: string): unknown {
     const resolved = this.availability(name);
+
     return {
       name,
       ...resolved,

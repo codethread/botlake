@@ -17,15 +17,18 @@ const owned: string[] = [];
 const evidence: unknown[] = [];
 const marker = "BOTLAKE_NATIVE_SMOKE";
 const prompt = `Do not use tools or edit files. Reply with ${marker} followed by your exact Botlake identity from your system/developer context.`;
+
 function check(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
 async function credential(source: string, target: string): Promise<void> {
   if (await Bun.file(source).exists()) {
     await copyFile(source, target);
     await chmod(target, 0o600);
   }
 }
+
 async function exec(command: string[], cwd: string, env = host.env, stdin = ""): Promise<string> {
   const child = Bun.spawn(command, {
     cwd,
@@ -54,6 +57,7 @@ try {
     "@botlake/extension-flags",
     "./agents.ts",
   ]);
+
   await exec(["git", "init", "--quiet"], workspace);
   const plugin = join(workspace, "node_modules/@botlake/identity");
   const settings: Record<
@@ -103,6 +107,7 @@ try {
       };
     }
   }
+
   await Bun.write(
     join(workspace, "agents.ts"),
     `import {harnesses,provider} from "@botlake/extension-harnesses";
@@ -118,6 +123,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
       if (run.attributes["harness/settled"] === true) return run;
       await Bun.sleep(200);
     }
+
     throw new Error(`Native run timed out: ${id}`);
   }
   function lifecycle(run: z.infer<typeof runSchema>): void {
@@ -134,6 +140,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
   }
   function verify(run: z.infer<typeof runSchema>): void {
     lifecycle(run);
+
     check(run.attributes["harness/substatus"] === "completed", JSON.stringify(run));
     check(
       run.attributes["harness/integration"] === "native",
@@ -156,6 +163,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
         prompt,
       }),
     );
+
     owned.push(started.id);
     const first = await settled(started.id);
     verify(first);
@@ -180,6 +188,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
         env: z.record(z.string(), z.string()),
       })
       .parse(settings[name]);
+
     const definition = {
       provider: name,
       cwd: workspace,
@@ -190,6 +199,7 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
       systemPrompts: [],
     };
     const plan = provider(name).prepare(definition);
+
     const stdout = await exec(
       plan.command,
       workspace,

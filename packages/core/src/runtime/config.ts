@@ -12,8 +12,11 @@ const configSchema = z.strictObject({
     .optional(),
   extensions: z.array(z.string().min(1)).default([]),
 });
+
 export const workspaceSchema = z.looseObject({ botlake: configSchema });
+
 export type WorkspaceConfig = z.infer<typeof configSchema>;
+
 export async function loadWorkspace(
   path: string,
 ): Promise<{ config: WorkspaceConfig; extensions: Extension[] }> {
@@ -21,6 +24,7 @@ export async function loadWorkspace(
     await Bun.file(resolve(path, ".botlake/package.json")).json(),
   );
   const extensions: Extension[] = [];
+
   for (const specifier of config.extensions) {
     const location =
       isAbsolute(specifier) || specifier.startsWith(".")
@@ -40,6 +44,7 @@ export async function loadWorkspace(
   }
   return { config, extensions };
 }
+
 export function configJsonSchema(): unknown {
   return z.toJSONSchema(workspaceSchema, { io: "input" });
 }

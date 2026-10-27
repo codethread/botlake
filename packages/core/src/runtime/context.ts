@@ -18,6 +18,7 @@ export interface Invocation {
   gitCommonDir?: string | undefined;
   terminal: { isTTY: boolean; columns: number | null };
 }
+
 export interface Op {
   name: string;
   cli: Command;
@@ -28,6 +29,7 @@ export interface Op {
   invoke(input: unknown, ctx: Context, request: Invocation): Promise<unknown>;
   jsonSchema?: (() => unknown) | undefined;
 }
+
 export interface ProcessSpec {
   owner: string;
   key: string;
@@ -36,7 +38,9 @@ export interface ProcessSpec {
   env?: Record<string, string> | undefined;
   stdin?: string | undefined;
 }
+
 export type ProcessFact = z.infer<typeof factSchema>;
+
 export interface Processes {
   launch(spec: ProcessSpec): Promise<ProcessFact>;
   get(handle: string): Promise<ProcessFact>;
@@ -44,19 +48,23 @@ export interface Processes {
   cancel(handle: string, owner: string, key: string): Promise<ProcessFact>;
   acknowledge(handle: string, owner: string, key: string): Promise<void>;
 }
+
 export interface Peers {
   resolve(workspace: string): Promise<{ path: string; name: string }>;
   call(workspace: string, op: string, input: Json): Promise<unknown>;
 }
+
 export interface Resource {
   start(): void | Promise<void>;
   stop(): void | Promise<void>;
 }
+
 export interface Extension {
   name: string;
   requires?: string[];
   activate(ctx: Context): void | Promise<void>;
 }
+
 export interface Context {
   workspace: string;
   graph: Graph;

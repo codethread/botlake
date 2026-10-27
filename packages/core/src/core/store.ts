@@ -18,6 +18,7 @@ import {
 import { compileQuery, type Predicate } from "./query.ts";
 
 const stateSchema = z.enum(["active", "closed", "replaced"]);
+
 export interface Node {
   id: string;
   title: string;
@@ -27,12 +28,14 @@ export interface Node {
   revision: number;
   attributes: Attributes;
 }
+
 export interface Edge {
   from_id: string;
   to_id: string;
   relation: string;
   attributes: Attributes;
 }
+
 const rowSchema = z.strictObject({
   id: z.string(),
   title: z.string(),
@@ -41,20 +44,25 @@ const rowSchema = z.strictObject({
   updated_at: z.string(),
   revision: z.number(),
 });
+
 export const nodeSchema = rowSchema.extend({ attributes: attributesSchema });
+
 const edgeRow = z.strictObject({
   from_id: z.string(),
   to_id: z.string(),
   relation: z.string(),
   attributes: z.string(),
 });
+
 const patchSchema = z.strictObject({
   title: z.string().trim().min(1).optional(),
   state: z.enum(["active", "closed"]).optional(),
   attributes: attributesSchema.optional(),
   expectedRevision: z.number().int().positive().optional(),
 });
+
 export type Patch = z.infer<typeof patchSchema>;
+
 const edgeOpSchema = z.discriminatedUnion("op", [
   z.strictObject({
     op: z.literal("upsert"),
@@ -70,29 +78,35 @@ const edgeOpSchema = z.discriminatedUnion("op", [
     relation: z.string().min(1),
   }),
 ]);
+
 export const batchSchema = z.strictObject({
   refs: z.record(z.string().min(1), z.string().min(1)).default({}),
   nodes: z.array(patchSchema.extend({ ref: z.string().min(1) })).default([]),
   edges: z.array(edgeOpSchema).default([]),
   burn: z.array(z.string().min(1)).default([]),
 });
+
 export interface Change {
   kind: "node";
   before: Node | null;
   after: Node | null;
   expectedRevision?: number | undefined;
 }
+
 export interface EdgeChange {
   kind: "edge";
   before: Edge | null;
   after: Edge | null;
 }
+
 export type Mutation = Change | EdgeChange;
+
 export interface GraphEvent {
   type: "graph/committed";
   changes: Mutation[];
   at: number;
 }
+
 export type Guard = (changes: readonly Mutation[], authority: symbol | undefined) => void;
 
 const ddl = `
@@ -117,6 +131,7 @@ export interface Selection {
   ready?: boolean | undefined;
   lean?: boolean | undefined;
 }
+
 export class Graph {
   readonly db: Database;
   private readonly guards: Guard[] = [];
@@ -125,6 +140,7 @@ export class Graph {
   private writing = false;
   private currentAuthority: symbol | undefined;
   private readonly permissions = new WeakMap<Mutation, symbol>();
+
   constructor(
     path: string,
     private readonly now: () => number = Date.now,
@@ -148,17 +164,22 @@ export class Graph {
       throw error;
     }
   }
+
   close(): void {
     this.db.close();
   }
+
   protect(guard: Guard): void {
     this.guards.push(guard);
   }
+
   // Timer/resource side effects wait for the enclosing synchronous transaction.
+
   afterCommit(action: () => void): void {
     if (this.writing) this.commitActions.push(action);
     else action();
   }
+
   atomic<T>(work: () => T, authority?: symbol): T {
     const outer = !this.writing;
     const start = this.changes.length;
@@ -199,10 +220,12 @@ export class Graph {
     }
     return result;
   }
+
   private record(change: Mutation): void {
     if (this.currentAuthority !== undefined) this.permissions.set(change, this.currentAuthority);
     this.changes.push(change);
   }
+
   show(id: string, lean = false): Node {
     const row = rowSchema.parse(
       requireValue(this.db.query("SELECT * FROM nodes WHERE id=?").get(id), `Unknown node: ${id}`),
@@ -223,6 +246,7 @@ export class Graph {
       attributes: Object.fromEntries(attrs.map((entry) => [entry.key, decode(entry.value)])),
     };
   }
+
   list(options: Selection & { limit?: number | undefined } = {}): Node[] {
     const limit = z
       .number()
@@ -232,9 +256,11 @@ export class Graph {
       .parse(options.limit ?? 100);
     return this.select(options, limit);
   }
+
   all(options: Selection = {}): Node[] {
     return this.select(options);
   }
+
   private select(options: Selection, limit?: number): Node[] {
     const query =
       options.where === undefined
@@ -263,6 +289,7 @@ export class Graph {
     attributes?: Attributes | undefined;
   }): Node {
     const parsed = patchSchema.required({ title: true }).parse(input);
+
     return this.atomic(() => {
       const id = crypto.randomUUID();
       const at = new Date(this.now()).toISOString();
@@ -271,13 +298,16 @@ export class Graph {
         .run(id, parsed.title, parsed.state ?? "active", at, at);
       for (const [key, value] of Object.entries(parsed.attributes ?? {}))
         this.db.query("INSERT INTO attributes VALUES(?,?,?,0)").run(id, key, encode(value));
+
       const after = this.show(id);
       this.record({ kind: "node", before: null, after });
       return after;
     });
   }
+
   update(id: string, input: Patch): Node {
     const patch = patchSchema.parse(input);
+
     return this.atomic(() => {
       const before = this.show(id);
       if (patch.expectedRevision !== undefined && before.revision !== patch.expectedRevision)
@@ -285,6 +315,7 @@ export class Graph {
           expected: patch.expectedRevision,
           actual: before.revision,
         });
+
       this.db
         .query("UPDATE nodes SET title=?,state=?,updated_at=?,revision=revision+1 WHERE id=?")
         .run(
@@ -294,6 +325,7 @@ export class Graph {
           id,
         );
       if (patch.attributes !== undefined) this.writeAttributes(id, patch.attributes);
+
       const after = this.show(id);
       this.record({
         kind: "node",
@@ -306,9 +338,11 @@ export class Graph {
       return after;
     });
   }
+
   private writeAttributes(id: string, patch: Attributes): void {
     const before = this.show(id).attributes;
     const after = merge(before, patch);
+
     const keys = z
       .array(z.object({ key: z.string() }))
       .parse(this.db.query("SELECT key FROM immutable_keys").all());
@@ -318,6 +352,7 @@ export class Graph {
         (after[key] === undefined || canonical(before[key]) !== canonical(after[key]))
       )
         throw new Fault("immutable", `Immutable attribute: ${key}`);
+
     for (const key of Object.keys(patch)) {
       const value = after[key];
       if (value === undefined)
@@ -330,8 +365,10 @@ export class Graph {
           .run(id, key, encode(value));
     }
   }
+
   archive(id: string, keys: string[]): Node {
     z.array(z.string().min(1)).min(1).parse(keys);
+
     return this.atomic(() => {
       const before = this.show(id);
       for (const key of keys) {
@@ -341,6 +378,7 @@ export class Graph {
           throw new Fault("immutable", `Immutable attribute: ${key}`);
         this.db.query("UPDATE attributes SET archived=1 WHERE node_id=? AND key=?").run(id, key);
       }
+
       this.db
         .query("UPDATE nodes SET revision=revision+1,updated_at=? WHERE id=?")
         .run(new Date(this.now()).toISOString(), id);
@@ -349,6 +387,7 @@ export class Graph {
       return after;
     });
   }
+
   edges(id?: string, relation?: string): Edge[] {
     return z
       .array(edgeRow)
@@ -361,6 +400,7 @@ export class Graph {
       )
       .map((edge) => ({ ...edge, attributes: object(edge.attributes) }));
   }
+
   edge(from: string, to: string, relation: string): Edge | null {
     const row = this.db
       .query("SELECT * FROM edges WHERE from_id=? AND to_id=? AND relation=?")
@@ -369,11 +409,14 @@ export class Graph {
     const parsed = edgeRow.parse(row);
     return { ...parsed, attributes: object(parsed.attributes) };
   }
+
   connect(from: string, to: string, relation: string, attributes: Attributes = {}): Edge {
     z.string().min(1).parse(relation);
     attributesSchema.parse(attributes);
+
     return this.atomic(() => {
       const before = this.edge(from, to, relation);
+
       if (
         this.db.query("SELECT 1 FROM acyclic_relations WHERE relation=?").get(relation) !== null
       ) {
@@ -384,6 +427,7 @@ export class Graph {
           .get(to, relation, from);
         if (cycle !== null) throw new Fault("cycle", `Cycle in ${relation}`);
       }
+
       this.db
         .query(
           "INSERT INTO edges VALUES(?,?,?,?) ON CONFLICT(from_id,to_id,relation) DO UPDATE SET attributes=excluded.attributes",
@@ -394,6 +438,7 @@ export class Graph {
       return after;
     });
   }
+
   disconnect(from: string, to: string, relation: string): Edge {
     return this.atomic(() => {
       const before = requireValue(this.edge(from, to, relation), "Unknown edge");
@@ -404,6 +449,7 @@ export class Graph {
       return before;
     });
   }
+
   declareAcyclic(relation: string): void {
     this.atomic(() => {
       if (this.db.query("SELECT 1 FROM acyclic_relations WHERE relation=?").get(relation) !== null)
@@ -413,15 +459,18 @@ export class Graph {
       this.db.query("INSERT INTO acyclic_relations VALUES(?)").run(relation);
     });
   }
+
   declareImmutable(key: string): void {
     this.db.query("INSERT OR IGNORE INTO immutable_keys VALUES(?)").run(key);
   }
+
   supersede(id: string, replacement: string): Node {
     return this.atomic(() => {
       const before = this.show(id);
       if (before.state === "replaced") throw new Fault("supersede", "Node is already replaced");
       if (id === replacement || this.show(replacement).state !== "active")
         throw new Fault("supersede", "Replacement must be a different active node");
+
       this.db
         .query("UPDATE nodes SET state='replaced',revision=revision+1,updated_at=? WHERE id=?")
         .run(new Date(this.now()).toISOString(), id);
@@ -432,11 +481,14 @@ export class Graph {
           this.connect(edge.from_id, replacement, "depends-on", edge.attributes);
         this.disconnect(edge.from_id, id, "depends-on");
       }
+
       return this.show(replacement);
     });
   }
+
   burn(ids: string[]): Node[] {
     if (new Set(ids).size !== ids.length) throw new Fault("burn", "Duplicate node to burn");
+
     return this.atomic(() => {
       const records = ids.map((id) => {
         const node = this.show(id);
@@ -445,6 +497,7 @@ export class Graph {
           .all(id);
         return { node, attributes, edges: this.edges(id) };
       });
+
       const removedEdges = new Map<string, Edge>();
       for (const record of records) {
         this.db
@@ -456,10 +509,12 @@ export class Graph {
       }
       for (const edge of removedEdges.values())
         this.record({ kind: "edge", before: edge, after: null });
+
       for (const id of ids) this.db.query("DELETE FROM nodes WHERE id=?").run(id);
       return records.map(({ node }) => node);
     });
   }
+
   tombstones(id: string): unknown[] {
     return this.db.query("SELECT * FROM burns WHERE node_id=? ORDER BY sequence").all(id);
   }
@@ -481,8 +536,10 @@ export class Graph {
       edges: this.edges().filter((edge) => members.has(edge.from_id) && members.has(edge.to_id)),
     };
   }
+
   note(target: string, text: string, attributes: Attributes = {}): Node {
     z.string().min(1).parse(text);
+
     return this.atomic(() => {
       this.show(target);
       const note = this.add({
@@ -495,6 +552,7 @@ export class Graph {
         },
       });
       this.connect(note.id, target, "notes");
+
       return note;
     });
   }
@@ -504,10 +562,12 @@ export class Graph {
     if (new Set(bound).size !== bound.length) throw new Fault("batch", "Duplicate node in refs");
     if (new Set(payload.burn).size !== payload.burn.length)
       throw new Fault("batch", "Duplicate burn ref");
+
     return this.atomic(() => {
       const start = this.changes.length;
       const refs = { ...payload.refs };
       const touched = new Set<string>();
+
       for (const id of Object.values(refs)) this.show(id);
       for (const { ref, ...patch } of payload.nodes) {
         if (touched.has(ref) || payload.burn.includes(ref))
@@ -523,6 +583,7 @@ export class Graph {
           }).id;
         } else this.update(id, patch);
       }
+
       for (const edge of payload.edges) {
         const from = requireValue(refs[edge.from], `Unknown ref: ${edge.from}`);
         const to = requireValue(refs[edge.to], `Unknown ref: ${edge.to}`);
@@ -533,6 +594,7 @@ export class Graph {
           this.disconnect(from, to, edge.relation);
         }
       }
+
       this.burn(payload.burn.map((ref) => requireValue(refs[ref], `Unknown burn ref: ${ref}`)));
       return { refs, changes: this.changes.slice(start) };
     });

@@ -10,6 +10,7 @@ test("workers publish readiness after registration and report cleanup failures w
   try {
     const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
+
     const late = await host.workspace("late", ["./extension.ts"]);
     const disposed = join(late, "disposed");
     await Bun.write(
@@ -73,10 +74,12 @@ export default {name:"probe",activate(ctx){
       );
       await host.botlake(["lake", "start", "--workspace", path]);
     }
+
     const alpha = await host.bl("alpha", "instance", {});
     const beta = await host.bl("beta", "instance", {});
     const hostPid = z.object({ hostPid: z.number() }).parse(await host.botlake(["status"])).hostPid;
     expect(await host.bl("alpha", "crash", {}, false)).toContain("response ended");
+
     // Query readiness through the live daemon; never replay the interrupted op.
     let ready = false;
     for (let attempt = 0; attempt < 1000; attempt++) {

@@ -15,6 +15,7 @@ const count = z.coerce
 const output = resolve(Bun.argv[3] ?? "docs/pool-benchmark.json");
 const host = await system();
 const statusSchema = z.object({ memory: z.object({ rss: z.number() }) });
+
 async function invoke(workspace: string, name: string): Promise<unknown> {
   const wire = await host.wire({
     protocol_version: 1,
@@ -25,6 +26,7 @@ async function invoke(workspace: string, name: string): Promise<unknown> {
   });
   return z.object({ ok: z.literal(true), result: z.unknown() }).parse(JSON.parse(wire)).result;
 }
+
 function distribution(samples: number[]): {
   median: number;
   p95: number;
@@ -55,6 +57,7 @@ try {
     await host.botlake(["lake", "start", "--workspace", workspace]);
     startup.push(performance.now() - start);
   }
+
   const totalStartupMs = performance.now() - began;
   const rss = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const loadMs: number[] = [];
@@ -65,6 +68,7 @@ try {
   const latency: number[] = [];
   const delay: number[] = [];
   const siblings = workspaces.filter((_, index) => index !== 0 && index !== 2);
+
   async function probeSiblings(): Promise<void> {
     for (let index = 0; index < 100; index++) {
       const workspace = requireValue(siblings[index % siblings.length], "No sibling workspace");
@@ -74,6 +78,7 @@ try {
     }
   }
   const restartStarted = performance.now();
+
   async function restartMember(): Promise<number> {
     await host.botlake(["lake", "restart", "--workspace", "w2"]);
     return performance.now() - restartStarted;
@@ -98,6 +103,7 @@ try {
     measurement:
       "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Botlake routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers.",
   };
+
   await Bun.write(output, `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } finally {

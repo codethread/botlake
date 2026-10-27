@@ -26,6 +26,7 @@ export async function reportNative(
 ): Promise<SessionReport> {
   const identity = sessionIdentity(observation);
   const local = { identity, instruction: identityInstruction(identity) };
+
   try {
     const explicit = env["BOTLAKE_WORKSPACE"];
     const workspace =
@@ -35,6 +36,7 @@ export async function reportNative(
     const parts = reference?.split(":");
     if (parts !== undefined && (parts.length !== 2 || parts.some((part) => part.length === 0)))
       throw new Error("Malformed managed run reference");
+
     const binding = bindingSchema.parse(
       await bl(
         workspace,
@@ -48,6 +50,7 @@ export async function reportNative(
     );
     if (binding.identity !== identity)
       throw new Error("Database returned a different native identity");
+
     return { ...local, tracking: "registered", binding };
   } catch (error) {
     const message = `Botlake tracking unavailable: ${String(error)}`;

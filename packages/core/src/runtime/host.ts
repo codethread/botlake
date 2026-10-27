@@ -6,7 +6,9 @@ import { Fault } from "../core/json.ts";
 import { invocationSchema } from "./protocol.ts";
 
 const socket = z.string().min(1).parse(Bun.argv[2]);
+
 const botlakeSocket = z.string().min(1).parse(Bun.argv[3]);
+
 interface Member {
   worker: Worker;
   ready: Promise<void>;
@@ -16,7 +18,9 @@ interface Member {
   stopAcknowledged: boolean;
   stopError?: Error;
 }
+
 const members = new Map<string, Member>();
+
 interface Connection {
   input: string;
   decoder: TextDecoder;
@@ -25,7 +29,9 @@ interface Connection {
   ending: boolean;
   handled: boolean;
 }
+
 const streams = new Map<string, { member: Member; socket: Bun.Socket<Connection> }>();
+
 function flush(client: Bun.Socket<Connection>): void {
   while (client.data.chunks.length > 0) {
     const chunk = client.data.chunks[0];
@@ -39,12 +45,15 @@ function flush(client: Bun.Socket<Connection>): void {
   }
   if (client.data.ending) client.end();
 }
+
 function write(client: Bun.Socket<Connection>, frame: string, end = false): void {
   client.data.chunks.push(encoder.encode(frame));
   client.data.ending = end;
   flush(client);
 }
+
 const encoder = new TextEncoder();
+
 const frameSchema = z.object({
   request_id: z.string().optional(),
   frame: z.string().optional(),
@@ -54,8 +63,10 @@ const frameSchema = z.object({
   stop_error: z.unknown().optional(),
   fatal: z.unknown().optional(),
 });
+
 async function start(workspace: string): Promise<Member> {
   if (members.has(workspace)) throw new Fault("member", "Workspace is already running");
+
   const worker = new Worker(new URL("./worker.ts", import.meta.url), {
     workerData: { workspace, botlakeSocket },
   });
@@ -70,11 +81,13 @@ async function start(workspace: string): Promise<Member> {
     stopAcknowledged: false,
   };
   members.set(workspace, member);
+
   const timeout = setTimeout(() => {
     ready.reject(new Error("Workspace startup timed out"));
   }, 15000);
   function failed(error: Error): void {
     ready.reject(error);
+
     for (const [id, stream] of streams)
       if (stream.member === member) {
         stream.socket.terminate();
@@ -88,16 +101,19 @@ async function start(workspace: string): Promise<Member> {
       member.wasReady = true;
       ready.resolve();
     }
+
     if (message.stopped === true) {
       member.stopAcknowledged = true;
       if (message.stop_error !== undefined)
         member.stopError = new Error(JSON.stringify(message.stop_error));
       stopped.resolve();
     }
+
     if (message.fatal !== undefined) {
       failed(new Error(JSON.stringify(message.fatal)));
       void worker.terminate();
     }
+
     if (message.request_id !== undefined) {
       const stream = streams.get(message.request_id);
       if (message.frame !== undefined && stream !== undefined) write(stream.socket, message.frame);
@@ -114,10 +130,12 @@ async function start(workspace: string): Promise<Member> {
   worker.on("exit", (code) => {
     clearTimeout(timeout);
     failed(new Error(`Worker exited: ${code}`));
+
     if (member.closing && !member.stopAcknowledged)
       member.stopError ??= new Error(`Worker exited before shutdown completed: ${code}`);
     stopped.resolve();
     if (members.get(workspace) === member) members.delete(workspace);
+
     if (!member.closing && member.wasReady) {
       void start(workspace).catch((error: unknown) => {
         process.stderr.write(`Workspace restart failed: ${String(error)}\n`);
@@ -126,17 +144,21 @@ async function start(workspace: string): Promise<Member> {
   });
   try {
     await member.ready;
+
     return member;
   } catch (error) {
     member.closing = true;
     await worker.terminate();
+
     if (members.get(workspace) === member) members.delete(workspace);
     throw error;
   }
 }
+
 async function stop(workspace: string): Promise<void> {
   const member = members.get(workspace);
   if (member === undefined) throw new Fault("member", "Workspace is not running");
+
   member.closing = true;
   member.worker.postMessage("stop");
   const timer = setTimeout(() => {
@@ -152,6 +174,7 @@ async function stop(workspace: string): Promise<void> {
     members.delete(workspace);
   }
 }
+
 const controlSchema = z.strictObject({
   action: z.enum(["start", "stop", "restart", "status", "member-status"]),
   workspace: z.string().optional(),
@@ -173,6 +196,7 @@ const server = Bun.listen<Connection>({
     },
     data(client, bytes) {
       if (client.data.handled) return;
+
       client.data.input += client.data.decoder.decode(bytes, { stream: true });
       if (client.data.input.length > 4 * 1024 * 1024) {
         client.terminate();
@@ -180,6 +204,7 @@ const server = Bun.listen<Connection>({
       }
       const newline = client.data.input.indexOf("\n");
       if (newline < 0) return;
+
       client.data.handled = true;
       client.timeout(0);
       void handle(client, client.data.input.slice(0, newline)).catch((error: unknown) => {
@@ -203,10 +228,12 @@ const server = Bun.listen<Connection>({
     },
   },
 });
+
 async function handle(client: Bun.Socket<Connection>, line: string): Promise<void> {
   const envelope = z
     .strictObject({ type: z.enum(["/control", "/invoke"]), body: z.unknown() })
     .parse(JSON.parse(line));
+
   if (envelope.type === "/control") {
     const control = controlSchema.parse(envelope.body);
     if (control.action === "status") {
@@ -217,6 +244,7 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
       );
       return;
     }
+
     const workspace = z.string().parse(control.workspace);
     if (control.action === "member-status") {
       const member = members.get(workspace);
@@ -226,9 +254,11 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
       write(client, `${JSON.stringify({ ok: true, result: { ready: true } })}\n`, true);
       return;
     }
+
     if (control.action === "stop" || (control.action === "restart" && members.has(workspace)))
       await stop(workspace);
     if (control.action === "start" || control.action === "restart") await start(workspace);
+
     write(client, `${JSON.stringify({ ok: true, result: { ready: true } })}\n`, true);
     return;
   }
@@ -236,6 +266,7 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
   const member = members.get(parsed.workspace);
   if (member === undefined) throw new Fault("member", "Workspace is not running");
   await member.ready;
+
   if (streams.has(parsed.request_id)) throw new Fault("request", "Duplicate active request ID");
   streams.set(parsed.request_id, { member, socket: client });
   member.worker.postMessage(parsed);

@@ -20,24 +20,31 @@ import {
 import { z } from "zod";
 
 const authority = Symbol("identity");
+
 const text = z.string().trim().min(1);
+
 export const startupSchema = sessionSchema.extend({
   parentNativeSessionId: text.optional(),
   model: text.nullable().optional(),
   thinkingLevel: text.nullable().optional(),
 });
+
 export type Startup = z.infer<typeof startupSchema>;
 
 export function identityRecords(graph: Graph): Node[] {
   return graph.all({ where: q.eq(q.attr("identity/session"), true), lean: false });
 }
+
 export function resolveIdentity(graph: Graph, name: string): Node | undefined {
   return graph.all({ where: q.eq(q.attr("identity/id"), name), lean: false })[0];
 }
+
 export function attribution(graph: Graph, name: string): { identity: string; nodeIds: string[] } {
   const record = resolveIdentity(graph, name);
+
   return { identity: name, nodeIds: record === undefined ? [] : [record.id] };
 }
+
 export function attribute(
   ctx: Context,
   target: string,
@@ -45,6 +52,7 @@ export function attribute(
   relation: "attributed" | "reported" | "claimed",
 ): void {
   const resolved = resolveIdentity(ctx.graph, name);
+
   if (resolved !== undefined) ctx.graph.connect(resolved.id, target, relation);
 }
 
@@ -61,6 +69,7 @@ export function nativeStartup(
     const identityId = sessionIdentity(input);
     let record = resolveIdentity(ctx.graph, identityId);
     const result = record === undefined ? "created" : "recovered";
+
     record ??= ctx.graph.add({
       title: `${input.provider} ${input.nativeSessionId}`,
       attributes: {
@@ -71,13 +80,16 @@ export function nativeStartup(
         "identity/activity": "unknown",
       },
     });
+
     const patch: Attributes = {};
     if (input.model !== undefined) patch["identity/model"] = input.model;
     if (input.thinkingLevel !== undefined) patch["identity/thinking-level"] = input.thinkingLevel;
     if (Object.keys(patch).length > 0) ctx.graph.update(record.id, { attributes: patch });
+
     if (input.parentNativeSessionId !== undefined) {
       if (input.parentNativeSessionId === input.nativeSessionId)
         throw new Fault("identity", "A native session cannot be its own parent");
+
       const parent = nativeStartup(ctx, {
         provider: input.provider,
         nativeSessionId: input.parentNativeSessionId,
@@ -88,8 +100,10 @@ export function nativeStartup(
         .find((edge) => edge.to_id === recordId);
       if (oldParent !== undefined && oldParent.from_id !== parent.nodeId)
         throw new Fault("identity", "Native parent attribution conflicts");
+
       ctx.graph.connect(parent.nodeId, record.id, "spawned");
     }
+
     return {
       identity: identityId,
       nodeId: record.id,
@@ -104,6 +118,7 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
     const binding = nativeStartup(ctx, input);
     const record = ctx.graph.show(binding.nodeId);
     const previous = activitySchema.parse(record.attributes["identity/activity"] ?? "unknown");
+
     const attributes: Attributes = {
       "identity/activity": observedActivity(input.event, previous),
       "identity/last-event": input.event,
@@ -113,7 +128,9 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
     if (input.nativeEvent !== undefined) attributes["identity/native-event"] = input.nativeEvent;
     if (input.sessionPath !== undefined) attributes["identity/session-path"] = input.sessionPath;
     if (input.capabilities !== undefined) attributes["identity/capabilities"] = input.capabilities;
+
     ctx.graph.update(binding.nodeId, { attributes });
+
     return binding;
   }, authority);
 }
@@ -138,6 +155,7 @@ export function identity(): Extension {
     activate(ctx) {
       ctx.graph.protect((changes, token) => {
         if (token === authority) return;
+
         for (const change of changes) {
           if (
             change.kind === "node" &&
@@ -192,6 +210,7 @@ export function identity(): Extension {
             switch (input.command) {
               case "startup": {
                 const { command: _, ...request } = input;
+
                 return nativeStartup(ctx, request);
               }
               case "show":
@@ -209,4 +228,5 @@ export function identity(): Extension {
     },
   };
 }
+
 export default identity();

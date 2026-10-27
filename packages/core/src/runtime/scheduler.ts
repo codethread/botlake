@@ -12,26 +12,33 @@ const wakeSchema = z.strictObject({
   generation: z.string(),
   attempts: z.number(),
 });
+
 export type Wake = Omit<z.infer<typeof wakeSchema>, "payload"> & { payload: Json };
+
 export class Scheduler {
   private readonly handlers = new Map<string, (wake: Wake) => Promise<void> | void>();
   private cancelTimer: (() => void) | undefined;
   private active = false;
   private readonly running = new Set<Promise<void>>();
   private readonly inFlight = new Set<string>();
+
   constructor(
     private readonly graph: Graph,
     private readonly clock: Clock,
     private readonly failure: (error: unknown) => void,
   ) {}
+
   register(name: string, handler: (wake: Wake) => Promise<void> | void): void {
     if (this.handlers.has(name)) throw new Fault("collision", `Duplicate wake handler: ${name}`);
+
     this.handlers.set(name, handler);
   }
+
   schedule(key: string, at: number, handler: string, payload: Json = {}): string {
     z.number().int().parse(at);
     if (!this.handlers.has(handler))
       throw new Fault("dependency", `Unknown wake handler: ${handler}`);
+
     const generation = crypto.randomUUID();
     this.graph.atomic(() => {
       this.graph.db
@@ -43,12 +50,15 @@ export class Scheduler {
         this.arm();
       });
     });
+
     return generation;
   }
+
   cancel(key: string): boolean {
     return this.graph.atomic(() => {
       const wake = this.graph.db.query("SELECT * FROM wakes WHERE key=?").get(key);
       if (wake === null) return false;
+
       const parsed = wakeSchema.parse(wake);
       this.graph.db.query("DELETE FROM wakes WHERE key=?").run(key);
       this.graph.db
@@ -60,28 +70,34 @@ export class Scheduler {
       return true;
     });
   }
+
   pending(): Wake[] {
     return z
       .array(wakeSchema)
       .parse(this.graph.db.query("SELECT * FROM wakes ORDER BY at,key").all())
       .map((wake) => ({ ...wake, payload: decode(wake.payload) }));
   }
+
   history(): unknown[] {
     return this.graph.db.query("SELECT * FROM wake_history ORDER BY sequence").all();
   }
+
   validate(): void {
     for (const wake of this.pending())
       if (!this.handlers.has(wake.handler))
         throw new Fault("dependency", `Unknown persisted wake handler: ${wake.handler}`);
   }
+
   start(): void {
     this.validate();
     this.active = true;
     this.arm();
   }
+
   private arm(): void {
     this.cancelTimer?.();
     if (!this.active) return;
+
     const first = this.pending().find(
       (wake) => !this.inFlight.has(`${wake.key}/${wake.generation}`),
     );
@@ -90,8 +106,10 @@ export class Scheduler {
         this.tick();
       });
   }
+
   tick(): void {
     if (!this.active) return;
+
     const now = this.clock.now();
     for (const wake of this.pending().filter(
       (entry) => entry.at <= now && !this.inFlight.has(`${entry.key}/${entry.generation}`),
@@ -101,6 +119,7 @@ export class Scheduler {
         .query("UPDATE wakes SET at=?,attempts=attempts+1 WHERE key=? AND generation=?")
         .run(now + 1000, wake.key, wake.generation);
       if (claim.changes === 0) continue;
+
       this.inFlight.add(identity);
       const task = this.deliver(wake).finally(() => {
         this.running.delete(task);
@@ -111,6 +130,7 @@ export class Scheduler {
     }
     this.arm();
   }
+
   private async deliver(wake: Wake): Promise<void> {
     try {
       const handler = this.handlers.get(wake.handler);
@@ -132,9 +152,11 @@ export class Scheduler {
       this.failure(error);
     }
   }
+
   async drain(): Promise<void> {
     await Promise.all(this.running);
   }
+
   async stop(): Promise<void> {
     this.active = false;
     this.cancelTimer?.();

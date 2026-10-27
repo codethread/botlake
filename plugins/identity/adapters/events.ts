@@ -18,6 +18,7 @@ export const hookEventSchema = z.object({
   transcript_path: z.string().nullable().optional(),
   agent_transcript_path: z.string().nullable().optional(),
 });
+
 export const events: Record<z.infer<typeof hookEventSchema>["hook_event_name"], NativeEvent> = {
   SessionStart: "session-start",
   UserPromptSubmit: "agent-start",
