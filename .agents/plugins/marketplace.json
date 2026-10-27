@@ -1,0 +1,11 @@
+{
+  "name": "botlake-local",
+  "plugins": [
+    {
+      "name": "botlake-identity",
+      "source": { "source": "local", "path": "./plugins/identity" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
