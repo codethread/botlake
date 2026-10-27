@@ -30,9 +30,9 @@ export default function identityExtension(pi: PiApi): void {
     instruction = undefined;
     const session = ctx.sessionManager.getSessionId();
     const child = parent !== undefined && parent.session !== session;
-    if (managedSession === undefined && process.env["MILLSTRAND_RUN_ID"] !== undefined) {
+    if (managedSession === undefined && process.env["BOTLAKE_RUN_ID"] !== undefined) {
       managedSession = session;
-      owningWorkspace = process.env["MILLSTRAND_WORKSPACE"];
+      owningWorkspace = process.env["BOTLAKE_WORKSPACE"];
     }
     const result = await registerNative({
       provider: "pi",

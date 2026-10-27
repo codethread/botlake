@@ -1,4 +1,4 @@
-import { Fault } from "@millstrand/core";
+import { Fault } from "@botlake/core";
 import { match } from "ts-pattern";
 import { z } from "zod";
 

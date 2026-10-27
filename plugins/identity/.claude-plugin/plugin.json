@@ -1,6 +1,6 @@
 {
-  "name": "millstrand-identity",
+  "name": "botlake-identity",
   "version": "0.1.0",
-  "description": "Native Claude session attribution for Millstrand",
+  "description": "Native Claude session attribution for Botlake",
   "hooks": "./.claude-plugin/hooks.json"
 }

@@ -84,7 +84,7 @@
                 "message": "Use a declared package dependency and its public exports, not a relative import across package boundaries."
               },
               {
-                "group": ["@millstrand/spool-*", "@millstrand/identity"],
+                "group": ["@botlake/spool-*", "@botlake/identity"],
                 "message": "Core must not depend on spools or native plugins. Load explicitly selected spools through workspace configuration."
               }
             ]

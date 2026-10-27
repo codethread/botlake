@@ -61,7 +61,7 @@ export class Bins {
             positionals: [{ name: "name", type: "string", required: true }],
           },
         },
-        examples: ["mill bin list", "mill bin build NAME", "mill bin run NAME [ARGS...]"],
+        examples: ["botlake bin list", "botlake bin build NAME", "botlake bin run NAME [ARGS...]"],
       },
       handler: async (input) => {
         if (input.command === "list")

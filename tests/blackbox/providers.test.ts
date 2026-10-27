@@ -12,8 +12,8 @@ test("native providers preserve complete evidence on interrupted output and requ
   const host = await system();
   try {
     const workspace = await host.workspace("providers", [
-      "@millstrand/spool-identity",
-      "@millstrand/spool-flags",
+      "@botlake/spool-identity",
+      "@botlake/spool-flags",
       "./providers.ts",
     ]);
     const executable = join(workspace, "native-cli");
@@ -34,7 +34,7 @@ if(name==="cursor") {
   const hook=spawnSync("bun",[plugin+"/session-start.ts"],{input:JSON.stringify({session_id:session}),env:{...process.env,CURSOR_PROJECT_DIR:process.cwd()},encoding:"utf8"});
   if(hook.status!==0 || !JSON.parse(hook.stdout).additional_context.includes("policy"))throw new Error("Missing Cursor prompt hook: "+hook.stdout+hook.stderr);
 } else {
-const binding=spawnSync(process.env.MILLSTRAND_STRAND_BIN,["--workspace",process.env.MILLSTRAND_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId:process.env.MILLSTRAND_RUN_ID,invocation:process.env.MILLSTRAND_INVOCATION}),"agent"],{encoding:"utf8"});
+const binding=spawnSync(process.env.BOTLAKE_BL_BIN,["--workspace",process.env.BOTLAKE_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId:process.env.BOTLAKE_RUN_ID,invocation:process.env.BOTLAKE_INVOCATION}),"agent"],{encoding:"utf8"});
 if(binding.status!==0)throw new Error(binding.stderr);
 }
 const emit=event=>console.log(JSON.stringify(event));
@@ -58,17 +58,15 @@ if(name==="claude" || name==="cursor") {
     await chmod(executable, 0o755);
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@millstrand/spool-harnesses";
+      `import {harnesses,provider} from "@botlake/spool-harnesses";
 const names=["codex","pi","claude","cursor"];
 export default harnesses({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",fast:true,systemPrompts:["policy"]}]))});`,
     );
-    await host.mill(["weaver", "start", "--workspace", workspace]);
+    await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {
       for (let attempt = 0; attempt < 100; attempt++) {
-        await host.strand("providers", "agent", { command: "reconcile" });
-        const run = runSchema.parse(
-          await host.strand("providers", "agent", { command: "show", id }),
-        );
+        await host.bl("providers", "agent", { command: "reconcile" });
+        const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
         if (run.attributes["harness/settled"] === true) return run;
       }
       throw new Error(`Provider did not settle: ${id}`);
@@ -76,7 +74,7 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
     for (const name of ["codex", "pi", "claude", "cursor"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {
         const started = runSchema.parse(
-          await host.strand("providers", "agent", {
+          await host.bl("providers", "agent", {
             command: "start",
             seat: `${name}-seat`,
             cwd: workspace,
@@ -107,7 +105,7 @@ export default harnesses({providers:names.map(name=>{const base=provider(name);r
           );
         if (scenario === "complete") {
           const resumed = runSchema.parse(
-            await host.strand("providers", "agent", {
+            await host.bl("providers", "agent", {
               command: "resume",
               id: run.id,
               prompt: "complete",

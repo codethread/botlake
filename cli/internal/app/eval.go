@@ -17,14 +17,14 @@ import (
 )
 
 const evalUsage = `Usage:
-  mill weaver eval [--workspace PATH|NAME] [--cwd DIR] [--timeout DURATION] CODE|@FILE|-
+  botlake lake eval [--workspace PATH|NAME] [--cwd DIR] [--timeout DURATION] CODE|@FILE|-
 
 Run a trusted JavaScript async function body in a caller-side Bun process.
 Use return to produce one JSON result. Inline code, caller-relative @files and
 stdin (-) are supported. Flags precede the source; -- ends flag parsing.
 
 Bindings:
-  q                 Predicate builders from @millstrand/core (and/or/not,
+  q                 Predicate builders from @botlake/core (and/or/not,
                     eq/ne/lt/lte/gt/gte/inArray, attr/param, exists/missing,
                     edgeOut/edgeIn).
   api.call(OP, INPUT) Invoke a selected operation with JSON input; returns its
@@ -38,15 +38,15 @@ operations may mutate data, and completed mutations are not rolled back on error
 Calls do not share a snapshot. List/ready retain their limits (default 100).
 
 Examples (Batteries must be selected for list/ready/edge):
-  mill weaver eval 'return await api.call("query", {});'
-  mill weaver eval 'return await api.call("ready", {where:q.eq(q.attr("kanban/type"),"feature"),limit:20});'
-  mill weaver eval --workspace work @report.js
-  mill weaver eval --timeout 5s - < report.js
+  botlake lake eval 'return await api.call("query", {});'
+  botlake lake eval 'return await api.call("ready", {where:q.eq(q.attr("kanban/type"),"feature"),limit:20});'
+  botlake lake eval --workspace work @report.js
+  botlake lake eval --timeout 5s - < report.js
 `
 
 func evalCLI(args []string) int {
 	fail := func(err error) int { return cliFailure(err, true) }
-	flags := flag.NewFlagSet("mill weaver eval", flag.ContinueOnError)
+	flags := flag.NewFlagSet("botlake lake eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	target := flags.String("workspace", "", "workspace path or published name")
 	cwd := flags.String("cwd", "", "caller working directory")
@@ -79,7 +79,7 @@ func evalCLI(args []string) int {
 			return fail(err)
 		}
 	}
-	source, filename := flags.Arg(0), "mill-weaver-eval.js"
+	source, filename := flags.Arg(0), "botlake-lake-eval.js"
 	if source == "-" {
 		raw, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -118,7 +118,7 @@ func evalCLI(args []string) int {
 		return fail(err)
 	}
 	// A separate result descriptor keeps arbitrary script stdout out of JSON output.
-	result, err := os.CreateTemp("", "mill-eval-*")
+	result, err := os.CreateTemp("", "botlake-eval-*")
 	if err != nil {
 		return fail(err)
 	}

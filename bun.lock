@@ -3,15 +3,15 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "millstrand-ts",
+      "name": "botlake",
       "devDependencies": {
-        "@millstrand/core": "workspace:*",
-        "@millstrand/spool-batteries": "workspace:*",
-        "@millstrand/spool-cron": "workspace:*",
-        "@millstrand/spool-flags": "workspace:*",
-        "@millstrand/spool-harnesses": "workspace:*",
-        "@millstrand/spool-identity": "workspace:*",
-        "@millstrand/spool-kanban": "workspace:*",
+        "@botlake/core": "workspace:*",
+        "@botlake/spool-batteries": "workspace:*",
+        "@botlake/spool-cron": "workspace:*",
+        "@botlake/spool-flags": "workspace:*",
+        "@botlake/spool-harnesses": "workspace:*",
+        "@botlake/spool-identity": "workspace:*",
+        "@botlake/spool-kanban": "workspace:*",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -23,20 +23,20 @@
         "zod": "^4.6.7",
       },
     },
-    ".millstrand": {
-      "name": "@millstrand/dogfood",
+    ".botlake": {
+      "name": "@botlake/dogfood",
       "dependencies": {
-        "@millstrand/core": "workspace:*",
-        "@millstrand/spool-batteries": "workspace:*",
-        "@millstrand/spool-cron": "workspace:*",
-        "@millstrand/spool-flags": "workspace:*",
-        "@millstrand/spool-harnesses": "workspace:*",
-        "@millstrand/spool-identity": "workspace:*",
-        "@millstrand/spool-kanban": "workspace:*",
+        "@botlake/core": "workspace:*",
+        "@botlake/spool-batteries": "workspace:*",
+        "@botlake/spool-cron": "workspace:*",
+        "@botlake/spool-flags": "workspace:*",
+        "@botlake/spool-harnesses": "workspace:*",
+        "@botlake/spool-identity": "workspace:*",
+        "@botlake/spool-kanban": "workspace:*",
       },
     },
     "packages/core": {
-      "name": "@millstrand/core",
+      "name": "@botlake/core",
       "version": "0.1.0",
       "dependencies": {
         "@standard-schema/spec": "^1.1.0",
@@ -47,99 +47,99 @@
       },
     },
     "plugins/identity": {
-      "name": "@millstrand/identity",
+      "name": "@botlake/identity",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^4.6.7",
       },
     },
     "spools/batteries": {
-      "name": "@millstrand/spool-batteries",
+      "name": "@botlake/spool-batteries",
       "version": "0.1.0",
       "dependencies": {
         "@standard-schema/spec": "^1.1.0",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
+        "@botlake/core": "workspace:^",
       },
     },
     "spools/cron": {
-      "name": "@millstrand/spool-cron",
+      "name": "@botlake/spool-cron",
       "version": "0.1.0",
       "dependencies": {
         "cron-parser": "^5.10.2",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
+        "@botlake/core": "workspace:^",
       },
     },
     "spools/flags": {
-      "name": "@millstrand/spool-flags",
+      "name": "@botlake/spool-flags",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
+        "@botlake/core": "workspace:^",
       },
     },
     "spools/harnesses": {
-      "name": "@millstrand/spool-harnesses",
+      "name": "@botlake/spool-harnesses",
       "version": "0.1.0",
       "dependencies": {
-        "@millstrand/identity": "workspace:^",
+        "@botlake/identity": "workspace:^",
         "ts-pattern": "^5.9.2",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
-        "@millstrand/spool-flags": "workspace:^",
-        "@millstrand/spool-identity": "workspace:^",
+        "@botlake/core": "workspace:^",
+        "@botlake/spool-flags": "workspace:^",
+        "@botlake/spool-identity": "workspace:^",
       },
     },
     "spools/identity": {
-      "name": "@millstrand/spool-identity",
+      "name": "@botlake/spool-identity",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
+        "@botlake/core": "workspace:^",
       },
     },
     "spools/kanban": {
-      "name": "@millstrand/spool-kanban",
+      "name": "@botlake/spool-kanban",
       "version": "0.1.0",
       "dependencies": {
         "ts-pattern": "^5.9.2",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
-        "@millstrand/core": "workspace:^",
-        "@millstrand/spool-identity": "workspace:^",
+        "@botlake/core": "workspace:^",
+        "@botlake/spool-identity": "workspace:^",
       },
     },
   },
   "packages": {
-    "@millstrand/core": ["@millstrand/core@workspace:packages/core"],
+    "@botlake/core": ["@botlake/core@workspace:packages/core"],
 
-    "@millstrand/dogfood": ["@millstrand/dogfood@workspace:.millstrand"],
+    "@botlake/dogfood": ["@botlake/dogfood@workspace:.botlake"],
 
-    "@millstrand/identity": ["@millstrand/identity@workspace:plugins/identity"],
+    "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
 
-    "@millstrand/spool-batteries": ["@millstrand/spool-batteries@workspace:spools/batteries"],
+    "@botlake/spool-batteries": ["@botlake/spool-batteries@workspace:spools/batteries"],
 
-    "@millstrand/spool-cron": ["@millstrand/spool-cron@workspace:spools/cron"],
+    "@botlake/spool-cron": ["@botlake/spool-cron@workspace:spools/cron"],
 
-    "@millstrand/spool-flags": ["@millstrand/spool-flags@workspace:spools/flags"],
+    "@botlake/spool-flags": ["@botlake/spool-flags@workspace:spools/flags"],
 
-    "@millstrand/spool-harnesses": ["@millstrand/spool-harnesses@workspace:spools/harnesses"],
+    "@botlake/spool-harnesses": ["@botlake/spool-harnesses@workspace:spools/harnesses"],
 
-    "@millstrand/spool-identity": ["@millstrand/spool-identity@workspace:spools/identity"],
+    "@botlake/spool-identity": ["@botlake/spool-identity@workspace:spools/identity"],
 
-    "@millstrand/spool-kanban": ["@millstrand/spool-kanban@workspace:spools/kanban"],
+    "@botlake/spool-kanban": ["@botlake/spool-kanban@workspace:spools/kanban"],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 

@@ -5,10 +5,10 @@ import {
   q,
   type Attributes,
   type Graph,
-  type Strand,
+  type Node,
   type Context,
   type Spool,
-} from "@millstrand/core";
+} from "@botlake/core";
 import { z } from "zod";
 
 const authority = Symbol("identity");
@@ -26,18 +26,18 @@ export const startupSchema = z.strictObject({
   thinkingLevel: text.optional(),
 });
 export type Startup = z.infer<typeof startupSchema>;
-export function identityRecords(graph: Graph): Strand[] {
+export function identityRecords(graph: Graph): Node[] {
   return graph.all({
     where: q.exists(q.attr("identity/id")),
     lean: false,
   });
 }
-export function resolveIdentity(graph: Graph, name: string): Strand | undefined {
+export function resolveIdentity(graph: Graph, name: string): Node | undefined {
   return identityRecords(graph).find((record) => record.attributes["identity/id"] === name);
 }
-export function attribution(graph: Graph, name: string): { identity: string; strandIds: string[] } {
+export function attribution(graph: Graph, name: string): { identity: string; nodeIds: string[] } {
   const record = resolveIdentity(graph, name);
-  return { identity: name, strandIds: record === undefined ? [] : [record.id] };
+  return { identity: name, nodeIds: record === undefined ? [] : [record.id] };
 }
 export function attribute(
   ctx: Context,
@@ -51,7 +51,7 @@ export function attribute(
 export function reserveIdentity(
   ctx: Context,
   input: { harness: string; model?: string | undefined; thinkingLevel?: string | undefined },
-): { identity: string; reservationId: string; strandId: string } {
+): { identity: string; reservationId: string; nodeId: string } {
   const harness = provider.parse(input.harness);
   return ctx.graph.atomic(() => {
     const friendly = `agent-${crypto.randomUUID().slice(0, 8)}`;
@@ -66,8 +66,8 @@ export function reserveIdentity(
     if (input.model !== undefined) attributes["identity/model"] = input.model;
     if (input.thinkingLevel !== undefined)
       attributes["identity/thinking-level"] = input.thinkingLevel;
-    const strand = ctx.graph.add({ title: friendly, attributes });
-    return { identity: friendly, reservationId, strandId: strand.id };
+    const node = ctx.graph.add({ title: friendly, attributes });
+    return { identity: friendly, reservationId, nodeId: node.id };
   }, authority);
 }
 export function nativeStartup(
@@ -75,7 +75,7 @@ export function nativeStartup(
   raw: Startup,
 ): {
   identity: string;
-  strandId: string;
+  nodeId: string;
   result: "created" | "attached" | "recovered";
   instruction: string;
 } {
@@ -118,7 +118,7 @@ export function nativeStartup(
         model: input.model,
         thinkingLevel: input.thinkingLevel,
       });
-      record = ctx.graph.show(reserved.strandId);
+      record = ctx.graph.show(reserved.nodeId);
       result = "created";
     }
     const parent =
@@ -166,7 +166,7 @@ export function nativeStartup(
     const name = text.parse(record.attributes["identity/id"]);
     return {
       identity: name,
-      strandId: record.id,
+      nodeId: record.id,
       result,
       instruction: `Your identity is ${name}. Preserve it when recording ownership and authorship.`,
     };
@@ -183,7 +183,7 @@ export function identity(): Spool {
         if (token === authority) return;
         for (const change of changes) {
           if (
-            change.kind === "strand" &&
+            change.kind === "node" &&
             (change.before?.attributes["identity/id"] !== undefined ||
               change.after?.attributes["identity/id"] !== undefined)
           )
@@ -212,7 +212,7 @@ export function identity(): Spool {
           output: z.json(),
           cli: {
             description: "Native session identities",
-            examples: ["strand identity list", "strand identity show IDENTITY"],
+            examples: ["bl identity list", "bl identity show IDENTITY"],
             commands: {
               startup: {
                 description: "Register actual native session",

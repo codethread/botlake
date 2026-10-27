@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"millstrand/internal/process"
+	"botlake/internal/process"
 )
 
 type Request struct {
@@ -57,23 +57,23 @@ type Daemon struct {
 }
 
 func Home() string {
-	if home := os.Getenv("MILL_HOME"); home != "" {
+	if home := os.Getenv("BOTLAKE_HOME"); home != "" {
 		return home
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
 	}
-	return filepath.Join(home, ".millstrand-ts")
+	return filepath.Join(home, ".botlake")
 }
 func Core() string {
-	if path := os.Getenv("MILLSTRAND_CORE"); path != "" {
+	if path := os.Getenv("BOTLAKE_CORE"); path != "" {
 		return path
 	}
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../../packages/core"))
 }
-func socket() string { return filepath.Join(Home(), "mill.sock") }
+func socket() string { return filepath.Join(Home(), "botlake.sock") }
 func canonical(path string) (string, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
@@ -82,7 +82,7 @@ func canonical(path string) (string, error) {
 	return filepath.EvalSymlinks(absolute)
 }
 func errFrame(err error) Frame {
-	return Frame{Error: map[string]any{"type": "error", "code": "mill", "message": err.Error()}}
+	return Frame{Error: map[string]any{"type": "error", "code": "botlake", "message": err.Error()}}
 }
 func encode(w io.Writer, frame any) { _ = json.NewEncoder(w).Encode(frame) }
 func decode(raw []byte, target any) error {
@@ -244,7 +244,7 @@ func (d *Daemon) restoreHost() error {
 var workspaceName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
 
 func readMember(path string) (Member, error) {
-	raw, err := os.ReadFile(filepath.Join(path, ".millstrand/config.json"))
+	raw, err := os.ReadFile(filepath.Join(path, ".botlake/config.json"))
 	if err != nil {
 		return Member{}, err
 	}
@@ -260,7 +260,7 @@ func readMember(path string) (Member, error) {
 		name = *config.Name
 	}
 	if !workspaceName.MatchString(name) {
-		return Member{}, fmt.Errorf("invalid workspace name %q; set name in .millstrand/config.json to a letter followed by letters, digits, underscores or hyphens", name)
+		return Member{}, fmt.Errorf("invalid workspace name %q; set name in .botlake/config.json to a letter followed by letters, digits, underscores or hyphens", name)
 	}
 	return Member{Path: path, Name: name}, nil
 }
@@ -425,7 +425,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		return
 	}
 	switch req.Operation {
-	case "weaver-resolve":
+	case "lake-resolve":
 		member, err := d.resolve(req.Workspace, req.CWD)
 		if err != nil {
 			encode(conn, errFrame(err))
@@ -461,7 +461,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		defer response.Close()
 		go func() { _, _ = io.Copy(io.Discard, conn); _ = response.Close() }()
 		_, _ = io.Copy(conn, response)
-	case "weaver-start":
+	case "lake-start":
 		target := req.Workspace
 		if member, err := d.resolve(target, req.CWD); err == nil {
 			target = member.Path
@@ -475,10 +475,10 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: member})
 		}
-	case "weaver-restart", "weaver-stop":
+	case "lake-restart", "lake-stop":
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
-		if err == nil && req.Operation == "weaver-restart" {
+		if err == nil && req.Operation == "lake-restart" {
 			member, err = readMember(member.Path)
 			if err == nil {
 				d.mu.Lock()
@@ -489,11 +489,11 @@ func (d *Daemon) handle(conn net.Conn) {
 
 		if err == nil {
 			action := "restart"
-			if req.Operation == "weaver-stop" {
+			if req.Operation == "lake-stop" {
 				action = "stop"
 			}
 			err = d.control(action, member.Path)
-			if req.Operation == "weaver-restart" {
+			if req.Operation == "lake-restart" {
 				d.mu.Lock()
 				if err == nil {
 					d.members[member.Path] = member
@@ -502,7 +502,7 @@ func (d *Daemon) handle(conn net.Conn) {
 				}
 				d.mu.Unlock()
 			}
-			if req.Operation == "weaver-stop" {
+			if req.Operation == "lake-stop" {
 				d.mu.Lock()
 				delete(d.members, member.Path)
 				d.mu.Unlock()
@@ -531,7 +531,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]bool{"ready": true}})
 		}
-	case "weaver-status":
+	case "lake-status":
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
 		if err == nil {
@@ -543,7 +543,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true}})
 		}
-	case "status", "weaver-list":
+	case "status", "lake-list":
 		d.mu.Lock()
 		members := make([]Member, 0, len(d.members))
 		for _, member := range d.members {
@@ -553,7 +553,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		pid := d.host.Process.Pid
 		ready, hostError := d.hostReady, d.hostError
 		d.mu.Unlock()
-		if req.Operation == "weaver-list" {
+		if req.Operation == "lake-list" {
 			encode(conn, Frame{OK: true, Result: members})
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]any{"pid": os.Getpid(), "hostPid": pid, "hostReady": ready, "hostError": hostError, "members": members}})
@@ -570,7 +570,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		encode(conn, Frame{OK: true, Result: map[string]bool{"stopping": true}})
 		go d.shutdown()
 	default:
-		encode(conn, errFrame(fmt.Errorf("unknown Mill operation: %s", req.Operation)))
+		encode(conn, errFrame(fmt.Errorf("unknown Botlake operation: %s", req.Operation)))
 	}
 }
 func (d *Daemon) shutdown() {
@@ -610,13 +610,13 @@ func Serve() error {
 	if err := os.MkdirAll(home, 0700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(filepath.Join(home, "mill.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(filepath.Join(home, "botlake.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("Mill is already running")
+		return errors.New("Botlake is already running")
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	_ = os.Remove(socket())
@@ -655,7 +655,7 @@ func Serve() error {
 func Dial(req Request, output io.Writer) error {
 	conn, err := net.DialTimeout("unix", socket(), time.Second)
 	if err != nil {
-		return fmt.Errorf("Mill is unreachable; run mill start: %w", err)
+		return fmt.Errorf("Botlake is unreachable; run botlake start: %w", err)
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))

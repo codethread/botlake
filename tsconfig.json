@@ -25,6 +25,6 @@
     "allowUnusedLabels": false,
     "skipLibCheck": false
   },
-  "include": ["**/*.ts", "**/*.mts", "**/*.cts", ".millstrand/**/*.ts"],
+  "include": ["**/*.ts", "**/*.mts", "**/*.cts", ".botlake/**/*.ts"],
   "exclude": ["node_modules", "dist", "out", "coverage"]
 }

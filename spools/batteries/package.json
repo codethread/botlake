@@ -1,5 +1,5 @@
 {
-  "name": "@millstrand/spool-batteries",
+  "name": "@botlake/spool-batteries",
   "version": "0.1.0",
   "files": [
     "src",
@@ -17,6 +17,6 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@millstrand/core": "workspace:^"
+    "@botlake/core": "workspace:^"
   }
 }

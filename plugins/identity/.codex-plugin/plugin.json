@@ -1,6 +1,6 @@
 {
-  "name": "millstrand-identity",
+  "name": "botlake-identity",
   "version": "0.1.0",
-  "description": "Native session attribution for Millstrand",
+  "description": "Native session attribution for Botlake",
   "hooks": "./.codex-plugin/hooks.json"
 }

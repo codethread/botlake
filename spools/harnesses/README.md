@@ -1,11 +1,11 @@
-# @millstrand/spool-harnesses
+# @botlake/spool-harnesses
 
-Tracked headless agent runs, providers, documented aliases, assignment/review, resume/retry and custody reconciliation. Install the `@millstrand/core`, `@millstrand/spool-identity` and `@millstrand/spool-flags` peers; explicitly select Identity and Flags alongside this spool. Mill supplies process custody.
+Tracked headless agent runs, providers, documented aliases, assignment/review, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/spool-identity` and `@botlake/spool-flags` peers; explicitly select Identity and Flags alongside this spool. Botlake supplies process custody.
 
-Select `"@millstrand/spool-harnesses"` for Codex, Pi, Claude and Cursor defaults. For configuration, select a local module instead:
+Select `"@botlake/spool-harnesses"` for Codex, Pi, Claude and Cursor defaults. For configuration, select a local module instead:
 
 ```ts
-import { harnesses } from "@millstrand/spool-harnesses";
+import { harnesses } from "@botlake/spool-harnesses";
 
 export default harnesses({
   aliases: {
@@ -38,22 +38,22 @@ In a separate selected Flags module, configure defaults with `flags({ "model/ope
 - Accepted runs freeze their resolved settings. Flag changes affect new starts and review selections, not queued/running runs, retries or native resumes. Exact request replay returns its original accepted run even if the alias is now disabled.
 
 ```sh
-strand agent catalog                  # Docs, effective settings and availability, including disabled seats.
-strand agent catalog reviewer         # Full candidates, settings and unavailability reasons.
-strand flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
-strand agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
-strand agent show RUN_ID
-strand flag set harness/claude false  # Keep Claude registered, but unavailable for new selection.
+bl agent catalog                  # Docs, effective settings and availability, including disabled seats.
+bl agent catalog reviewer         # Full candidates, settings and unavailability reasons.
+bl flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
+bl agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
+bl agent show RUN_ID
+bl flag set harness/claude false  # Keep Claude registered, but unavailable for new selection.
 ```
 
-`agent list` lists runs, unlike the canonical CLI. A seat named `reviewer` is not a configured `agent review` lens, and `tui` does not enable interactive launch. Reviewer lenses have their own `seats`, `prompt`, optional `labels` and `paths`; seat selection respects alias availability, then executable availability.
+`agent list` lists runs. A seat named `reviewer` is not a configured `agent review` lens, and `tui` does not enable interactive launch. Reviewer lenses have their own `seats`, `prompt`, optional `labels` and `paths`; seat selection respects alias availability, then executable availability.
 
-`harnesses()` accepts custom implementations of the four provider names. Pass `providers: [provider("codex"), provider("pi")]` to register only those two. `harnessConfigSchema` and `harnessConfigJsonSchema()` describe aliases/reviewers; `Seat`, `Alias`, `Condition`, `Reviewer`, `HarnessConfig`, `HarnessOptions`, `Harnesses` and provider types are public. Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require Weaver restart.
+`harnesses()` accepts custom implementations of the four provider names. Pass `providers: [provider("codex"), provider("pi")]` to register only those two. `harnessConfigSchema` and `harnessConfigJsonSchema()` describe aliases/reviewers; `Seat`, `Alias`, `Condition`, `Reviewer`, `HarnessConfig`, `HarnessOptions`, `Harnesses` and provider types are public. Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 
-Canonical caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.
+Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.
 
 ## Native integration
 
 Cursor bundles a session-start plugin that binds the run's native identity and injects policy context on new and resumed sessions. Its model selector combines `model`, optional `effort`, and optional `fast`. The hook uses Cursor's documented [sessionStart contract](https://cursor.com/docs/hooks).
 
-Codex/Claude/Pi native adapters are separately delivered as `@millstrand/identity`. Use this port's adapters, not canonical Millhouse plugins. Nothing installs into user profiles automatically. Native sessions do not grant custody; successful processes do not automatically close their tasks.
+Codex/Claude/Pi native adapters are separately delivered as `@botlake/identity`. Nothing installs into user profiles automatically. Native sessions do not grant custody; successful processes do not automatically close their tasks.

@@ -39,7 +39,7 @@ func cliFailure(err error, forceJSON bool) int {
 }
 
 func renderError(raw json.RawMessage, forceJSON bool) int {
-	mode := os.Getenv("MILLSTRAND_ERROR_FORMAT")
+	mode := os.Getenv("BOTLAKE_ERROR_FORMAT")
 	if forceJSON || mode == "json" {
 		fmt.Fprintln(os.Stderr, string(raw))
 		return 1
@@ -96,7 +96,7 @@ func relay(req Request, view presentation) int {
 	}
 	conn, err := net.DialTimeout("unix", socket(), time.Second)
 	if err != nil {
-		return cliFailure(fmt.Errorf("Mill is unreachable; run mill start: %w", err), view.json)
+		return cliFailure(fmt.Errorf("Botlake is unreachable; run botlake start: %w", err), view.json)
 	}
 	defer conn.Close()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -247,18 +247,18 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 	if len(view.path) == 0 {
 		p.heading("Workspace operations")
 		if len(operations) == 0 {
-			p.body("No operations are registered. Select spools in .millstrand/config.json.", "  ")
+			p.body("No operations are registered. Select spools in .botlake/config.json.", "  ")
 		}
 		sort.Slice(operations, func(i, j int) bool { return operations[i].Name < operations[j].Name })
 		for _, op := range operations {
 			p.row(op.Name, op.CLI.Description)
 		}
 		fmt.Fprintln(os.Stdout)
-		p.body("Use strand help OP for arguments, strand prime OP for a runbook, or strand about OP for details.", "")
+		p.body("Use bl help OP for arguments, bl prime OP for a runbook, or bl about OP for details.", "")
 		return nil
 	}
 	for _, op := range operations {
-		command := "strand " + strings.Join(view.path, " ")
+		command := "bl " + strings.Join(view.path, " ")
 		p.heading(command)
 		p.body(op.CLI.Description, "")
 		fmt.Fprintln(os.Stdout)
@@ -330,7 +330,7 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 			p.body("Streams one validated JSON value per line.", "")
 		}
 		fmt.Fprintln(os.Stdout)
-		p.body("Use --json before the operation for machine-readable output. Use strand --help for stdin, payload and other global flags.", "")
+		p.body("Use --json before the operation for machine-readable output. Use bl --help for stdin, payload and other global flags.", "")
 	}
 	return nil
 }

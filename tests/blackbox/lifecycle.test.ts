@@ -8,13 +8,13 @@ import { system } from "./fixtures/system.ts";
 test("workers publish readiness after registration and report cleanup failures while preserving sibling workspaces", async () => {
   const host = await system();
   try {
-    const healthy = await host.workspace("healthy", ["@millstrand/spool-batteries"]);
-    await host.mill(["weaver", "start", "--workspace", healthy]);
+    const healthy = await host.workspace("healthy", ["@botlake/spool-batteries"]);
+    await host.botlake(["lake", "start", "--workspace", healthy]);
     const late = await host.workspace("late", ["./spool.ts"]);
     const disposed = join(late, "disposed");
     await Bun.write(
       join(late, "spool.ts"),
-      `import {defineOp} from "@millstrand/core";
+      `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 export default {name:"late",activate(ctx){ctx.resource({
   start(){ctx.register(defineOp({name:"too-late",input:z.object({}),output:z.null(),
@@ -22,12 +22,12 @@ export default {name:"late",activate(ctx){ctx.resource({
   stop(){return Bun.write(${JSON.stringify(disposed)},"disposed").then(()=>{});}
 });}};`,
     );
-    expect(await host.mill(["weaver", "start", "--workspace", late], false)).toContain(
+    expect(await host.botlake(["lake", "start", "--workspace", late], false)).toContain(
       "Registrations are closed",
     );
     expect(await Bun.file(disposed).text()).toBe("disposed");
     expect(
-      z.array(z.object({ name: z.string() })).parse(await host.mill(["weaver", "list"])),
+      z.array(z.object({ name: z.string() })).parse(await host.botlake(["lake", "list"])),
     ).toEqual([{ name: "healthy" }]);
 
     const failing = await host.workspace("failing", ["./spool.ts"]);
@@ -39,15 +39,15 @@ export default {name:"late",activate(ctx){ctx.resource({
       ctx.resource({start(){},stop(){throw new Error("cleanup-boom");}});
     }};`,
     );
-    await host.mill(["weaver", "start", "--workspace", failing]);
-    expect(await host.mill(["weaver", "stop", "--workspace", failing], false)).toContain(
+    await host.botlake(["lake", "start", "--workspace", failing]);
+    expect(await host.botlake(["lake", "stop", "--workspace", failing], false)).toContain(
       "cleanup-boom",
     );
     expect(await Bun.file(cleaned).text()).toBe("cleaned");
     expect(
-      z.array(z.object({ name: z.string() })).parse(await host.mill(["weaver", "list"])),
+      z.array(z.object({ name: z.string() })).parse(await host.botlake(["lake", "list"])),
     ).toEqual([{ name: "healthy" }]);
-    expect(await host.strand("healthy", "list", {})).toEqual([]);
+    expect(await host.bl("healthy", "list", {})).toEqual([]);
   } finally {
     await host.close();
   }
@@ -60,7 +60,7 @@ test("unexpected member exit replaces only that worker without replaying its int
       const path = await host.workspace(name, ["./spool.ts"]);
       await Bun.write(
         join(path, "spool.ts"),
-        `import {defineOp} from "@millstrand/core";
+        `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 const instance=crypto.randomUUID();
 export default {name:"probe",activate(ctx){
@@ -71,12 +71,12 @@ export default {name:"probe",activate(ctx){
   ctx.register(defineOp({name:"records",input:z.object({}),output:z.number(),cli:{description:"records"},handler:()=>ctx.graph.list().length}));
 }};`,
       );
-      await host.mill(["weaver", "start", "--workspace", path]);
+      await host.botlake(["lake", "start", "--workspace", path]);
     }
-    const alpha = await host.strand("alpha", "instance", {});
-    const beta = await host.strand("beta", "instance", {});
-    const hostPid = z.object({ hostPid: z.number() }).parse(await host.mill(["status"])).hostPid;
-    expect(await host.strand("alpha", "crash", {}, false)).toContain("response ended");
+    const alpha = await host.bl("alpha", "instance", {});
+    const beta = await host.bl("beta", "instance", {});
+    const hostPid = z.object({ hostPid: z.number() }).parse(await host.botlake(["status"])).hostPid;
+    expect(await host.bl("alpha", "crash", {}, false)).toContain("response ended");
     // Query readiness through the live daemon; never replay the interrupted op.
     let ready = false;
     for (let attempt = 0; attempt < 1000; attempt++) {
@@ -85,7 +85,7 @@ export default {name:"probe",activate(ctx){
           await host.wire({
             protocol_version: 1,
             request_id: crypto.randomUUID(),
-            operation: "weaver-status",
+            operation: "lake-status",
             workspace: "alpha",
           }),
         ),
@@ -96,12 +96,12 @@ export default {name:"probe",activate(ctx){
       }
     }
     expect(ready).toBe(true);
-    expect(await host.strand("alpha", "instance", {})).not.toBe(alpha);
-    expect(await host.strand("beta", "instance", {})).toBe(beta);
-    expect(z.object({ hostPid: z.number() }).parse(await host.mill(["status"])).hostPid).toBe(
+    expect(await host.bl("alpha", "instance", {})).not.toBe(alpha);
+    expect(await host.bl("beta", "instance", {})).toBe(beta);
+    expect(z.object({ hostPid: z.number() }).parse(await host.botlake(["status"])).hostPid).toBe(
       hostPid,
     );
-    expect(await host.strand("alpha", "records", {})).toBe(1);
+    expect(await host.bl("alpha", "records", {})).toBe(1);
   } finally {
     await host.close();
   }

@@ -12,25 +12,25 @@ import (
 
 func initWorkspace(args []string) int {
 	fail := func(err error) int { return cliFailure(err, false) }
-	flags := flag.NewFlagSet("mill init", flag.ContinueOnError)
+	flags := flag.NewFlagSet("botlake init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	target := flags.String("workspace", ".", "workspace directory")
 	name := flags.String("name", "", "published workspace name (defaults to directory basename)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stdout, "mill init [--workspace DIR] [--name NAME]")
+			fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]")
 			return 0
 		}
 		return fail(err)
 	}
 	if flags.NArg() != 0 {
-		return fail(errors.New("usage: mill init [--workspace DIR] [--name NAME]"))
+		return fail(errors.New("usage: botlake init [--workspace DIR] [--name NAME]"))
 	}
 	path, err := canonical(*target)
 	if err != nil {
 		return fail(err)
 	}
-	config := filepath.Join(path, ".millstrand", "config.json")
+	config := filepath.Join(path, ".botlake", "config.json")
 	if _, err := os.Stat(config); err == nil {
 		member, err := readMember(path)
 		if err != nil {

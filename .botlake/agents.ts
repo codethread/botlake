@@ -1,4 +1,4 @@
-import { harnesses } from "@millstrand/spool-harnesses";
+import { harnesses } from "@botlake/spool-harnesses";
 
 export default harnesses({
   aliases: {
@@ -79,7 +79,7 @@ export default harnesses({
       },
     ],
     tui: {
-      doc: "Primary user seat, using Sol at low effort. Managed launches in this port are headless, not interactive.",
+      doc: "Primary user seat, using Sol at low effort. Managed launches are headless, not interactive.",
       parent: "sol",
       effort: "low",
     },

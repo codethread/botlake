@@ -79,7 +79,7 @@ export function compileQuery(
         const rel = bind(node.relation);
         const where = node.where === undefined ? "1" : visit(node.where, endpoint, true);
         return negate(
-          `EXISTS (SELECT 1 FROM edges ${edge} JOIN strands ${endpoint} ON ${endpoint}.id=${edge}.${to} WHERE ${edge}.${from}=${alias}.id AND ${edge}.relation=${rel} AND ${where})`,
+          `EXISTS (SELECT 1 FROM edges ${edge} JOIN nodes ${endpoint} ON ${endpoint}.id=${edge}.${to} WHERE ${edge}.${from}=${alias}.id AND ${edge}.relation=${rel} AND ${where})`,
           negated,
         );
       })
@@ -95,7 +95,7 @@ export function compileQuery(
             `$${node.field.path.map((part) => `.${JSON.stringify(part)}`).join("")}`,
           );
           expression = `json_extract(${attr}.value, ${path})`;
-          prefix = `EXISTS (SELECT 1 FROM attributes ${attr} WHERE ${attr}.strand_id=${alias}.id AND ${attr}.archived=0 AND ${attr}.key=${key} AND `;
+          prefix = `EXISTS (SELECT 1 FROM attributes ${attr} WHERE ${attr}.node_id=${alias}.id AND ${attr}.archived=0 AND ${attr}.key=${key} AND `;
           suffix = ")";
         }
         if (node.op === "exists" || node.op === "missing") {

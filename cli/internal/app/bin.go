@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const binUsage = "mill bin list [--workspace PATH|NAME]\nmill bin build [--workspace PATH|NAME] NAME\nmill bin run [--workspace PATH|NAME] NAME [ARGS...]\n"
+const binUsage = "botlake bin list [--workspace PATH|NAME]\nbotlake bin build [--workspace PATH|NAME] NAME\nbotlake bin run [--workspace PATH|NAME] NAME [ARGS...]\n"
 
 type binPlan struct {
 	Operation   string `json:"operation"`
@@ -35,7 +35,7 @@ type binPlan struct {
 
 func binCLI(args []string) int {
 	fail := func(err error) int { return cliFailure(err, true) }
-	flags := flag.NewFlagSet("mill bin", flag.ContinueOnError)
+	flags := flag.NewFlagSet("botlake bin", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	target := flags.String("workspace", "", "workspace path or published name")
 	if err := flags.Parse(args); err != nil && !errors.Is(err, flag.ErrHelp) {
@@ -117,7 +117,7 @@ func binCLI(args []string) int {
 	}
 	if plan.Runnable != nil && !*plan.Runnable {
 		if plan.Build != nil {
-			return fail(fmt.Errorf("bin %s is not built; run mill bin build %s", plan.Bin, plan.Bin))
+			return fail(fmt.Errorf("bin %s is not built; run botlake bin build %s", plan.Bin, plan.Bin))
 		}
 		return fail(fmt.Errorf("bin %s is not executable: %s", plan.Bin, plan.Exec.Path))
 	}

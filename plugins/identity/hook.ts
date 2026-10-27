@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { nativeProject, registerNative, strand } from "./client.ts";
+import { nativeProject, registerNative, bl } from "./client.ts";
 
 const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
 try {
@@ -19,12 +19,12 @@ try {
   if (event.hook_event_name === "SubagentStart") {
     if (provider !== "codex") throw new Error("Child hooks are supported by Codex");
     const workspace =
-      process.env["MILLSTRAND_RUN_REFERENCE"] === undefined
+      process.env["BOTLAKE_RUN_REFERENCE"] === undefined
         ? await nativeProject(event.cwd)
-        : z.string().min(1).parse(process.env["MILLSTRAND_WORKSPACE"]);
+        : z.string().min(1).parse(process.env["BOTLAKE_WORKSPACE"]);
     if (workspace === null) process.exit(0);
     const parent = z.object({ identity: z.string() }).parse(
-      await strand(workspace, "identity", {
+      await bl(workspace, "identity", {
         command: "startup",
         harness: provider,
         nativeSessionId,
@@ -47,7 +47,7 @@ try {
       `${JSON.stringify({ hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext: result.instruction } })}\n`,
     );
 } catch (error) {
-  const message = `Millstrand identity startup failed: ${String(error)}`;
+  const message = `Botlake identity startup failed: ${String(error)}`;
   process.stdout.write(
     `${JSON.stringify(provider === "claude" ? { systemMessage: `${message}; this session is unbound.` } : { continue: false, stopReason: message, systemMessage: message })}\n`,
   );

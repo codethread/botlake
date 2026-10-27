@@ -45,9 +45,9 @@ type invocationFlags struct {
 	payloads                                         payloadFlags
 }
 
-func Strand(args []string) int {
+func BL(args []string) int {
 	var p invocationFlags
-	flags := flag.NewFlagSet("strand", flag.ContinueOnError)
+	flags := flag.NewFlagSet("bl", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&p.workspace, "workspace", "", "workspace path or published name")
 	flags.StringVar(&p.cwd, "cwd", "", "invocation working directory")
@@ -75,18 +75,18 @@ func Strand(args []string) int {
 		return printVersion()
 	}
 	if p.help && len(args) > 0 {
-		return cliFailure(fmt.Errorf("--help must follow the operation: strand %s --help", args[0]), p.json)
+		return cliFailure(fmt.Errorf("--help must follow the operation: bl %s --help", args[0]), p.json)
 	}
 	if p.help || len(args) == 0 {
 		if p.json {
-			encode(os.Stdout, strandUsage)
+			encode(os.Stdout, blUsage)
 		} else {
-			fmt.Fprint(os.Stdout, strandUsage)
+			fmt.Fprint(os.Stdout, blUsage)
 		}
 		return 0
 	}
-	if mode := os.Getenv("MILLSTRAND_ERROR_FORMAT"); mode != "" && mode != "plain" && mode != "pretty" && mode != "json" {
-		return cliFailure(errors.New("MILLSTRAND_ERROR_FORMAT must be plain, pretty or json"), p.json)
+	if mode := os.Getenv("BOTLAKE_ERROR_FORMAT"); mode != "" && mode != "plain" && mode != "pretty" && mode != "json" {
+		return cliFailure(errors.New("BOTLAKE_ERROR_FORMAT must be plain, pretty or json"), p.json)
 	}
 	name, argv := args[0], append([]string{}, args[1:]...)
 	view := presentation{json: p.json}
@@ -210,7 +210,7 @@ func enclosingWorkspace(cwd string) (string, error) {
 		return "", err
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(cwd, ".millstrand/config.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(cwd, ".botlake/config.json")); err == nil {
 			return cwd, nil
 		}
 		parent := filepath.Dir(cwd)
@@ -251,8 +251,8 @@ func loadPayloads(p invocationFlags) (map[string]string, error) {
 	return payloads, nil
 }
 
-const strandUsage = `Usage:
-  strand [flags] <operation> [arguments...]
+const blUsage = `Usage:
+  bl [flags] <operation> [arguments...]
 
 Global flags (before the operation):
   --workspace PATH|NAME    Select a workspace or published name
@@ -269,19 +269,19 @@ Global flags (before the operation):
   -h, --help              Show this dispatcher help without a running workspace
 
 Workspace operations:
-  strand help                        List selected operations
-  strand help OP [SUBCOMMAND...]      Discover flags, positionals and subcommands
-  strand OP [SUBCOMMAND...] --help    Discover the same command
-  strand prime OP                    Read its runbook (also: primer)
-  strand about OP                    Read its explanation and schema metadata
-  strand help --json OP              Print machine-readable discovery
+  bl help                        List selected operations
+  bl help OP [SUBCOMMAND...]      Discover flags, positionals and subcommands
+  bl OP [SUBCOMMAND...] --help    Discover the same command
+  bl prime OP                    Read its runbook (also: primer)
+  bl about OP                    Read its explanation and schema metadata
+  bl help --json OP              Print machine-readable discovery
 
 Examples (with Batteries selected):
-  printf 'notes' | strand --stdin note STRAND_ID :stdin
-  strand --payload attrs=attrs.json add "Title" --attributes :payload/attrs
-  printf '{"title":"Title"}' | strand --input - add
+  printf 'notes' | bl --stdin note NODE_ID :stdin
+  bl --payload attrs=attrs.json add "Title" --attributes :payload/attrs
+  printf '{"title":"Title"}' | bl --input - add
 
 Help is formatted for a terminal. Redirected output remains JSON/NDJSON.
 Operation arguments belong to the selected spool; -- ends its flag parsing.
-NO_COLOR disables color. MILLSTRAND_ERROR_FORMAT selects plain|pretty|json errors.
+NO_COLOR disables color. BOTLAKE_ERROR_FORMAT selects plain|pretty|json errors.
 `

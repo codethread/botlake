@@ -9,13 +9,13 @@ import {
   defineOp,
   q,
   type Attributes,
-  type Strand,
+  type Node,
   type Context,
   type ProcessSpec,
   type Spool,
-} from "@millstrand/core";
-import { getFlag } from "@millstrand/spool-flags";
-import { nativeStartup, reserveIdentity } from "@millstrand/spool-identity";
+} from "@botlake/core";
+import { getFlag } from "@botlake/spool-flags";
+import { nativeStartup, reserveIdentity } from "@botlake/spool-identity";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -80,7 +80,7 @@ export class Harnesses {
       if (token === this.authority) return;
       for (const change of changes) {
         if (
-          change.kind === "strand" &&
+          change.kind === "node" &&
           (change.before?.attributes["harness/run"] === true ||
             change.after?.attributes["harness/run"] === true)
         )
@@ -101,27 +101,27 @@ export class Harnesses {
       ctx.scheduler.schedule("harnesses/reconcile", ctx.clock.now() + 1000, "harnesses/reconcile");
     });
   }
-  private patch(id: string, attributes: Attributes, state?: "active" | "closed"): Strand {
+  private patch(id: string, attributes: Attributes, state?: "active" | "closed"): Node {
     return this.ctx.graph.atomic(
       () => this.ctx.graph.update(id, { attributes, ...(state === undefined ? {} : { state }) }),
       this.authority,
     );
   }
-  runs(): Strand[] {
+  runs(): Node[] {
     return this.ctx.graph.all({ where: q.eq(q.attr("harness/run"), true), lean: false });
   }
-  private run(id: string): Strand {
+  private run(id: string): Node {
     const run = this.ctx.graph.show(id);
     if (run.attributes["harness/run"] !== true) throw new Fault("run", "Expected tracked run");
     return run;
   }
-  private active(run: Strand): boolean {
+  private active(run: Node): boolean {
     return run.attributes["harness/settled"] !== true;
   }
-  start(raw: StartRun): Strand {
+  start(raw: StartRun): Node {
     return this.create(raw);
   }
-  private create(raw: StartRun, parent?: Strand): Strand {
+  private create(raw: StartRun, parent?: Node): Node {
     const input = startSchema.parse(raw);
     const cwd = realpathSync(input.cwd);
     const request = Object.fromEntries(
@@ -218,7 +218,7 @@ export class Harnesses {
       return run;
     }, this.authority);
   }
-  private providerRun(run: Strand): ProviderRun {
+  private providerRun(run: Node): ProviderRun {
     const seat = seatSchema.parse(run.attributes["harness/settings"]);
     return {
       provider: seat.provider,
@@ -233,7 +233,7 @@ export class Harnesses {
       systemPrompts: seat.systemPrompts,
     };
   }
-  private begin(run: Strand): Strand {
+  private begin(run: Node): Node {
     return this.ctx.graph.atomic(() => {
       const current = this.run(run.id);
       if (current.attributes["harness/state"] !== "ready")
@@ -258,12 +258,12 @@ export class Harnesses {
         stdin: plan.stdin,
         env: {
           ...plan.env,
-          MILLSTRAND_WORKSPACE: this.ctx.workspace,
-          MILLSTRAND_RUN_REFERENCE: `${current.id}:${invocation}`,
-          MILLSTRAND_RUN_ID: current.id,
-          MILLSTRAND_INVOCATION: invocation,
-          MILLSTRAND_IDENTITY: text.parse(current.attributes["harness/identity"]),
-          MILLSTRAND_RESERVATION_ID: text.parse(current.attributes["harness/reservation-id"]),
+          BOTLAKE_WORKSPACE: this.ctx.workspace,
+          BOTLAKE_RUN_REFERENCE: `${current.id}:${invocation}`,
+          BOTLAKE_RUN_ID: current.id,
+          BOTLAKE_INVOCATION: invocation,
+          BOTLAKE_IDENTITY: text.parse(current.attributes["harness/identity"]),
+          BOTLAKE_RESERVATION_ID: text.parse(current.attributes["harness/reservation-id"]),
         },
       };
       return this.patch(current.id, {
@@ -467,7 +467,7 @@ export class Harnesses {
       });
     }, this.authority);
   }
-  async cancel(id: string): Promise<Strand> {
+  async cancel(id: string): Promise<Node> {
     const run = this.run(id);
     if (run.attributes["harness/external"] === true)
       throw new Fault("custody", "External sessions grant no stop authority");
@@ -489,7 +489,7 @@ export class Harnesses {
       throw new Fault("custody", "Cancellation has no terminal evidence");
     return this.run(id);
   }
-  retry(id: string): Strand {
+  retry(id: string): Node {
     return this.ctx.graph.atomic(() => {
       const run = this.run(id);
       if (
@@ -527,7 +527,7 @@ export class Harnesses {
       );
     }, this.authority);
   }
-  resume(id: string, prompt: string, requestId?: string): Strand {
+  resume(id: string, prompt: string, requestId?: string): Node {
     return this.ctx.graph.atomic(() => {
       const parent = this.run(id);
       if (
@@ -577,7 +577,7 @@ export class Harnesses {
       return child;
     }, this.authority);
   }
-  async acknowledge(id: string): Promise<Strand> {
+  async acknowledge(id: string): Promise<Node> {
     const run = this.run(id);
     if (run.attributes["harness/external"] === true || run.attributes["harness/settled"] !== true)
       throw new Fault("custody", "Only settled managed runs may acknowledge custody");
@@ -742,10 +742,10 @@ export function harnesses(options: HarnessOptions = {}): Spool {
           cli: {
             description: "Tracked agent runs and native registration",
             examples: [
-              "strand agent catalog",
-              "strand agent catalog reviewer",
-              "strand agent list",
-              "strand agent show RUN_ID",
+              "bl agent catalog",
+              "bl agent catalog reviewer",
+              "bl agent list",
+              "bl agent show RUN_ID",
             ],
             commands: {
               list: { description: "Runs" },

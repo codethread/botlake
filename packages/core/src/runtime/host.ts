@@ -6,7 +6,7 @@ import { Fault } from "../core/json.ts";
 import { invocationSchema } from "./protocol.ts";
 
 const socket = z.string().min(1).parse(Bun.argv[2]);
-const millSocket = z.string().min(1).parse(Bun.argv[3]);
+const botlakeSocket = z.string().min(1).parse(Bun.argv[3]);
 interface Member {
   worker: Worker;
   ready: Promise<void>;
@@ -57,7 +57,7 @@ const frameSchema = z.object({
 async function start(workspace: string): Promise<Member> {
   if (members.has(workspace)) throw new Fault("member", "Workspace is already running");
   const worker = new Worker(new URL("./worker.ts", import.meta.url), {
-    workerData: { workspace, millSocket },
+    workerData: { workspace, botlakeSocket },
   });
   const ready = Promise.withResolvers<void>();
   const stopped = Promise.withResolvers<void>();

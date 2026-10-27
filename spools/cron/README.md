@@ -1,11 +1,11 @@
-# @millstrand/spool-cron
+# @botlake/spool-cron
 
-Durable calendar/interval jobs and occurrence history. Requires the `@millstrand/core` peer package; no prerequisite spools. `cron-parser` is owned by this package, not core.
+Durable calendar/interval jobs and occurrence history. Requires the `@botlake/core` peer package; no prerequisite spools. `cron-parser` is owned by this package, not core.
 
 Select a local module exporting a configured Cron spool:
 
 ```ts
-import { cron, defineJob } from "@millstrand/spool-cron";
+import { cron, defineJob } from "@botlake/spool-cron";
 
 export default cron({
   jobs: [defineJob({ id: "tick", action: "tick", schedule: { everyMs: 60000 } })],

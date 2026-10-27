@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { Fault, isFault, type Json } from "../core/json.ts";
 import { q } from "../core/query.ts";
-import { millCall } from "./client.ts";
+import { botlakeCall } from "./client.ts";
 
 interface EvalAPI {
   call(name: string, input: Json): Promise<Json>;
@@ -28,10 +28,10 @@ async function run(): Promise<Json> {
   };
   const signal = AbortSignal.timeout(remaining());
   const call = (operation: string, workspace: string, payload: Json): Promise<Json> =>
-    millCall(options.socket, { operation, workspace, cwd: options.cwd, payload }, signal);
+    botlakeCall(options.socket, { operation, workspace, cwd: options.cwd, payload }, signal);
   const member = z
     .object({ path: z.string() })
-    .parse(await call("weaver-resolve", options.workspace, {}));
+    .parse(await call("lake-resolve", options.workspace, {}));
   const api: EvalAPI = {
     call(name, input) {
       return call("invoke", member.path, {

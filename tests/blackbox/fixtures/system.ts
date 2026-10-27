@@ -14,7 +14,7 @@ export async function install(path: string, dependencies: Record<string, string>
       dependencies,
       // Bun's offline peer resolver needs tarball overrides for unpublished packages.
       overrides: Object.fromEntries(
-        Object.entries(dependencies).filter(([name]) => name.startsWith("@millstrand/")),
+        Object.entries(dependencies).filter(([name]) => name.startsWith("@botlake/")),
       ),
     }),
   );
@@ -30,21 +30,21 @@ export async function install(path: string, dependencies: Record<string, string>
 export async function system(): Promise<{
   dir: string;
   home: string;
-  millBin: string;
-  strandBin: string;
+  botlakeBin: string;
+  blBin: string;
   env: Record<string, string | undefined>;
   packages: Record<string, string>;
   workspace(name: string, spools: string[]): Promise<string>;
-  mill(args: string[], ok?: boolean): Promise<unknown>;
-  strand(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
+  botlake(args: string[], ok?: boolean): Promise<unknown>;
+  bl(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
   cli(args: string[], ok?: boolean): Promise<unknown>;
   wire(request: unknown): Promise<string>;
   close(): Promise<void>;
 }> {
-  const dir = await mkdtemp(join(tmpdir(), "mill-system-"));
-  const home = join(dir, "mill");
-  const millBin = join(dir, "mill-bin");
-  const strandBin = join(dir, "strand-bin");
+  const dir = await mkdtemp(join(tmpdir(), "botlake-system-"));
+  const home = join(dir, "botlake");
+  const botlakeBin = join(dir, "botlake-bin");
+  const blBin = join(dir, "bl-bin");
   async function pack(path: string, name: string): Promise<string> {
     const tarball = join(dir, `${name}.tgz`);
     const child = Bun.spawn(["bun", "pm", "pack", "--ignore-scripts", "--filename", tarball], {
@@ -57,21 +57,21 @@ export async function system(): Promise<{
     return `file:${tarball}`;
   }
   const core = await pack("packages/core", "core");
-  const packages: Record<string, string> = { "@millstrand/core": core };
+  const packages: Record<string, string> = { "@botlake/core": core };
   for (const name of ["batteries", "identity", "kanban", "cron", "flags", "harnesses"])
-    packages[`@millstrand/spool-${name}`] = await pack(`spools/${name}`, name);
-  packages["@millstrand/identity"] = await pack("plugins/identity", "native-identity");
+    packages[`@botlake/spool-${name}`] = await pack(`spools/${name}`, name);
+  packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
   const engine = join(dir, "engine");
-  await install(engine, { "@millstrand/core": core });
+  await install(engine, { "@botlake/core": core });
   const env = {
     ...process.env,
-    MILL_HOME: home,
-    MILLSTRAND_CORE: join(engine, "node_modules/@millstrand/core"),
-    MILLSTRAND_STRAND_BIN: strandBin,
+    BOTLAKE_HOME: home,
+    BOTLAKE_CORE: join(engine, "node_modules/@botlake/core"),
+    BOTLAKE_BL_BIN: blBin,
   };
   for (const [name, binary] of [
-    ["mill", millBin],
-    ["strand", strandBin],
+    ["botlake", botlakeBin],
+    ["bl", blBin],
   ]) {
     const child = Bun.spawn(["go", "build", "-o", binary ?? "", `./cmd/${name ?? ""}`], {
       cwd: join(source, "cli"),
@@ -81,7 +81,7 @@ export async function system(): Promise<{
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     if (code !== 0) throw new Error(stderr);
   }
-  const daemon = Bun.spawn([millBin, "start"], { env, stdout: "pipe", stderr: "pipe" });
+  const daemon = Bun.spawn([botlakeBin, "start"], { env, stdout: "pipe", stderr: "pipe" });
   const stderr = new Response(daemon.stderr).text();
   const reader = daemon.stdout.getReader();
   const first = await reader.read();
@@ -108,24 +108,24 @@ export async function system(): Promise<{
   return {
     dir,
     home,
-    millBin,
-    strandBin,
+    botlakeBin,
+    blBin,
     env,
     packages,
     async workspace(name, spools) {
       const path = join(dir, name);
-      await mkdir(join(path, ".millstrand"), { recursive: true });
-      await Bun.write(join(path, ".millstrand/config.json"), JSON.stringify({ name, spools }));
+      await mkdir(join(path, ".botlake"), { recursive: true });
+      await Bun.write(join(path, ".botlake/config.json"), JSON.stringify({ name, spools }));
       await install(path, { ...packages, zod: "^4.6.7" });
       return path;
     },
-    mill: (args, ok) => run(millBin, args, ok),
-    strand: (workspace, op, input, ok) =>
-      run(strandBin, ["--workspace", workspace, "--input", JSON.stringify(input), op], ok),
-    cli: (args, ok) => run(strandBin, args, ok),
+    botlake: (args, ok) => run(botlakeBin, args, ok),
+    bl: (workspace, op, input, ok) =>
+      run(blBin, ["--workspace", workspace, "--input", JSON.stringify(input), op], ok),
+    cli: (args, ok) => run(blBin, args, ok),
     wire(request) {
       return new Promise((resolveResult, reject) => {
-        const connection = createConnection({ path: join(home, "mill.sock") });
+        const connection = createConnection({ path: join(home, "botlake.sock") });
         connection.setEncoding("utf8");
         let buffer = "";
         connection.setTimeout(5000, () => {
@@ -149,7 +149,7 @@ export async function system(): Promise<{
         daemon.kill("SIGKILL");
       }, 10000);
       try {
-        await run(millBin, ["stop"]);
+        await run(botlakeBin, ["stop"]);
         await daemon.exited;
       } finally {
         clearTimeout(timeout);

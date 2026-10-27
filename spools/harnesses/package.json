@@ -1,5 +1,5 @@
 {
-  "name": "@millstrand/spool-harnesses",
+  "name": "@botlake/spool-harnesses",
   "version": "0.1.0",
   "files": [
     "src",
@@ -14,13 +14,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@millstrand/identity": "workspace:^",
+    "@botlake/identity": "workspace:^",
     "ts-pattern": "^5.9.2",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@millstrand/core": "workspace:^",
-    "@millstrand/spool-flags": "workspace:^",
-    "@millstrand/spool-identity": "workspace:^"
+    "@botlake/core": "workspace:^",
+    "@botlake/spool-flags": "workspace:^",
+    "@botlake/spool-identity": "workspace:^"
   }
 }

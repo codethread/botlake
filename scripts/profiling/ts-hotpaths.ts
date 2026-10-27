@@ -1,7 +1,7 @@
 // Diagnostic only: use a copy of a seeded disposable database, after the wire benchmarks.
 // bun --cpu-prof --cpu-prof-dir /tmp/profile scripts/profiling/ts-hotpaths.ts DB QUERIES_JSON
-import { compileQuery, predicateSchema, Runtime } from "@millstrand/core";
-import batteriesSpool from "@millstrand/spool-batteries";
+import { compileQuery, predicateSchema, Runtime } from "@botlake/core";
+import batteriesSpool from "@botlake/spool-batteries";
 import { z } from "zod";
 
 const [database, queriesPath] = z.tuple([z.string(), z.string()]).parse(Bun.argv.slice(2));
@@ -36,7 +36,7 @@ try {
     if (op !== "list") continue;
     const query = z.object({ where: predicateSchema, limit: z.number() }).parse(input);
     const compiled = compileQuery(query.where);
-    const sql = `SELECT s.id FROM strands s WHERE ${compiled.sql} ORDER BY s.created_at,s.id LIMIT ?`;
+    const sql = `SELECT s.id FROM nodes s WHERE ${compiled.sql} ORDER BY s.created_at,s.id LIMIT ?`;
     const statement = runtime.graph.db.query(sql);
     const rows = runtime.graph.list(query);
     records.push({

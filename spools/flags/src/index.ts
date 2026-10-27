@@ -1,4 +1,4 @@
-import { defineOp, requireValue, type Context, type Spool } from "@millstrand/core";
+import { defineOp, requireValue, type Context, type Spool } from "@botlake/core";
 import { z } from "zod";
 
 const nameSchema = z.string().trim().min(1);
@@ -38,7 +38,7 @@ export function flags(defaults: Record<string, boolean> = {}): Spool {
         defineOp({
           name: "flag",
           primer:
-            "Flags are workspace-local booleans shared by selected spools. Get distinguishes an unset flag from false. Set and unset last until Weaver restart; configured defaults are reapplied on restart. Flag meanings and effects belong to consumers, not Flags.",
+            "Flags are workspace-local booleans shared by selected spools. Get distinguishes an unset flag from false. Set and unset last until lake restart; configured defaults are reapplied on restart. Flag meanings and effects belong to consumers, not Flags.",
           input: z.discriminatedUnion("command", [
             z.strictObject({ command: z.literal("list") }),
             z.strictObject({ command: z.literal("get"), name: nameSchema }),
@@ -49,10 +49,10 @@ export function flags(defaults: Record<string, boolean> = {}): Spool {
           cli: {
             description: "Workspace-local runtime flags",
             examples: [
-              "strand flag list",
-              "strand flag get feature/example",
-              "strand flag set feature/example false",
-              "strand flag unset feature/example",
+              "bl flag list",
+              "bl flag get feature/example",
+              "bl flag set feature/example false",
+              "bl flag unset feature/example",
             ],
             commands: {
               list: { description: "List set flags" },
@@ -61,14 +61,14 @@ export function flags(defaults: Record<string, boolean> = {}): Spool {
                 positionals: [{ name: "name", type: "string", required: true }],
               },
               set: {
-                description: "Set a boolean until Weaver restart",
+                description: "Set a boolean until lake restart",
                 positionals: [
                   { name: "name", type: "string", required: true },
                   { name: "value", type: "boolean", required: true },
                 ],
               },
               unset: {
-                description: "Remove a flag until Weaver restart",
+                description: "Remove a flag until lake restart",
                 positionals: [{ name: "name", type: "string", required: true }],
               },
             },

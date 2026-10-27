@@ -1,4 +1,4 @@
-import { flags } from "@millstrand/spool-flags";
+import { flags } from "@botlake/spool-flags";
 
 export default flags({
   "harness/claude": false,

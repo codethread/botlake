@@ -1,0 +1,20 @@
+# Runtime limits
+
+- Fresh databases only; no migrations or compatibility layer. Each lake stores nodes in `.botlake/world.db`.
+- `botlake init` creates empty JSON configuration without installing or selecting spools. Names come from configuration or the workspace basename. Durable auto-start registration, temporary databases and shell completion are not implemented.
+- Operation deadlines signal cancellation cooperatively. Evaluation runs in a separate caller-side process with an enforced overall deadline; it is trusted code, not a sandbox. Completed mutations are not rolled back if a script fails.
+- Wakes and crash-recovered Cron actions are at least once. Deduplicate external effects using occurrence IDs.
+- Process custody lasts for the supervisor lifetime. Host/worker recovery adopts retained processes; supervisor replacement does not.
+- Managed agent launches are headless. Declared executable bins retain caller terminal I/O. Workflow, interactive agent launch, a Kanban dashboard and cross-lake identity replication are not implemented.
+
+## Harnesses
+
+Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration, arbitrary overlays and per-run model/effort/argv/prompt overrides are not implemented.
+
+`agent catalog` inspects seats; `agent list` lists runs. A `reviewer` alias is not a review lens, and `tui` remains headless. Review lenses have their own seat selection and Git diff filters. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
+
+Provider tests use deterministic subprocess fixtures, not live model accounts. Configured model names do not establish installed CLI/model availability.
+
+## Measurements
+
+[Pool measurements](pool-benchmark.json) record one local run, not a performance guarantee. Reproduce with `bun scripts/benchmark.ts 24` using packed packages, disposable lakes and real SQLite load. RSS includes the Bun host and all workers, not the Go supervisor or load clients.

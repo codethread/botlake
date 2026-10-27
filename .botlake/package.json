@@ -1,0 +1,14 @@
+{
+  "name": "@botlake/dogfood",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@botlake/core": "workspace:*",
+    "@botlake/spool-batteries": "workspace:*",
+    "@botlake/spool-cron": "workspace:*",
+    "@botlake/spool-flags": "workspace:*",
+    "@botlake/spool-harnesses": "workspace:*",
+    "@botlake/spool-identity": "workspace:*",
+    "@botlake/spool-kanban": "workspace:*"
+  }
+}

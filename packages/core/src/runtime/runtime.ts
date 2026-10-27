@@ -11,11 +11,11 @@ import type { Context, Invocation, Op, Peers, Processes, Resource, Spool } from 
 import { Scheduler } from "./scheduler.ts";
 
 const unavailable: Processes = {
-  launch: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
-  get: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
-  listOwned: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
-  cancel: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
-  acknowledge: () => Promise.reject(new Fault("process", "Mill custody is unavailable")),
+  launch: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
+  get: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
+  listOwned: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
+  cancel: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
+  acknowledge: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
 };
 const metaOps = new Set(["help", "about", "prime", "primer"]);
 export class Runtime {

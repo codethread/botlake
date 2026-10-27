@@ -1,5 +1,5 @@
 {
-  "name": "@millstrand/spool-kanban",
+  "name": "@botlake/spool-kanban",
   "version": "0.1.0",
   "files": [
     "src",
@@ -17,7 +17,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@millstrand/core": "workspace:^",
-    "@millstrand/spool-identity": "workspace:^"
+    "@botlake/core": "workspace:^",
+    "@botlake/spool-identity": "workspace:^"
   }
 }

@@ -1,8 +1,8 @@
 {
-  "name": "millstrand-ts",
+  "name": "botlake",
   "private": true,
   "workspaces": [
-    ".millstrand",
+    ".botlake",
     "packages/*",
     "spools/*",
     "plugins/*"
@@ -17,18 +17,19 @@
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "lint-staged": "lint-staged",
     "prepare": "husky",
-    "build:cli": "mkdir -p out && cd cli && go build -o ../out/mill ./cmd/mill && go build -o ../out/strand ./cmd/strand",
+    "build:cli": "mkdir -p out && cd cli && go build -o ../out/botlake ./cmd/botlake && go build -o ../out/bl ./cmd/bl",
+    "install:local": "bun run build:cli && mkdir -p \"$HOME/.local/bin\" && install -m 755 out/botlake out/bl \"$HOME/.local/bin/\"",
     "test": "bun test tests/blackbox",
     "check:go": "cd cli && go vet ./..."
   },
   "devDependencies": {
-    "@millstrand/core": "workspace:*",
-    "@millstrand/spool-batteries": "workspace:*",
-    "@millstrand/spool-cron": "workspace:*",
-    "@millstrand/spool-flags": "workspace:*",
-    "@millstrand/spool-harnesses": "workspace:*",
-    "@millstrand/spool-identity": "workspace:*",
-    "@millstrand/spool-kanban": "workspace:*",
+    "@botlake/core": "workspace:*",
+    "@botlake/spool-batteries": "workspace:*",
+    "@botlake/spool-cron": "workspace:*",
+    "@botlake/spool-flags": "workspace:*",
+    "@botlake/spool-harnesses": "workspace:*",
+    "@botlake/spool-identity": "workspace:*",
+    "@botlake/spool-kanban": "workspace:*",
     "@types/bun": "^1.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",

@@ -23,7 +23,7 @@ type LaunchSpec struct {
 	Stdin *string
 }
 
-// OutputRefs identify Mill-retained process output files.
+// OutputRefs identify Botlake-retained process output files.
 type OutputRefs struct {
 	StdoutRef string `json:"stdout_ref"`
 	StderrRef string `json:"stderr_ref"`
@@ -42,15 +42,15 @@ const (
 	// StopGraceful means the whole tree was gone within the grace period after
 	// the terminate signal, with no escalation.
 	StopGraceful = "graceful"
-	// StopForced means Mill had to escalate to a kill signal, and the tree was
+	// StopForced means Botlake had to escalate to a kill signal, and the tree was
 	// confirmed gone afterwards.
 	StopForced = "forced"
-	// StopUncertain means Mill could establish neither fact: there was no live
+	// StopUncertain means Botlake could establish neither fact: there was no live
 	// leader to signal, signalling failed, or the group outlived the kill.
 	StopUncertain = "uncertain"
 )
 
-// CancellationResult records Mill-requested process cancellation. Stop retains
+// CancellationResult records Botlake-requested process cancellation. Stop retains
 // the escalation evidence that would otherwise be lost once the tree is gone,
 // and ObservedExit retains the leader's wait status seen under cancellation.
 type CancellationResult struct {
@@ -92,7 +92,7 @@ type custodyRecord struct {
 	reapClaimed bool
 }
 
-// Custody owns process trees for one Mill-selected workspace.
+// Custody owns process trees for one Botlake-selected workspace.
 type Custody struct {
 	mu           sync.Mutex
 	root         string
@@ -103,7 +103,7 @@ type Custody struct {
 	signalGroup  func(int, syscall.Signal) error
 }
 
-// NewCustody creates an in-memory Mill-lifetime custody store rooted at root.
+// NewCustody creates an in-memory Botlake-lifetime custody store rooted at root.
 func NewCustody(root string) (*Custody, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, errors.New("custody output root must not be blank")
@@ -372,7 +372,7 @@ func (c *Custody) finishWait(row *custodyRecord, err, observeErr error) {
 		stop := row.stop
 		if stop == "" {
 			// Cancellation was requested but no signalled tree cleanup resolved,
-			// so Mill never observed how the tree stopped.
+			// so Botlake never observed how the tree stopped.
 			stop = StopUncertain
 		}
 		row.Phase = "terminal"
@@ -537,7 +537,7 @@ func (c *Custody) Shutdown() error {
 				continue
 			}
 			if row.cancelled == "" {
-				row.cancelled = "Mill shutdown"
+				row.cancelled = "Botlake shutdown"
 			}
 			if row.cmd != nil && row.cmd.Process != nil {
 				start := row.treeDone == nil

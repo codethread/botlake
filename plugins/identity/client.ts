@@ -28,11 +28,11 @@ export async function nativeProject(cwd: string): Promise<string | null> {
   }
   if (basename(common) !== ".git") return null;
   const root = dirname(common);
-  return existsSync(join(root, ".millstrand/config.json")) ? realpathSync(root) : null;
+  return existsSync(join(root, ".botlake/config.json")) ? realpathSync(root) : null;
 }
-export async function strand(workspace: string, op: string, input: unknown): Promise<unknown> {
+export async function bl(workspace: string, op: string, input: unknown): Promise<unknown> {
   const { stdout } = await execute(
-    process.env["MILLSTRAND_STRAND_BIN"] ?? "strand",
+    process.env["BOTLAKE_BL_BIN"] ?? "bl",
     ["--workspace", workspace, "--input", JSON.stringify(input), op],
     { timeout: 8000, maxBuffer: 1024 * 1024 },
   );
@@ -48,12 +48,12 @@ export async function registerNative(input: {
   model?: string;
   thinkingLevel?: string;
 }): Promise<z.infer<typeof bindingSchema> | null> {
-  const reference = input.unmanaged === true ? undefined : process.env["MILLSTRAND_RUN_REFERENCE"];
+  const reference = input.unmanaged === true ? undefined : process.env["BOTLAKE_RUN_REFERENCE"];
   const workspace =
     input.workspace === undefined
       ? reference === undefined
         ? await nativeProject(input.cwd)
-        : realpathSync(z.string().min(1).parse(process.env["MILLSTRAND_WORKSPACE"]))
+        : realpathSync(z.string().min(1).parse(process.env["BOTLAKE_WORKSPACE"]))
       : realpathSync(input.workspace);
   if (workspace === null) return null;
   const parts = reference?.split(":");
@@ -61,7 +61,7 @@ export async function registerNative(input: {
     throw new Error("Malformed managed run reference");
   const { unmanaged: _, workspace: _workspace, ...request } = input;
   return bindingSchema.parse(
-    await strand(workspace, "agent", {
+    await bl(workspace, "agent", {
       command: "native",
       ...request,
       ...(parts === undefined ? {} : { runId: parts[0], invocation: parts[1] }),

@@ -2,16 +2,16 @@ import {
   encode,
   Fault,
   requireValue,
-  strandSchema,
+  nodeSchema,
   defineOp,
   q,
   type Attributes,
   type Json,
-  type Strand,
+  type Node,
   type Context,
   type Spool,
-} from "@millstrand/core";
-import { attribute, attribution } from "@millstrand/spool-identity";
+} from "@botlake/core";
+import { attribute, attribution } from "@botlake/spool-identity";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -64,7 +64,7 @@ export class Kanban {
   constructor(private readonly ctx: Context) {
     ctx.graph.protect((changes, token) => {
       for (const change of changes) {
-        if (change.kind === "strand") {
+        if (change.kind === "node") {
           const before = change.before;
           const after = change.after;
           if (before?.attributes["kanban/ownership-claim"] === true)
@@ -110,23 +110,23 @@ export class Kanban {
       }
     });
   }
-  private target(id: string): Strand {
+  private target(id: string): Node {
     const record = this.ctx.graph.show(id);
     if (record.attributes["kanban/card"] !== true && record.attributes["kanban/task"] !== true)
       throw new Fault("kanban", "Expected card or task");
     return record;
   }
-  private writable(id: string): Strand {
+  private writable(id: string): Node {
     const record = this.target(id);
     if (record.attributes["kanban/link"] !== undefined)
       throw new Fault("linked-card", "Change the authoritative downstream card");
     return record;
   }
-  private parent(id: string): Strand | undefined {
+  private parent(id: string): Node | undefined {
     const edge = this.ctx.graph.edges(id, "parent-of").find((entry) => entry.to_id === id);
     return edge === undefined ? undefined : this.ctx.graph.show(edge.from_id);
   }
-  history(id: string): Strand[] {
+  history(id: string): Node[] {
     return this.ctx.graph
       .edges(id, "claims")
       .filter((edge) => edge.to_id === id)
@@ -155,7 +155,7 @@ export class Kanban {
       worktree: claim.attributes["kanban/worktree"] ?? null,
     };
   }
-  add(raw: z.input<typeof addInput>): Strand {
+  add(raw: z.input<typeof addInput>): Node {
     const input = addInput.parse(raw);
     return this.ctx.graph.atomic(() => {
       if (input.epic !== undefined) {
@@ -186,7 +186,7 @@ export class Kanban {
       return card;
     }, this.authority);
   }
-  task(feature: string, title: string, dependencies: string[] = []): Strand {
+  task(feature: string, title: string, dependencies: string[] = []): Node {
     return this.ctx.graph.atomic(() => {
       const parent = this.writable(feature);
       if (parent.attributes["kanban/type"] !== "feature" || parent.state !== "active")
@@ -198,7 +198,7 @@ export class Kanban {
       return task;
     }, this.authority);
   }
-  claim(raw: z.infer<typeof claimInput>): { result: string; claim: Strand } {
+  claim(raw: z.infer<typeof claimInput>): { result: string; claim: Node } {
     const input = claimInput.parse(raw);
     return this.ctx.graph.atomic(() => {
       const target = this.writable(input.id);
@@ -248,7 +248,7 @@ export class Kanban {
       return { result: "claimed", claim };
     }, this.authority);
   }
-  finish(id: string, outcome = "done"): Strand {
+  finish(id: string, outcome = "done"): Node {
     return this.ctx.graph.atomic(() => {
       const card = this.writable(id);
       if (card.state !== "active") throw new Fault("finish", "Card is not active");
@@ -259,7 +259,7 @@ export class Kanban {
         throw new Fault("finish", "Epic must be pending or refinement");
       const descendants = this.ctx.graph
         .subgraph(id)
-        .strands.filter(
+        .nodes.filter(
           (row) =>
             row.id !== id &&
             row.state === "active" &&
@@ -287,7 +287,7 @@ export class Kanban {
       });
     }, this.authority);
   }
-  reopen(id: string): Strand {
+  reopen(id: string): Node {
     return this.ctx.graph.atomic(() => {
       const card = this.writable(id);
       if (card.state !== "closed") throw new Fault("reopen", "Card must be closed");
@@ -297,7 +297,7 @@ export class Kanban {
       )
         throw new Fault("reopen", "Completed epic cannot be reopened");
       if (card.attributes["kanban/outcome"] === "abandoned")
-        for (const child of this.ctx.graph.subgraph(id).strands)
+        for (const child of this.ctx.graph.subgraph(id).nodes)
           if (
             child.id !== id &&
             child.attributes["kanban/cascade-root"] === id &&
@@ -330,7 +330,7 @@ export class Kanban {
       });
     }, this.authority);
   }
-  note(id: string, body: string, attributes: Attributes = {}): Strand {
+  note(id: string, body: string, attributes: Attributes = {}): Node {
     return this.ctx.graph.atomic(() => {
       this.target(id);
       const note = this.ctx.graph.note(id, body, attributes);
@@ -339,7 +339,7 @@ export class Kanban {
       return note;
     });
   }
-  annotate(id: string, attributes: Attributes): Strand {
+  annotate(id: string, attributes: Attributes): Node {
     this.target(id);
     return this.ctx.graph.update(id, { attributes });
   }
@@ -377,7 +377,7 @@ export class Kanban {
       };
     }, this.authority);
   }
-  private snapshot(card: Pick<Strand, "title" | "state" | "attributes">, owner: Json): Attributes {
+  private snapshot(card: Pick<Node, "title" | "state" | "attributes">, owner: Json): Attributes {
     return {
       title: card.title,
       state: card.state,
@@ -393,10 +393,10 @@ export class Kanban {
       throw new Fault("link", "Link must name another workspace");
     return peer.path;
   }
-  async attach(workspace: string, id: string): Promise<Strand> {
+  async attach(workspace: string, id: string): Promise<Node> {
     return this.mirror(await this.linkWorkspace(workspace), id);
   }
-  async addLink(workspace: string, title: string): Promise<Strand> {
+  async addLink(workspace: string, title: string): Promise<Node> {
     workspace = await this.linkWorkspace(workspace);
     const { id } = z
       .object({ id: text })
@@ -411,7 +411,7 @@ export class Kanban {
       });
     }
   }
-  private async mirror(workspace: string, id: string): Promise<Strand> {
+  private async mirror(workspace: string, id: string): Promise<Node> {
     const source = z
       .object({
         card: z.object({
@@ -483,10 +483,10 @@ export class Kanban {
   async card(
     id: string,
     workspace?: string,
-  ): Promise<{ card: Strand; owner: Json; [key: string]: unknown }> {
+  ): Promise<{ card: Node; owner: Json; [key: string]: unknown }> {
     if (workspace !== undefined)
       return z
-        .object({ card: strandSchema, owner: z.json() })
+        .object({ card: nodeSchema, owner: z.json() })
         .loose()
         .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
     let card = this.target(id);
@@ -549,7 +549,7 @@ export class Kanban {
       ...(link === undefined ? {} : { link }),
     };
   }
-  private notes(id: string): Strand[] {
+  private notes(id: string): Node[] {
     return this.ctx.graph
       .edges(id, "notes")
       .filter((edge) => edge.to_id === id)
@@ -579,7 +579,7 @@ export class Kanban {
       epics: views.filter((view) => view.card.attributes["kanban/type"] === "epic"),
     };
   }
-  next(): Strand[] {
+  next(): Node[] {
     return this.ctx.graph
       .all({ ready: true, where: pendingFeaturePredicate })
       .toSorted((a, b) =>
@@ -670,10 +670,10 @@ export function kanban(): Spool {
           cli: {
             description: "Boards, ownership, tasks and linked cards",
             examples: [
-              "strand kanban board",
-              'strand kanban add "Investigate issue"',
-              "strand kanban claim ID --owner IDENTITY --branch topic",
-              "strand kanban card ID",
+              "bl kanban board",
+              'bl kanban add "Investigate issue"',
+              "bl kanban claim ID --owner IDENTITY --branch topic",
+              "bl kanban card ID",
             ],
             commands: {
               add: {

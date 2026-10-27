@@ -3,10 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, ManualClock, type GraphEvent } from "@millstrand/core";
+import { Runtime, ManualClock, type GraphEvent } from "@botlake/core";
 
 test("nested failures roll back graph writes, notifications and timer changes without losing committed wakes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mill-transactions-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-transactions-"));
   const clock = new ManualClock(0);
   const runtime = new Runtime({ database: join(dir, "world.db"), clock });
   const delivered: string[] = [];
@@ -24,7 +24,7 @@ test("nested failures roll back graph writes, notifications and timer changes wi
           });
           ctx.graph.protect((changes) => {
             if (
-              changes.some((change) => change.kind === "strand" && change.after?.title === "denied")
+              changes.some((change) => change.kind === "node" && change.after?.title === "denied")
             )
               throw new Error("commit denied");
           });
@@ -85,7 +85,7 @@ test("nested failures roll back graph writes, notifications and timer changes wi
 });
 
 test("supersession preserves existing dependencies and rejects repeated replacement, cycles and aliased batch identities", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mill-supersession-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-supersession-"));
   const runtime = new Runtime({ database: join(dir, "world.db") });
   const events: GraphEvent[] = [];
   try {
@@ -119,10 +119,10 @@ test("supersession preserves existing dependencies and rejects repeated replacem
     expect(() =>
       graph.batch({
         refs: { a: other.id, alias: other.id },
-        strands: [{ ref: "a", title: "overwritten" }],
+        nodes: [{ ref: "a", title: "overwritten" }],
         burn: ["alias"],
       }),
-    ).toThrow("Duplicate strand in refs");
+    ).toThrow("Duplicate node in refs");
     expect(graph.show(other.id).title).toBe("other");
     expect(graph.tombstones(other.id)).toEqual([]);
     await runtime.drain();

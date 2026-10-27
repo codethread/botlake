@@ -12,8 +12,8 @@ import {
   type GraphEvent,
   type Predicate,
   type Spool,
-} from "@millstrand/core";
-import { batteries } from "@millstrand/spool-batteries";
+} from "@botlake/core";
+import { batteries } from "@botlake/spool-batteries";
 import * as v from "valibot";
 import { z } from "zod";
 
@@ -23,7 +23,7 @@ async function disposable(
   run: (runtime: Runtime) => Promise<void>,
   spools: Spool[] = [batteries()],
 ): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "millstrand-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-"));
   const runtime = new Runtime({ database: join(dir, "world.db") });
   try {
     await runtime.start(spools);
@@ -57,7 +57,7 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     expect(() =>
       graph.batch({
         refs: { a: a.id, b: b.id },
-        strands: [{ ref: "new", title: "never" }],
+        nodes: [{ ref: "new", title: "never" }],
         edges: [{ op: "upsert", from: "b", to: "a", relation: "depends-on" }],
       }),
     ).toThrow("Cycle");
@@ -107,18 +107,18 @@ test("archival preserves immutable evidence and burn records each deletion exact
       expect(graph.show(note.id, true)).toEqual(note);
       expect(
         (await rejected(runtime.invoke("burn", { ids: [target.id, target.id] }))).message,
-      ).toContain("Duplicate strand");
+      ).toContain("Duplicate node");
       expect(
         (
           await rejected(
             runtime.invoke("batch", {
               refs: { a: target.id, alias: target.id },
-              strands: [{ ref: "new", title: "rolled back" }],
+              nodes: [{ ref: "new", title: "rolled back" }],
               burn: ["a", "alias"],
             }),
           )
         ).message,
-      ).toContain("Duplicate strand");
+      ).toContain("Duplicate node");
       expect(graph.list()).toHaveLength(2);
       expect(graph.tombstones(target.id)).toEqual([]);
       await runtime.drain();
@@ -133,7 +133,7 @@ test("archival preserves immutable evidence and burn records each deletion exact
       expect(graph.tombstones(target.id)).toHaveLength(1);
       expect(graph.tombstones(note.id)).toHaveLength(1);
       expect(events).toHaveLength(1);
-      expect(events[0]?.changes.filter((change) => change.kind === "strand")).toHaveLength(2);
+      expect(events[0]?.changes.filter((change) => change.kind === "node")).toHaveLength(2);
       expect(events[0]?.changes.filter((change) => change.kind === "edge")).toHaveLength(1);
     },
     [
@@ -222,7 +222,7 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
       const graph = runtime.graph;
       graph.declareAcyclic("custom");
       const created = graph.batch({
-        strands: ["root", "child", "blocker", "executor"].map((ref) => ({ ref, title: ref })),
+        nodes: ["root", "child", "blocker", "executor"].map((ref) => ({ ref, title: ref })),
         edges: [
           { op: "upsert", from: "root", to: "child", relation: "parent-of" },
           { op: "upsert", from: "child", to: "blocker", relation: "depends-on" },
@@ -240,7 +240,7 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
       expect(
         graph
           .subgraph(id("root"))
-          .strands.map((row) => row.title)
+          .nodes.map((row) => row.title)
           .toSorted(),
       ).toEqual(["child", "root"]);
       expect(() => graph.connect(id("child"), id("root"), "custom")).toThrow("Cycle");
@@ -273,7 +273,7 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
       expect(() =>
         graph.batch({
           refs: created.refs,
-          strands: [
+          nodes: [
             { ref: "child", title: "must roll back" },
             { ref: "root", title: "stale", expectedRevision: original.revision },
           ],
@@ -284,7 +284,7 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
       expect(() =>
         graph.batch({
           refs: created.refs,
-          strands: [{ ref: "new", title: "must roll back" }],
+          nodes: [{ ref: "new", title: "must roll back" }],
           edges: [{ op: "remove", from: "child", to: "root", relation: "parent-of" }],
         }),
       ).toThrow("Unknown edge");
@@ -377,7 +377,7 @@ test("async Zod and Valibot transformations, discovery, output validation and st
 });
 
 test("failed startup disposes resources and durable wake cancellation fences a running generation", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "millstrand-clock-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-clock-"));
   const clock = new ManualClock(1000);
   let stopped = false;
   const failed = new Runtime({ database: join(dir, "failed.db"), clock });
@@ -427,7 +427,7 @@ test("failed startup disposes resources and durable wake cancellation fences a r
 });
 
 test("a due wake cancelled or replaced by an earlier handler never receives stale authority", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mill-wake-fence-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-wake-fence-"));
   const clock = new ManualClock(0);
   const runtime = new Runtime({ database: join(dir, "world.db"), clock });
   const calls: string[] = [];
@@ -462,7 +462,7 @@ test("a due wake cancelled or replaced by an earlier handler never receives stal
 });
 
 test("events follow commit, rollback stays silent, and nested domain authority does not leak", async () => {
-  const { identity, reserveIdentity } = await import("@millstrand/spool-identity");
+  const { identity, reserveIdentity } = await import("@botlake/spool-identity");
   const committed: number[] = [];
   await disposable(
     async (runtime) => {
@@ -483,7 +483,7 @@ test("events follow commit, rollback stays silent, and nested domain authority d
       expect(() => {
         runtime.graph.atomic(() => {
           const reserved = reserveIdentity(runtime.context, { harness: "codex" });
-          runtime.graph.update(reserved.strandId, { title: "forged" });
+          runtime.graph.update(reserved.nodeId, { title: "forged" });
         });
       }).toThrow("Identity API");
       await runtime.drain();
@@ -496,8 +496,7 @@ test("events follow commit, rollback stays silent, and nested domain authority d
         activate(ctx) {
           ctx.subscribe((event) => {
             for (const change of event.changes)
-              if (change.kind === "strand" && change.after !== null)
-                ctx.graph.show(change.after.id);
+              if (change.kind === "node" && change.after !== null) ctx.graph.show(change.after.id);
             committed.push(event.changes.length);
           });
         },

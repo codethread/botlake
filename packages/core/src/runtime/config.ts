@@ -17,14 +17,14 @@ export async function loadWorkspace(
   path: string,
 ): Promise<{ config: WorkspaceConfig; spools: Spool[] }> {
   const config = workspaceSchema.parse(
-    await Bun.file(resolve(path, ".millstrand/config.json")).json(),
+    await Bun.file(resolve(path, ".botlake/config.json")).json(),
   );
   const spools: Spool[] = [];
   for (const specifier of config.spools) {
     const location =
       isAbsolute(specifier) || specifier.startsWith(".")
         ? resolve(path, specifier)
-        : Bun.resolveSync(specifier, resolve(path, ".millstrand"));
+        : Bun.resolveSync(specifier, resolve(path, ".botlake"));
     const module: unknown = await import(pathToFileURL(location).href);
     const parsed = z
       .object({

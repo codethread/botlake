@@ -219,7 +219,7 @@ export function provider(name: Provider["name"]): Provider {
             ...run.extraArgs,
           ],
           stdin: `${run.prompt}\n`,
-          env: { MILLSTRAND_HARNESS_CURSOR_SYS_PROMPT: run.systemPrompts.join("\n\n") },
+          env: { BOTLAKE_HARNESS_CURSOR_SYS_PROMPT: run.systemPrompts.join("\n\n") },
         };
       }
       const options = [...run.extraArgs];

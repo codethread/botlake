@@ -1,7 +1,7 @@
 import { cpus, platform, arch } from "node:os";
 import { join, resolve } from "node:path";
 
-import { requireValue } from "@millstrand/core";
+import { requireValue } from "@botlake/core";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
@@ -37,13 +37,13 @@ function distribution(samples: number[]): {
   return { median: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
 }
 try {
-  const baseline = statusSchema.parse(await host.mill(["host-status"])).memory.rss;
+  const baseline = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const startup: number[] = [];
   const workspaces: string[] = [];
-  const spool = `import {defineOp} from "@millstrand/core";import {z} from "zod";export default {name:"benchmark",activate(ctx){ctx.graph.db.run("CREATE TABLE IF NOT EXISTS benchmark(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT OR IGNORE INTO benchmark VALUES(1,0)");ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"load"},handler(){const start=performance.now();const update=ctx.graph.db.query("UPDATE benchmark SET value=value+1 WHERE id=1");ctx.graph.db.transaction(()=>{for(let index=0;index<100000;index++)update.run();}).immediate();return performance.now()-start;}}));ctx.register(defineOp({name:"lag",input:z.object({}),output:z.number(),cli:{description:"event loop delay"},async handler(){const start=performance.now();await new Promise(resolve=>setTimeout(resolve,0));return performance.now()-start;}}));}};`;
+  const spool = `import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"benchmark",activate(ctx){ctx.graph.db.run("CREATE TABLE IF NOT EXISTS benchmark(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT OR IGNORE INTO benchmark VALUES(1,0)");ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"load"},handler(){const start=performance.now();const update=ctx.graph.db.query("UPDATE benchmark SET value=value+1 WHERE id=1");ctx.graph.db.transaction(()=>{for(let index=0;index<100000;index++)update.run();}).immediate();return performance.now()-start;}}));ctx.register(defineOp({name:"lag",input:z.object({}),output:z.number(),cli:{description:"event loop delay"},async handler(){const start=performance.now();await new Promise(resolve=>setTimeout(resolve,0));return performance.now()-start;}}));}};`;
   for (let index = 0; index < count; index++) {
     const workspace = await host.workspace(`w${index}`, [
-      "@millstrand/spool-batteries",
+      "@botlake/spool-batteries",
       "./benchmark.ts",
     ]);
     await Bun.write(join(workspace, "benchmark.ts"), spool);
@@ -52,11 +52,11 @@ try {
   const began = performance.now();
   for (const workspace of workspaces) {
     const start = performance.now();
-    await host.mill(["weaver", "start", "--workspace", workspace]);
+    await host.botlake(["lake", "start", "--workspace", workspace]);
     startup.push(performance.now() - start);
   }
   const totalStartupMs = performance.now() - began;
-  const rss = statusSchema.parse(await host.mill(["host-status"])).memory.rss;
+  const rss = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const loadMs: number[] = [];
   async function loadDatabase(): Promise<void> {
     for (let index = 0; index < 20; index++)
@@ -75,7 +75,7 @@ try {
   }
   const restartStarted = performance.now();
   async function restartMember(): Promise<number> {
-    await host.mill(["weaver", "restart", "--workspace", "w2"]);
+    await host.botlake(["lake", "restart", "--workspace", "w2"]);
     return performance.now() - restartStarted;
   }
   const [, , restartMs] = await Promise.all([loadDatabase(), probeSiblings(), restartMember()]);
@@ -96,7 +96,7 @@ try {
     databaseLoadMs: distribution(loadMs),
     memberRestartMsUnderLoad: restartMs,
     measurement:
-      "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Mill routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers.",
+      "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Botlake routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers.",
   };
   await Bun.write(output, `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

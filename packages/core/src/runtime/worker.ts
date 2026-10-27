@@ -5,16 +5,16 @@ import { z } from "zod";
 
 import { encode, Fault, isFault, requireValue } from "../core/json.ts";
 import { loadWorkspace } from "./config.ts";
-import { millServices } from "./custody.ts";
+import { botlakeServices } from "./custody.ts";
 import { workerMessageSchema } from "./protocol.ts";
 import { Runtime, isStream } from "./runtime.ts";
 
-const data = z.object({ workspace: z.string(), millSocket: z.string() }).parse(workerData);
+const data = z.object({ workspace: z.string(), botlakeSocket: z.string() }).parse(workerData);
 const port = requireValue(parentPort, "Workspace entry must run in a Worker");
 const runtime = new Runtime({
-  database: resolve(data.workspace, ".millstrand/world.db"),
+  database: resolve(data.workspace, ".botlake/world.db"),
   workspace: data.workspace,
-  ...millServices(data.millSocket, data.workspace),
+  ...botlakeServices(data.botlakeSocket, data.workspace),
 });
 const controllers = new Map<string, AbortController>();
 function errorFrame(error: unknown): unknown {

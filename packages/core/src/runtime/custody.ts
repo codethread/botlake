@@ -35,7 +35,7 @@ function flush(client: Bun.Socket<ControlData>): void {
   const written = client.write(client.data.output.subarray(client.data.offset));
   if (written > 0) client.data.offset += written;
 }
-export function millServices(
+export function botlakeServices(
   socket: string,
   workspace: string,
 ): { processes: Processes; peers: Peers } {
@@ -64,7 +64,10 @@ export function millServices(
               .parse(JSON.parse(client.data.buffer.slice(0, end)));
             if ("stream" in frame) throw new Fault("peer", "Streaming peer calls are unsupported");
             if (frame.ok) client.data.resolve(frame.result);
-            else client.data.reject(new Fault("mill", "Mill request failed", frame.error ?? null));
+            else
+              client.data.reject(
+                new Fault("botlake", "Botlake request failed", frame.error ?? null),
+              );
           } catch (error) {
             client.data.reject(error instanceof Error ? error : new Error(String(error)));
           }
@@ -75,7 +78,7 @@ export function millServices(
           client.data.reject(error);
         },
         close(client) {
-          client.data.reject(new Fault("transport", "Mill connection closed before response"));
+          client.data.reject(new Fault("transport", "Botlake connection closed before response"));
         },
       },
       data: {
@@ -133,7 +136,7 @@ export function millServices(
       async resolve(target) {
         return z
           .object({ path: z.string(), name: z.string() })
-          .parse(await control("weaver-resolve", {}, target));
+          .parse(await control("lake-resolve", {}, target));
       },
       async call(target, name, input) {
         return control("invoke", { name, input }, target);

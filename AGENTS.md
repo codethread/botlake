@@ -6,7 +6,7 @@
 
 ## Package seam
 
-- Core runs weavers; spools own domains, configuration and assets. Core stays spool-independent.
+- Core runs lakes; spools own domains, configuration and assets. Core stays spool-independent.
 - Cross-package imports use declared dependencies and public exports; relative imports stay within a package. Preserve Oxlint's `no-restricted-imports` boundary.
 - Spool imports stay inert. Consumers explicitly select spools and prerequisites; installation never activates them.
 

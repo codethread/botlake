@@ -8,7 +8,7 @@ import {
   type Command,
   type Context,
   type Spool,
-} from "@millstrand/core";
+} from "@botlake/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 
@@ -28,81 +28,81 @@ const queryInput = z.strictObject({
 });
 const guidance = {
   add: {
-    description: "Create a strand with a title and attributes",
-    primer: "Create a strand, then use its returned id for notes, edges and updates.",
-    examples: ['strand add "Investigate issue" --attributes \'{"priority":"p2"}\''],
+    description: "Create a node with a title and attributes",
+    primer: "Create a node, then use its returned id for notes, edges and updates.",
+    examples: ['bl add "Investigate issue" --attributes \'{"priority":"p2"}\''],
   },
   show: {
-    description: "Read a strand and its attributes",
+    description: "Read a node and its attributes",
     primer:
       "Point reads include archived attributes. Use --lean to see only hot attributes; retain the revision for guarded updates.",
-    examples: ["strand show ID"],
+    examples: ["bl show ID"],
   },
   update: {
-    description: "Patch a strand with optional revision checking",
+    description: "Patch a node with optional revision checking",
     primer:
       "Omitted attributes stay unchanged; null deletes a key. Read the current revision and pass --expected-revision when a stale write must fail.",
-    examples: ['strand update ID --expected-revision 2 --attributes \'{"priority":"p1"}\''],
+    examples: ['bl update ID --expected-revision 2 --attributes \'{"priority":"p1"}\''],
   },
   list: {
-    description: "Select strands, optionally with a named query",
+    description: "Select nodes, optionally with a named query",
     primer:
-      "Use --query NAME and --params JSON for named queries. For ad hoc predicates and composition use mill weaver eval with q and api.call('list', {where, params, limit}). The default limit is 100; a full page does not prove completeness. Archived values do not participate in hot selection.",
-    examples: ["strand list --limit 20"],
+      "Use --query NAME and --params JSON for named queries. For ad hoc predicates and composition use botlake lake eval with q and api.call('list', {where, params, limit}). The default limit is 100; a full page does not prove completeness. Archived values do not participate in hot selection.",
+    examples: ["bl list --limit 20"],
   },
   ready: {
-    description: "Select active strands whose dependencies are satisfied",
+    description: "Select active nodes whose dependencies are satisfied",
     primer:
-      "An active strand is ready when no outgoing depends-on target remains active. Use --query NAME and --params JSON, or mill weaver eval with api.call('ready', {where, params, limit}) for ad hoc predicates. The default limit is 100; a full page does not prove completeness.",
-    examples: ["strand ready --limit 20"],
+      "An active node is ready when no outgoing depends-on target remains active. Use --query NAME and --params JSON, or botlake lake eval with api.call('ready', {where, params, limit}) for ad hoc predicates. The default limit is 100; a full page does not prove completeness.",
+    examples: ["bl ready --limit 20"],
   },
   query: {
     description: "Inspect registered query definitions",
     primer:
       "List query names, inspect a definition and its parameters, then use it with list or ready.",
-    examples: ["strand query", "strand query NAME"],
+    examples: ["bl query", "bl query NAME"],
   },
   batch: {
-    description: "Apply strand and edge mutations atomically",
+    description: "Apply node and edge mutations atomically",
     primer:
-      "Bind durable ids in refs; name new strands with local refs. Supply ordered edge operations and optional expectedRevision values. Any failure rolls back the entire batch.",
-    examples: ["strand --input @batch.json batch"],
+      "Bind durable ids in refs; name new nodes with local refs. Supply ordered edge operations and optional expectedRevision values. Any failure rolls back the entire batch.",
+    examples: ["bl --input @batch.json batch"],
   },
   supersede: {
-    description: "Replace a strand and retarget its dependents",
+    description: "Replace a node and retarget its dependents",
     primer:
       "Create the replacement first. Supersession marks the original replaced, preserves dependency attributes and rejects cycles or an already-replaced original.",
-    examples: ["strand supersede OLD_ID NEW_ID"],
+    examples: ["bl supersede OLD_ID NEW_ID"],
   },
   burn: {
-    description: "Delete strands and incident edges, retaining tombstones",
+    description: "Delete nodes and incident edges, retaining tombstones",
     primer:
       "Burn removes live records and records their snapshots. Domain guards can reject deletion of protected evidence.",
-    examples: ["strand burn ID"],
+    examples: ["bl burn ID"],
   },
   note: {
-    description: "Attach an immutable note to a strand",
+    description: "Attach an immutable note to a node",
     primer:
-      "Notes are closed strands connected by notes edges. Their text and timestamp are immutable. Use --stdin and :stdin for multiline text.",
-    examples: ["printf 'Investigation notes' | strand --stdin note ID :stdin"],
+      "Notes are closed nodes connected by notes edges. Their text and timestamp are immutable. Use --stdin and :stdin for multiline text.",
+    examples: ["printf 'Investigation notes' | bl --stdin note ID :stdin"],
   },
   archive: {
     description: "Hide attributes from hot selection without deleting them",
     primer:
       "Archived keys remain visible on full point reads. Immutable note keys cannot be archived.",
-    examples: ["strand archive ID KEY"],
+    examples: ["bl archive ID KEY"],
   },
   subgraph: {
-    description: "Read a strand and descendants along a named relation",
+    description: "Read a node and descendants along a named relation",
     primer:
-      "Traversal follows outgoing edges, using parent-of by default. The result includes all edges between selected strands.",
-    examples: ["strand subgraph ID --relation parent-of"],
+      "Traversal follows outgoing edges, using parent-of by default. The result includes all edges between selected nodes.",
+    examples: ["bl subgraph ID --relation parent-of"],
   },
   edge: {
     description: "Add, remove or inspect named graph edges",
     primer:
       "Edges point from a source to a target. depends-on points from dependent to prerequisite; parent-of points from parent to child. Declared acyclic relations reject cycles; serves allows one target per source.",
-    examples: ["strand edge add TASK_ID PREREQUISITE_ID depends-on", "strand edge list ID"],
+    examples: ["bl edge add TASK_ID PREREQUISITE_ID depends-on", "bl edge list ID"],
   },
 };
 export function batteries(queries: Record<string, NamedQuery> = {}): Spool {
@@ -155,7 +155,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Spool {
       register(
         "update",
         z.strictObject({ id, ...patch }),
-        ({ id: strand, ...input }) => ctx.graph.update(strand, input),
+        ({ id: node, ...input }) => ctx.graph.update(node, input),
         [{ name: "id", type: "string", required: true }],
         {
           title: { type: "string" },
@@ -207,7 +207,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Spool {
       );
       register("batch", batchSchema, (input) => ctx.graph.batch(input), [], {
         refs: { type: "json" },
-        strands: { type: "json" },
+        nodes: { type: "json" },
         edges: { type: "json" },
         burn: { type: "json" },
       });

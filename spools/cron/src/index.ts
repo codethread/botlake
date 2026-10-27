@@ -1,4 +1,4 @@
-import { encode, Fault, defineOp, type Json, type Context, type Spool } from "@millstrand/core";
+import { encode, Fault, defineOp, type Json, type Context, type Spool } from "@botlake/core";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 
@@ -278,7 +278,7 @@ export function cron(options: { jobs: Job[]; actions: Record<string, Action> }):
           output: z.json(),
           cli: {
             description: "Durable schedules and occurrence history",
-            examples: ["strand cron status", "strand cron history --job JOB_ID"],
+            examples: ["bl cron status", "bl cron history --job JOB_ID"],
             commands: {
               status: { description: "Schedules" },
               history: { description: "Occurrences", flags: { job: { type: "string" } } },

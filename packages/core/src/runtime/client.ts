@@ -13,7 +13,7 @@ const frameSchema = z.union([
   z.object({ stream: z.literal(true) }),
 ]);
 
-export function millCall(
+export function botlakeCall(
   socket: string,
   request: { operation: string; workspace: string; cwd: string; payload: Json },
   signal: AbortSignal,
@@ -36,7 +36,7 @@ export function millCall(
     connection.on("data", (chunk: string) => {
       buffer += chunk;
       if (Buffer.byteLength(buffer) > 16 * 1024 * 1024) {
-        reject(new Fault("transport", "Mill response exceeds 16 MiB"));
+        reject(new Fault("transport", "Botlake response exceeds 16 MiB"));
         connection.destroy();
         return;
       }
@@ -58,7 +58,7 @@ export function millCall(
     connection.on("close", () => {
       signal.removeEventListener("abort", abort);
       reject(
-        new Fault("transport", "Mill connection closed before response; request not replayed"),
+        new Fault("transport", "Botlake connection closed before response; request not replayed"),
       );
     });
   });

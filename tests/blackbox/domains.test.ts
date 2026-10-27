@@ -3,22 +3,22 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, ManualClock, type Context, type Spool } from "@millstrand/core";
-import { batteries } from "@millstrand/spool-batteries";
-import { Cron, defineJob, nextFire } from "@millstrand/spool-cron";
-import { identity } from "@millstrand/spool-identity";
-import { kanban } from "@millstrand/spool-kanban";
+import { Runtime, ManualClock, type Context, type Spool } from "@botlake/core";
+import { batteries } from "@botlake/spool-batteries";
+import { Cron, defineJob, nextFire } from "@botlake/spool-cron";
+import { identity } from "@botlake/spool-identity";
+import { kanban } from "@botlake/spool-kanban";
 import { z } from "zod";
 
 import { rejected } from "./assert.ts";
 
-const strand = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+const node = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
 async function world(
   spools: Spool[],
   clock: ManualClock,
   run: (runtime: Runtime, path: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "mill-domains-"));
+  const dir = await mkdtemp(join(tmpdir(), "botlake-domains-"));
   const path = join(dir, "world.db");
   const runtime = new Runtime({ database: path, clock });
   try {
@@ -32,19 +32,17 @@ async function world(
 test("Kanban preserves ownership evidence and fences generic writes, batch burns, links and stale references", async () => {
   await world([batteries(), identity(), kanban()], new ManualClock(1000), async (runtime) => {
     const invoke = (input: unknown): Promise<unknown> => runtime.invoke("kanban", input);
-    const epic = strand.parse(await invoke({ command: "add", title: "Epic", type: "epic" }));
-    const feature = strand.parse(await invoke({ command: "add", title: "Feature", epic: epic.id }));
+    const epic = node.parse(await invoke({ command: "add", title: "Epic", type: "epic" }));
+    const feature = node.parse(await invoke({ command: "add", title: "Feature", epic: epic.id }));
     expect(
       z
-        .array(strand)
+        .array(node)
         .parse(await runtime.invoke("ready", { query: "kanban-pending" }))
         .map((row) => row.id),
     ).toEqual([feature.id]);
-    const task = strand.parse(
-      await invoke({ command: "task", feature: feature.id, title: "Task" }),
-    );
+    const task = node.parse(await invoke({ command: "task", feature: feature.id, title: "Task" }));
     const claim = z
-      .object({ result: z.string(), claim: strand })
+      .object({ result: z.string(), claim: node })
       .parse(
         await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
       );
@@ -69,7 +67,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     await invoke({ command: "claim", id: feature.id, owner: "second", branch: "next" });
     await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" });
     const history = z
-      .object({ history: z.array(strand) })
+      .object({ history: z.array(node) })
       .parse(await invoke({ command: "card", id: feature.id })).history;
     expect(history.map((entry) => entry.attributes["kanban/owner"])).toEqual([
       "unresolved",
@@ -136,7 +134,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
       }),
     ).toEqual({
       ...z
-        .object({ identity: z.string(), strandId: z.string(), instruction: z.string() })
+        .object({ identity: z.string(), nodeId: z.string(), instruction: z.string() })
         .parse(native),
       result: "recovered",
     });
