@@ -9,19 +9,7 @@ const flagUpdateSchema = flagSchema.partial({ description: true });
 
 const storedFlagSchema = flagSchema.readonly();
 
-export type Flag = z.infer<typeof storedFlagSchema>;
-
-export type FlagState = {
-  current: Flag | null;
-  default: Flag | null;
-  overridden: boolean;
-};
-
 export const flagsConfigSchema = z.record(nameSchema, storedFlagSchema);
-
-export function flagsConfigJsonSchema(): unknown {
-  return z.toJSONSchema(flagsConfigSchema);
-}
 
 const overrideSchema = z.object({
   name: nameSchema,
@@ -33,19 +21,20 @@ const overrideSchema = z.object({
 
 const defaultsByContext = new WeakMap<Context, Map<string, Flag>>();
 
-function defaultsFor(ctx: Context): Map<string, Flag> {
-  return requireValue(
-    defaultsByContext.get(ctx),
-    "Flags requires the explicitly selected flags extension",
-  );
-}
+export type Flag = z.infer<typeof storedFlagSchema>;
 
-function flagState(initial: Flag | undefined, override?: Flag | null): FlagState {
-  return {
-    current: (override === undefined ? initial : override) ?? null,
-    default: initial ?? null,
-    overridden: override !== undefined,
-  };
+// Keep this closed payload assignable to the operation's JSON output.
+export type FlagState = {
+  /** Effective flag, or null when absent or explicitly unset. */
+  current: Flag | null;
+  /** Configured flag, or null when no default exists. */
+  default: Flag | null;
+  /** Whether the database stores an override, including an explicit unset. */
+  overridden: boolean;
+};
+
+export function flagsConfigJsonSchema(): unknown {
+  return z.toJSONSchema(flagsConfigSchema);
 }
 
 export function inspectFlag(ctx: Context, name: string): FlagState {
@@ -275,3 +264,20 @@ export function flags(defaults: Record<string, Flag> = {}): Extension {
 }
 
 export default flags();
+
+// -- Private helpers --
+
+function defaultsFor(ctx: Context): Map<string, Flag> {
+  return requireValue(
+    defaultsByContext.get(ctx),
+    "Flags requires the explicitly selected flags extension",
+  );
+}
+
+function flagState(initial: Flag | undefined, override?: Flag | null): FlagState {
+  return {
+    current: (override === undefined ? initial : override) ?? null,
+    default: initial ?? null,
+    overridden: override !== undefined,
+  };
+}

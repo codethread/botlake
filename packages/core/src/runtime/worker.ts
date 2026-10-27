@@ -28,18 +28,6 @@ const runtime = new Runtime({
 
 const controllers = new Map<string, AbortController>();
 
-function errorFrame(error: unknown): unknown {
-  return {
-    type: "error",
-    code: isFault(error) ? error.code : "runtime",
-    message: error instanceof Error ? error.message : String(error),
-    details: isFault(error)
-      ? error.details
-      : error instanceof AggregateError
-        ? error.errors.map(errorFrame)
-        : null,
-  };
-}
 port.on("message", (raw: unknown) => {
   if (raw === "stop") {
     for (const controller of controllers.values())
@@ -132,4 +120,19 @@ try {
   port.postMessage({ fatal: errorFrame(error) });
   await runtime.stop();
   port.close();
+}
+
+// -- Private helpers --
+
+function errorFrame(error: unknown): unknown {
+  return {
+    type: "error",
+    code: isFault(error) ? error.code : "runtime",
+    message: error instanceof Error ? error.message : String(error),
+    details: isFault(error)
+      ? error.details
+      : error instanceof AggregateError
+        ? error.errors.map(errorFrame)
+        : null,
+  };
 }

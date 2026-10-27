@@ -130,19 +130,6 @@ export class Scheduler {
     this.arm();
   }
 
-  private arm(): void {
-    this.cancelTimer?.();
-    if (!this.active) return;
-
-    const first = this.pending().find(
-      (wake) => !this.inFlight.has(`${wake.key}/${wake.generation}`),
-    );
-    if (first !== undefined)
-      this.cancelTimer = this.clock.arm(first.at, () => {
-        this.tick();
-      });
-  }
-
   tick(): void {
     if (!this.active) return;
 
@@ -171,6 +158,31 @@ export class Scheduler {
       this.running.add(task);
     }
     this.arm();
+  }
+
+  async drain(): Promise<void> {
+    await Promise.all(this.running);
+  }
+
+  async stop(): Promise<void> {
+    this.active = false;
+    this.cancelTimer?.();
+    await this.drain();
+  }
+
+  // -- Private helpers --
+
+  private arm(): void {
+    this.cancelTimer?.();
+    if (!this.active) return;
+
+    const first = this.pending().find(
+      (wake) => !this.inFlight.has(`${wake.key}/${wake.generation}`),
+    );
+    if (first !== undefined)
+      this.cancelTimer = this.clock.arm(first.at, () => {
+        this.tick();
+      });
   }
 
   private async deliver(wake: Wake): Promise<void> {
@@ -203,15 +215,5 @@ export class Scheduler {
         .run(wake.key, wake.generation, this.clock.now(), String(error));
       this.failure(error);
     }
-  }
-
-  async drain(): Promise<void> {
-    await Promise.all(this.running);
-  }
-
-  async stop(): Promise<void> {
-    this.active = false;
-    this.cancelTimer?.();
-    await this.drain();
   }
 }

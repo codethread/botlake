@@ -23,6 +23,10 @@ const unavailable: Processes = {
 
 const metaOps = new Set(["help", "about", "prime", "primer"]);
 
+export function isStream(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
 export class Runtime {
   readonly graph: Graph;
   readonly scheduler: Scheduler;
@@ -110,10 +114,6 @@ export class Runtime {
     };
 
     this.context.register(bins.operation());
-  }
-
-  private collecting(): void {
-    if (this.phase !== "registering") throw new Fault("lifecycle", "Registrations are closed");
   }
 
   async start(extensions: Extension[]): Promise<void> {
@@ -339,18 +339,6 @@ export class Runtime {
     }
   }
 
-  private publish(event: GraphEvent): void {
-    this.eventQueue = this.eventQueue.then(async () => {
-      for (const subscriber of this.subscribers) {
-        try {
-          await subscriber(event);
-        } catch (error) {
-          this.errors.push(error);
-        }
-      }
-    });
-  }
-
   async drain(): Promise<void> {
     await this.scheduler.drain();
     await this.eventQueue;
@@ -375,14 +363,30 @@ export class Runtime {
     this.phase = "stopped";
     if (errors.length > 0) throw new AggregateError(errors, "Resource shutdown failed");
   }
+
+  // -- Private helpers --
+
+  private collecting(): void {
+    if (this.phase !== "registering") throw new Fault("lifecycle", "Registrations are closed");
+  }
+
+  private publish(event: GraphEvent): void {
+    this.eventQueue = this.eventQueue.then(async () => {
+      for (const subscriber of this.subscribers) {
+        try {
+          await subscriber(event);
+        } catch (error) {
+          this.errors.push(error);
+        }
+      }
+    });
+  }
 }
+
+// -- Private helpers --
 
 function zStringArray(input: unknown): string[] {
   const parsed = z.array(z.string()).safeParse(input);
   if (!parsed.success) throw new Fault("argv", "Expected string argv");
   return parsed.data;
-}
-
-export function isStream(value: unknown): value is AsyncIterable<unknown> {
-  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
 }

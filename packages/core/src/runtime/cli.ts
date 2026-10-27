@@ -2,25 +2,6 @@ import { z } from "zod";
 
 import { Fault, type Json } from "../core/json.ts";
 
-export interface Argument {
-  name: string;
-  key?: string;
-  type: "string" | "number" | "boolean" | "json";
-  required?: boolean;
-  multiple?: boolean;
-  description?: string;
-}
-
-export interface Command {
-  description: string;
-  examples?: string[];
-  selector?: string;
-  value?: string;
-  flags?: Record<string, Omit<Argument, "name">>;
-  positionals?: Argument[];
-  commands?: Record<string, Command>;
-}
-
 const argumentShape = {
   key: z.string().min(1).exactOptional(),
   type: z.enum(["string", "number", "boolean", "json"]),
@@ -42,6 +23,25 @@ const commandSchema: z.ZodType<Command> = z.lazy(() =>
     commands: z.record(z.string().min(1), commandSchema).exactOptional(),
   }),
 );
+
+export interface Argument {
+  name: string;
+  key?: string;
+  type: "string" | "number" | "boolean" | "json";
+  required?: boolean;
+  multiple?: boolean;
+  description?: string;
+}
+
+export interface Command {
+  description: string;
+  examples?: string[];
+  selector?: string;
+  value?: string;
+  flags?: Record<string, Omit<Argument, "name">>;
+  positionals?: Argument[];
+  commands?: Record<string, Command>;
+}
 
 export function validateCommand(input: Command): Command {
   const command = commandSchema.parse(input);
@@ -74,22 +74,6 @@ export function validateCommand(input: Command): Command {
 
   visit(command, []);
   return command;
-}
-
-function parseValue(text: string, type: Argument["type"]): Json {
-  switch (type) {
-    case "string":
-      return text;
-    case "number":
-      if (text.trim().length === 0) throw new Fault("argv", "Expected a number");
-      return z.number().parse(Number(text));
-    case "boolean":
-      if (text !== "true" && text !== "false")
-        throw new Fault("argv", `Expected boolean, received ${text}`);
-      return text === "true";
-    case "json":
-      return z.json().parse(JSON.parse(text));
-  }
 }
 
 export async function parseArgs(
@@ -198,4 +182,22 @@ export async function parseArgs(
     if (!used.has(slot)) throw new Fault("payload", `Unused payload: ${slot}`);
 
   return result;
+}
+
+// -- Private helpers --
+
+function parseValue(text: string, type: Argument["type"]): Json {
+  switch (type) {
+    case "string":
+      return text;
+    case "number":
+      if (text.trim().length === 0) throw new Fault("argv", "Expected a number");
+      return z.number().parse(Number(text));
+    case "boolean":
+      if (text !== "true" && text !== "false")
+        throw new Fault("argv", `Expected boolean, received ${text}`);
+      return text === "true";
+    case "json":
+      return z.json().parse(JSON.parse(text));
+  }
 }

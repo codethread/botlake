@@ -25,21 +25,6 @@ const binSchema = z.strictObject({
 
 export type Bin = z.input<typeof binSchema>;
 
-async function runnable(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.X_OK);
-    return (await stat(path)).isFile();
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      ["ENOENT", "EACCES", "ENOTDIR"].includes(String(error.code))
-    )
-      return false;
-    throw error;
-  }
-}
-
 export class Bins {
   private readonly entries = new Map<string, z.output<typeof binSchema>>();
 
@@ -84,5 +69,22 @@ export class Bins {
         };
       },
     });
+  }
+}
+
+// -- Private helpers --
+
+async function runnable(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.X_OK);
+    return (await stat(path)).isFile();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      ["ENOENT", "EACCES", "ENOTDIR"].includes(String(error.code))
+    )
+      return false;
+    throw error;
   }
 }

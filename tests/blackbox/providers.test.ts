@@ -23,7 +23,7 @@ test("native providers preserve complete evidence on interrupted output and requ
 import {spawnSync} from "node:child_process";
 const args=Bun.argv.slice(2), name=process.env.FIXTURE_PROVIDER;
 const scenario=(await Bun.stdin.text()).trim();
-const option=key=>args[args.indexOf(key)+1];
+function option(key){return args[args.indexOf(key)+1];}
 if(option("--model")!=="fixture" || !args.includes(name==="codex"?"--json": "--print")) throw new Error("Wrong prepared command: "+JSON.stringify(args));
 if(name==="codex" && (!args.includes('model_reasoning_effort="medium"') || !args.includes('developer_instructions="policy"'))) throw new Error("Missing Codex settings");
 if(name!=="codex" && (option(name==="pi"?"--thinking":"--effort")!=="medium" || option("--append-system-prompt")!=="policy")) throw new Error("Missing native settings");
@@ -33,7 +33,7 @@ const session=resumed?(name==="codex"?args.at(-2):option(name==="pi"?"--session"
 const [runId,invocation]=process.env.BL_RUN_REFERENCE.split(":");
 const binding=spawnSync(process.env.BL_BIN,["--workspace",process.env.BL_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId,invocation}),"agent"],{encoding:"utf8"});
 if(binding.status!==0)throw new Error(binding.stderr);
-const emit=event=>console.log(JSON.stringify(event));
+function emit(event){console.log(JSON.stringify(event));}
 if(name==="claude") {
   if(scenario==="truncated")process.stdout.write('{"session_id":');
   else emit({session_id:scenario==="no-session"?undefined:session,result:"answer",is_error:scenario==="failed"});

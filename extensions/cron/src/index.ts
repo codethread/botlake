@@ -31,13 +31,36 @@ const jobSchema = z.strictObject({
     .default({ attempts: 0, delayMs: 1000 }),
 });
 
+const persistedJob = z.object({
+  id: z.string(),
+  spec: z.string(),
+  next_at: z.number(),
+  enabled: z.number(),
+});
+
+const occurrenceSchema = z.object({
+  id: z.string(),
+  job: z.string(),
+  scheduled_at: z.number(),
+  status: z.enum(["pending", "running", "succeeded", "failed", "skipped"]),
+  attempt: z.number(),
+  retry_at: z.number().nullable(),
+  result: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
 export type Job = z.infer<typeof jobSchema>;
 
 export interface Occurrence {
+  /** Stable identifier for deduplicating external effects. */
   id: string;
+  /** Job definition that produced this occurrence. */
   job: string;
+  /** Scheduled Unix timestamp in milliseconds. */
   scheduledAt: number;
+  /** One-based execution attempt. */
   attempt: number;
+  /** Payload from the job definition. */
   payload: Json;
 }
 
@@ -63,24 +86,6 @@ export function defineJob(input: z.input<typeof jobSchema>): Job {
 
   return job;
 }
-
-const persistedJob = z.object({
-  id: z.string(),
-  spec: z.string(),
-  next_at: z.number(),
-  enabled: z.number(),
-});
-
-const occurrenceSchema = z.object({
-  id: z.string(),
-  job: z.string(),
-  scheduled_at: z.number(),
-  status: z.enum(["pending", "running", "succeeded", "failed", "skipped"]),
-  attempt: z.number(),
-  retry_at: z.number().nullable(),
-  result: z.string().nullable(),
-  error: z.string().nullable(),
-});
 
 export class Cron {
   private readonly jobs = new Map<string, Job>();
@@ -205,6 +210,38 @@ export class Cron {
     });
     this.dispatch();
   }
+
+  status(): unknown[] {
+    return this.ctx.graph.db
+      .query(sql`
+        SELECT *
+        FROM cron_jobs
+        ORDER BY id
+      `)
+      .all();
+  }
+
+  history(job?: string): unknown[] {
+    return this.ctx.graph.db
+      .query(sql`
+        SELECT *
+        FROM cron_occurrences
+        WHERE (? IS NULL OR job = ?)
+        ORDER BY scheduled_at, id
+      `)
+      .all(job ?? null, job ?? null);
+  }
+
+  async drain(): Promise<void> {
+    while (this.active.size > 0) await Promise.all(this.active.values());
+  }
+
+  async stop(): Promise<void> {
+    this.stopping = true;
+    await this.drain();
+  }
+
+  // -- Private helpers --
 
   private fire(id: string): void {
     const job = this.jobs.get(id);
@@ -364,36 +401,6 @@ export class Cron {
           occurrence.id,
         );
     }
-  }
-
-  status(): unknown[] {
-    return this.ctx.graph.db
-      .query(sql`
-        SELECT *
-        FROM cron_jobs
-        ORDER BY id
-      `)
-      .all();
-  }
-
-  history(job?: string): unknown[] {
-    return this.ctx.graph.db
-      .query(sql`
-        SELECT *
-        FROM cron_occurrences
-        WHERE (? IS NULL OR job = ?)
-        ORDER BY scheduled_at, id
-      `)
-      .all(job ?? null, job ?? null);
-  }
-
-  async drain(): Promise<void> {
-    while (this.active.size > 0) await Promise.all(this.active.values());
-  }
-
-  async stop(): Promise<void> {
-    this.stopping = true;
-    await this.drain();
   }
 }
 

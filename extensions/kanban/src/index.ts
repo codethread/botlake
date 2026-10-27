@@ -15,12 +15,6 @@ import { attribute, attribution, callerActor } from "@botlake/extension-identity
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-function compare(left: string, right: string, fallback: number): number {
-  const order = left.localeCompare(right);
-
-  return order === 0 ? fallback : order;
-}
-
 const text = z.string().trim().min(1);
 
 const lane = z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]);
@@ -120,26 +114,6 @@ export class Kanban {
         }
       }
     });
-  }
-
-  private target(id: string): Node {
-    const record = this.ctx.graph.show(id);
-    if (record.attributes["kanban/card"] !== true && record.attributes["kanban/task"] !== true)
-      throw new Fault("kanban", "Expected card or task");
-    return record;
-  }
-
-  private writable(id: string): Node {
-    const record = this.target(id);
-    if (record.attributes["kanban/link"] !== undefined)
-      throw new Fault("linked-card", "Change the authoritative downstream card");
-    return record;
-  }
-
-  private parent(id: string): Node | undefined {
-    const edge = this.ctx.graph.edges(id, "parent-of").find((entry) => entry.to_id === id);
-
-    return edge === undefined ? undefined : this.ctx.graph.show(edge.from_id);
   }
 
   history(id: string): Node[] {
@@ -434,24 +408,6 @@ export class Kanban {
     }, this.authority);
   }
 
-  private snapshot(card: Pick<Node, "title" | "state" | "attributes">, owner: Json): Attributes {
-    return {
-      title: card.title,
-      state: card.state,
-      lane: card.attributes["kanban/lane"] ?? null,
-      outcome: card.attributes["kanban/outcome"] ?? null,
-      owner,
-      "observed-at": new Date(this.ctx.clock.now()).toISOString(),
-    };
-  }
-
-  private async linkWorkspace(workspace: string): Promise<string> {
-    const peer = await this.ctx.peers.resolve(workspace);
-    if (peer.path === this.ctx.workspace)
-      throw new Fault("link", "Link must name another workspace");
-    return peer.path;
-  }
-
   async attach(workspace: string, id: string): Promise<Node> {
     return this.mirror(await this.linkWorkspace(workspace), id);
   }
@@ -470,43 +426,6 @@ export class Kanban {
         error: String(error),
       });
     }
-  }
-
-  private async mirror(workspace: string, id: string): Promise<Node> {
-    const source = z
-      .object({
-        card: z.object({
-          id: text,
-          title: text,
-          state: z.enum(["active", "closed", "replaced"]),
-          attributes: z.record(z.string(), z.json()),
-        }),
-        owner: z.json(),
-      })
-      .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
-    if (source.card.attributes["kanban/card"] !== true || source.card.state !== "active")
-      throw new Fault("link", "Only active cards can be attached");
-    return this.ctx.graph.atomic(() => {
-      if (
-        this.ctx.graph.all({ where: q.exists(q.attr("kanban/link")) }).some((card) => {
-          const link = linkSchema.parse(card.attributes["kanban/link"]);
-
-          return link.workspace === workspace && link.card === id;
-        })
-      )
-        throw new Fault("link", "Card is already linked");
-      return this.ctx.graph.add({
-        title: source.card.title,
-        attributes: {
-          "kanban/card": true,
-          "kanban/type": "feature",
-          "kanban/priority": "p3",
-          "kanban/lane": source.card.attributes["kanban/lane"] ?? "pending",
-          "kanban/link": { workspace, card: id },
-          "kanban/link-snapshot": this.snapshot(source.card, source.owner),
-        },
-      });
-    }, this.authority);
   }
 
   async refresh(id?: string): Promise<unknown[]> {
@@ -615,14 +534,6 @@ export class Kanban {
     };
   }
 
-  private notes(id: string): Node[] {
-    return this.ctx.graph
-      .edges(id, "notes")
-      .filter((edge) => edge.to_id === id)
-      .map((edge) => this.ctx.graph.show(edge.from_id))
-      .toSorted((a, b) => compare(a.created_at, b.created_at, a.id.localeCompare(b.id)));
-  }
-
   async board(labels: string[] = []): Promise<unknown> {
     const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
       labels.every((label) =>
@@ -658,6 +569,91 @@ export class Kanban {
           compare(a.created_at, b.created_at, a.id.localeCompare(b.id)),
         ),
       );
+  }
+
+  // -- Private helpers --
+
+  private writable(id: string): Node {
+    const record = this.target(id);
+    if (record.attributes["kanban/link"] !== undefined)
+      throw new Fault("linked-card", "Change the authoritative downstream card");
+    return record;
+  }
+
+  private target(id: string): Node {
+    const record = this.ctx.graph.show(id);
+    if (record.attributes["kanban/card"] !== true && record.attributes["kanban/task"] !== true)
+      throw new Fault("kanban", "Expected card or task");
+    return record;
+  }
+
+  private parent(id: string): Node | undefined {
+    const edge = this.ctx.graph.edges(id, "parent-of").find((entry) => entry.to_id === id);
+
+    return edge === undefined ? undefined : this.ctx.graph.show(edge.from_id);
+  }
+
+  private async linkWorkspace(workspace: string): Promise<string> {
+    const peer = await this.ctx.peers.resolve(workspace);
+    if (peer.path === this.ctx.workspace)
+      throw new Fault("link", "Link must name another workspace");
+    return peer.path;
+  }
+
+  private async mirror(workspace: string, id: string): Promise<Node> {
+    const source = z
+      .object({
+        card: z.object({
+          id: text,
+          title: text,
+          state: z.enum(["active", "closed", "replaced"]),
+          attributes: z.record(z.string(), z.json()),
+        }),
+        owner: z.json(),
+      })
+      .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
+    if (source.card.attributes["kanban/card"] !== true || source.card.state !== "active")
+      throw new Fault("link", "Only active cards can be attached");
+    return this.ctx.graph.atomic(() => {
+      if (
+        this.ctx.graph.all({ where: q.exists(q.attr("kanban/link")) }).some((card) => {
+          const link = linkSchema.parse(card.attributes["kanban/link"]);
+
+          return link.workspace === workspace && link.card === id;
+        })
+      )
+        throw new Fault("link", "Card is already linked");
+      return this.ctx.graph.add({
+        title: source.card.title,
+        attributes: {
+          "kanban/card": true,
+          "kanban/type": "feature",
+          "kanban/priority": "p3",
+          "kanban/lane": source.card.attributes["kanban/lane"] ?? "pending",
+          "kanban/link": { workspace, card: id },
+          "kanban/link-snapshot": this.snapshot(source.card, source.owner),
+        },
+      });
+    }, this.authority);
+  }
+
+  private snapshot(card: Pick<Node, "title" | "state" | "attributes">, owner: Json): Attributes {
+    return {
+      title: card.title,
+      state: card.state,
+      lane: card.attributes["kanban/lane"] ?? null,
+      outcome: card.attributes["kanban/outcome"] ?? null,
+      owner,
+      "observed-at": new Date(this.ctx.clock.now()).toISOString(),
+    };
+  }
+
+  private notes(id: string): Node[] {
+    return this.ctx.graph
+      .edges(id, "notes")
+      .filter((edge) => edge.to_id === id)
+      .map((edge) => this.ctx.graph.show(edge.from_id))
+      .toSorted((a, b) => compare(a.created_at, b.created_at, a.id.localeCompare(b.id)));
   }
 }
 
@@ -957,3 +953,11 @@ export function kanban(): Extension {
 }
 
 export default kanban();
+
+// -- Private helpers --
+
+function compare(left: string, right: string, fallback: number): number {
+  const order = left.localeCompare(right);
+
+  return order === 0 ? fallback : order;
+}

@@ -6,57 +6,15 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-async function runCli(
-  host: Awaited<ReturnType<typeof system>>,
-  args: string[],
-  input = "",
-  env: Record<string, string | undefined> = {},
-  binary = host.blBin,
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  const child = Bun.spawn([binary, ...args], {
-    cwd: host.dir,
-    env: { ...host.env, ...env },
-    stdin: new Blob([input]),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return { code, stdout, stderr };
+interface CliResult {
+  code: number;
+  stdout: string;
+  stderr: string;
 }
 
-async function runTerminal(
-  host: Awaited<ReturnType<typeof system>>,
-  args: string[],
-  noColor = true,
-  binary = host.blBin,
-): Promise<{ code: number; output: string }> {
-  const ended = Promise.withResolvers<void>();
-  let output = "";
-  const decoder = new TextDecoder();
-  const child = Bun.spawn([binary, ...args], {
-    cwd: host.dir,
-    env: { ...host.env, TERM: "xterm-256color", NO_COLOR: noColor ? "1" : undefined },
-    terminal: {
-      cols: 64,
-      rows: 30,
-      data(_, bytes) {
-        output += decoder.decode(bytes, { stream: true });
-      },
-      exit() {
-        ended.resolve();
-      },
-    },
-  });
-  try {
-    const [code] = await Promise.all([child.exited, ended.promise]);
-    return { code, output: (output + decoder.decode()).replaceAll("\r\n", "\n") };
-  } finally {
-    child.terminal?.close();
-  }
+interface TerminalResult {
+  code: number;
+  output: string;
 }
 
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
@@ -567,3 +525,58 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
     await host.close();
   }
 }, 60000);
+
+// -- Private helpers --
+
+async function runCli(
+  host: Awaited<ReturnType<typeof system>>,
+  args: string[],
+  input = "",
+  env: Record<string, string | undefined> = {},
+  binary = host.blBin,
+): Promise<CliResult> {
+  const child = Bun.spawn([binary, ...args], {
+    cwd: host.dir,
+    env: { ...host.env, ...env },
+    stdin: new Blob([input]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { code, stdout, stderr };
+}
+
+async function runTerminal(
+  host: Awaited<ReturnType<typeof system>>,
+  args: string[],
+  noColor = true,
+  binary = host.blBin,
+): Promise<TerminalResult> {
+  const ended = Promise.withResolvers<void>();
+  let output = "";
+  const decoder = new TextDecoder();
+  const child = Bun.spawn([binary, ...args], {
+    cwd: host.dir,
+    env: { ...host.env, TERM: "xterm-256color", NO_COLOR: noColor ? "1" : undefined },
+    terminal: {
+      cols: 64,
+      rows: 30,
+      data(_, bytes) {
+        output += decoder.decode(bytes, { stream: true });
+      },
+      exit() {
+        ended.resolve();
+      },
+    },
+  });
+  try {
+    const [code] = await Promise.all([child.exited, ended.promise]);
+    return { code, output: (output + decoder.decode()).replaceAll("\r\n", "\n") };
+  } finally {
+    child.terminal?.close();
+  }
+}

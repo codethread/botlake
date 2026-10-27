@@ -23,8 +23,6 @@ import { provider } from "./providers/index.ts";
 
 const text = z.string().min(1);
 
-export type AgentOptions = AgentConfig & { providers?: Provider[] };
-
 export const startSchema = z.strictObject({
   seat: text,
   cwd: text,
@@ -35,8 +33,6 @@ export const startSchema = z.strictObject({
   context: attributesSchema.default({}),
 });
 
-export type StartRun = z.input<typeof startSchema>;
-
 const launchSchema = z.strictObject({
   owner: text,
   key: text,
@@ -46,11 +42,9 @@ const launchSchema = z.strictObject({
   stdin: z.string(),
 });
 
-function fingerprint(value: unknown): string {
-  return createHash("sha256")
-    .update(canonical(z.json().parse(value)))
-    .digest("hex");
-}
+export type AgentOptions = AgentConfig & { providers?: Provider[] };
+
+export type StartRun = z.input<typeof startSchema>;
 
 export class Agents {
   private readonly authority = Symbol("agents");
@@ -106,210 +100,12 @@ export class Agents {
     });
   }
 
-  private patch(id: string, attributes: Attributes, state?: "active" | "closed"): Node {
-    return this.ctx.graph.atomic(
-      () => this.ctx.graph.update(id, { attributes, ...(state === undefined ? {} : { state }) }),
-      this.authority,
-    );
-  }
-
   runs(): Node[] {
     return this.ctx.graph.all({ where: q.eq(q.attr("agent/run"), true), lean: false });
   }
 
-  private run(id: string): Node {
-    const run = this.ctx.graph.show(id);
-    if (run.attributes["agent/run"] !== true) throw new Fault("run", "Expected tracked run");
-
-    return run;
-  }
-
-  private active(run: Node): boolean {
-    return run.attributes["agent/settled"] !== true;
-  }
-
   start(raw: StartRun): Node {
     return this.create(raw);
-  }
-
-  private create(raw: StartRun, parent?: Node): Node {
-    const input = startSchema.parse(raw);
-    const cwd = realpathSync(input.cwd);
-    const request = Object.fromEntries(
-      Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
-    );
-
-    const hash = fingerprint({
-      operation: parent === undefined ? "start" : "resume",
-      parent: parent?.id ?? null,
-      input: request,
-    });
-
-    return this.ctx.graph.atomic(() => {
-      if (input.requestId !== undefined) {
-        const existing = this.runs().find(
-          (run) => run.attributes["agent/request-id"] === input.requestId,
-        );
-        if (existing !== undefined) {
-          if (existing.attributes["agent/request-hash"] !== hash)
-            throw new Fault("replay", "Request ID was used with different input");
-          return existing;
-        }
-      }
-
-      const seat =
-        parent === undefined
-          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
-          : seatSchema.parse(parent.attributes["agent/settings"]);
-      if (!this.providers.has(seat.provider))
-        throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
-
-      if (input.target !== undefined) {
-        if (this.ctx.graph.show(input.target).state !== "active")
-          throw new Fault("assignment", "Assignment target must be active");
-        if (
-          this.runs().some(
-            (run) =>
-              this.active(run) &&
-              this.ctx.graph.edge(run.id, input.target ?? "", "serves") !== null,
-          )
-        )
-          throw new Fault("assignment", "Target already has an active writer");
-      }
-
-      const attrs: Attributes = {
-        "agent/run": true,
-        "agent/state": "ready",
-        "agent/substatus": "pending",
-        "agent/accepted": true,
-        "agent/settled": false,
-        "agent/attempt": 0,
-        "agent/provider": seat.provider,
-        "agent/seat": input.seat,
-        "agent/cwd": cwd,
-        "agent/prompt": input.prompt,
-        "agent/policy": input.policy,
-        "agent/context": input.context,
-        ...(parent === undefined
-          ? {}
-          : {
-              "agent/session-id": text.parse(parent.attributes["agent/session-id"]),
-              "agent/identity": text.parse(parent.attributes["agent/identity"]),
-            }),
-        "agent/resumes": parent !== undefined,
-        "agent/session-confirmed": false,
-        "agent/integration": "unobserved",
-        "agent/settings": z.json().parse(
-          parent === undefined
-            ? {
-                ...seat,
-                systemPrompt: [
-                  seat.systemPrompt,
-                  ...(input.target === undefined
-                    ? []
-                    : [
-                        `You serve task ${input.target}. ${
-                          input.policy === "close-on-complete"
-                            ? "Close the task yourself only when its intended outcome is satisfied."
-                            : "Stop after reporting results; completing the process does not close the task."
-                        }`,
-                      ]),
-                ]
-                  .filter((part) => part.length > 0)
-                  .join("\n\n"),
-              }
-            : parent.attributes["agent/settings"],
-        ),
-      };
-
-      if (input.requestId !== undefined) {
-        attrs["agent/request-id"] = input.requestId;
-        attrs["agent/request-hash"] = hash;
-      }
-
-      const run = this.ctx.graph.add({ title: `Agent ${input.seat}`, attributes: attrs });
-
-      if (input.target !== undefined) this.ctx.graph.connect(run.id, input.target, "serves");
-
-      return run;
-    }, this.authority);
-  }
-
-  private providerRun(run: Node): ProviderRun {
-    const seat = seatSchema.parse(run.attributes["agent/settings"]);
-
-    return {
-      provider: seat.provider,
-      cwd: text.parse(run.attributes["agent/cwd"]),
-      prompt: text.parse(run.attributes["agent/prompt"]),
-      ...(run.attributes["agent/resumes"] === true
-        ? { resumes: true, sessionId: text.parse(run.attributes["agent/session-id"]) }
-        : { resumes: false }),
-      model: seat.model,
-      effort: seat.effort,
-      extraArgs: seat.extraArgs,
-      systemPrompt: seat.systemPrompt,
-    };
-  }
-
-  private begin(run: Node): Node {
-    return this.ctx.graph.atomic(() => {
-      const current = this.run(run.id);
-      if (current.attributes["agent/state"] !== "ready")
-        throw new Fault("attempt", "Run is not ready");
-      const target = this.ctx.graph.edges(run.id, "serves").find((edge) => edge.from_id === run.id);
-      if (
-        target !== undefined &&
-        this.ctx.graph.all({ ready: true, where: q.eq("id", target.to_id) }).length === 0
-      )
-        return current;
-
-      const invocation = crypto.randomUUID();
-      const definition = this.providerRun(current);
-      const plan = requireValue(
-        this.providers.get(definition.provider),
-        "Provider unavailable",
-      ).prepare(definition);
-      const trackingEnv: Record<string, string> = {
-        BL_AGENT_SEAT: text.parse(current.attributes["agent/seat"]),
-        ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
-        ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
-        ...(definition.resumes
-          ? { BL_ACTOR: text.parse(current.attributes["agent/identity"]) }
-          : {}),
-      };
-      const spec: ProcessSpec = {
-        owner: "agents",
-        key: `${current.id}/${invocation}`,
-        command: [
-          "env",
-          ...[
-            "BL_ACTOR",
-            "BL_AGENT_SEAT",
-            "BL_MODEL",
-            "BL_EFFORT",
-            "BL_NATIVE_SESSION_ID",
-            "BL_NATIVE_PROVIDER",
-          ].flatMap((key) => (trackingEnv[key] === undefined ? ["-u", key] : [])),
-          ...plan.command,
-        ],
-        cwd: definition.cwd,
-        stdin: plan.stdin,
-        env: {
-          ...plan.env,
-          ...trackingEnv,
-          BL_WORKSPACE: this.ctx.workspace,
-          BL_RUN_REFERENCE: `${current.id}:${invocation}`,
-        },
-      };
-
-      return this.patch(current.id, {
-        "agent/state": "running",
-        "agent/invocation": invocation,
-        "agent/attempt": z.number().parse(current.attributes["agent/attempt"]) + 1,
-        "agent/launch": z.json().parse(spec),
-      });
-    }, this.authority);
   }
 
   async reconcile(): Promise<void> {
@@ -320,130 +116,6 @@ export class Agents {
     });
 
     return this.reconcileTask;
-  }
-
-  private async reconcileRuns(): Promise<void> {
-    const owned = await this.ctx.processes.listOwned("agents");
-    for (let run of this.runs().filter(
-      (row) => row.attributes["agent/external"] !== true && this.active(row),
-    )) {
-      try {
-        if (run.attributes["agent/state"] === "ready") run = this.begin(run);
-        if (
-          run.attributes["agent/state"] !== "running" &&
-          run.attributes["agent/launch"] === undefined
-        )
-          continue;
-
-        const invocation = text.parse(run.attributes["agent/invocation"]);
-        const spec = launchSchema.parse(run.attributes["agent/launch"]);
-        let fact = owned.find((entry) => entry.owner === spec.owner && entry.key === spec.key);
-        fact ??= await this.ctx.processes.launch(spec);
-        const current = this.run(run.id);
-        if (current.attributes["agent/invocation"] !== invocation) continue;
-
-        if (current.attributes["agent/handle"] !== fact.handle)
-          run = this.patch(run.id, { "agent/handle": fact.handle });
-        if (fact.phase !== "terminal") continue;
-
-        if (fact.launch_failure !== undefined) {
-          this.patch(
-            run.id,
-            {
-              "agent/state": "failed",
-              "agent/substatus": "launch",
-              "agent/settled": true,
-              "agent/error": fact.launch_failure.message,
-            },
-            "closed",
-          );
-          continue;
-        }
-
-        if (fact.cancellation?.stop === "uncertain") {
-          this.patch(
-            run.id,
-            {
-              "agent/state": "stopped",
-              "agent/substatus": "requested",
-              "agent/settled": false,
-              "agent/custody": z.json().parse(fact),
-            },
-            "closed",
-          );
-          continue;
-        }
-
-        if (fact.exit === undefined && fact.cancellation === undefined) {
-          this.patch(
-            run.id,
-            {
-              "agent/state": "failed",
-              "agent/substatus": "reconciliation",
-              "agent/settled": false,
-              "agent/error": "Terminal custody has no observed exit",
-            },
-            "closed",
-          );
-          continue;
-        }
-
-        const [stdout, stderr] = await Promise.all([
-          Bun.file(fact.output.stdout_ref).text(),
-          Bun.file(fact.output.stderr_ref).text(),
-        ]);
-        const definition = this.providerRun(run);
-        const outcome = requireValue(
-          this.providers.get(definition.provider),
-          "Provider unavailable",
-        ).finish(definition, fact.exit?.code ?? 1, stdout, stderr);
-
-        let integrationError: string | null = null;
-        if (outcome.sessionId !== null) {
-          try {
-            this.sessions.fromOutput(this.run(run.id), outcome.sessionId);
-          } catch (error) {
-            integrationError = String(error);
-          }
-        }
-
-        this.patch(
-          run.id,
-          {
-            "agent/state":
-              fact.cancellation !== undefined || (outcome.success && integrationError === null)
-                ? "stopped"
-                : "failed",
-            "agent/substatus":
-              fact.cancellation !== undefined
-                ? "requested"
-                : integrationError !== null
-                  ? "native-session"
-                  : outcome.success
-                    ? "completed"
-                    : "execution",
-            ...(integrationError === null ? {} : { "agent/session-confirmed": false }),
-            "agent/settled": true,
-            "agent/result": outcome.result,
-            "agent/error":
-              integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
-            "agent/custody": z.json().parse(fact),
-          },
-          "closed",
-        );
-      } catch (error) {
-        this.patch(
-          run.id,
-          {
-            "agent/state": "failed",
-            "agent/substatus": "reconciliation",
-            "agent/error": String(error),
-            "agent/settled": run.attributes["agent/launch"] === undefined,
-          },
-          "closed",
-        );
-      }
-    }
   }
 
   native(raw: z.input<typeof registrationSchema>): unknown {
@@ -609,4 +281,336 @@ export class Agents {
   async stop(): Promise<void> {
     await this.reconcileTask;
   }
+
+  // -- Private helpers --
+
+  private create(raw: StartRun, parent?: Node): Node {
+    const input = startSchema.parse(raw);
+    const cwd = realpathSync(input.cwd);
+    const request = Object.fromEntries(
+      Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
+    );
+
+    const hash = fingerprint({
+      operation: parent === undefined ? "start" : "resume",
+      parent: parent?.id ?? null,
+      input: request,
+    });
+
+    return this.ctx.graph.atomic(() => {
+      if (input.requestId !== undefined) {
+        const existing = this.runs().find(
+          (run) => run.attributes["agent/request-id"] === input.requestId,
+        );
+        if (existing !== undefined) {
+          if (existing.attributes["agent/request-hash"] !== hash)
+            throw new Fault("replay", "Request ID was used with different input");
+          return existing;
+        }
+      }
+
+      const seat =
+        parent === undefined
+          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
+          : seatSchema.parse(parent.attributes["agent/settings"]);
+      if (!this.providers.has(seat.provider))
+        throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
+
+      if (input.target !== undefined) {
+        if (this.ctx.graph.show(input.target).state !== "active")
+          throw new Fault("assignment", "Assignment target must be active");
+        if (
+          this.runs().some(
+            (run) =>
+              this.active(run) &&
+              this.ctx.graph.edge(run.id, input.target ?? "", "serves") !== null,
+          )
+        )
+          throw new Fault("assignment", "Target already has an active writer");
+      }
+
+      const attrs: Attributes = {
+        "agent/run": true,
+        "agent/state": "ready",
+        "agent/substatus": "pending",
+        "agent/accepted": true,
+        "agent/settled": false,
+        "agent/attempt": 0,
+        "agent/provider": seat.provider,
+        "agent/seat": input.seat,
+        "agent/cwd": cwd,
+        "agent/prompt": input.prompt,
+        "agent/policy": input.policy,
+        "agent/context": input.context,
+        ...(parent === undefined
+          ? {}
+          : {
+              "agent/session-id": text.parse(parent.attributes["agent/session-id"]),
+              "agent/identity": text.parse(parent.attributes["agent/identity"]),
+            }),
+        "agent/resumes": parent !== undefined,
+        "agent/session-confirmed": false,
+        "agent/integration": "unobserved",
+        "agent/settings": z.json().parse(
+          parent === undefined
+            ? {
+                ...seat,
+                systemPrompt: [
+                  seat.systemPrompt,
+                  ...(input.target === undefined
+                    ? []
+                    : [
+                        `You serve task ${input.target}. ${
+                          input.policy === "close-on-complete"
+                            ? "Close the task yourself only when its intended outcome is satisfied."
+                            : "Stop after reporting results; completing the process does not close the task."
+                        }`,
+                      ]),
+                ]
+                  .filter((part) => part.length > 0)
+                  .join("\n\n"),
+              }
+            : parent.attributes["agent/settings"],
+        ),
+      };
+
+      if (input.requestId !== undefined) {
+        attrs["agent/request-id"] = input.requestId;
+        attrs["agent/request-hash"] = hash;
+      }
+
+      const run = this.ctx.graph.add({ title: `Agent ${input.seat}`, attributes: attrs });
+
+      if (input.target !== undefined) this.ctx.graph.connect(run.id, input.target, "serves");
+
+      return run;
+    }, this.authority);
+  }
+
+  private async reconcileRuns(): Promise<void> {
+    const owned = await this.ctx.processes.listOwned("agents");
+    for (let run of this.runs().filter(
+      (row) => row.attributes["agent/external"] !== true && this.active(row),
+    )) {
+      try {
+        if (run.attributes["agent/state"] === "ready") run = this.begin(run);
+        if (
+          run.attributes["agent/state"] !== "running" &&
+          run.attributes["agent/launch"] === undefined
+        )
+          continue;
+
+        const invocation = text.parse(run.attributes["agent/invocation"]);
+        const spec = launchSchema.parse(run.attributes["agent/launch"]);
+        let fact = owned.find((entry) => entry.owner === spec.owner && entry.key === spec.key);
+        fact ??= await this.ctx.processes.launch(spec);
+        const current = this.run(run.id);
+        if (current.attributes["agent/invocation"] !== invocation) continue;
+
+        if (current.attributes["agent/handle"] !== fact.handle)
+          run = this.patch(run.id, { "agent/handle": fact.handle });
+        if (fact.phase !== "terminal") continue;
+
+        if (fact.launch_failure !== undefined) {
+          this.patch(
+            run.id,
+            {
+              "agent/state": "failed",
+              "agent/substatus": "launch",
+              "agent/settled": true,
+              "agent/error": fact.launch_failure.message,
+            },
+            "closed",
+          );
+          continue;
+        }
+
+        if (fact.cancellation?.stop === "uncertain") {
+          this.patch(
+            run.id,
+            {
+              "agent/state": "stopped",
+              "agent/substatus": "requested",
+              "agent/settled": false,
+              "agent/custody": z.json().parse(fact),
+            },
+            "closed",
+          );
+          continue;
+        }
+
+        if (fact.exit === undefined && fact.cancellation === undefined) {
+          this.patch(
+            run.id,
+            {
+              "agent/state": "failed",
+              "agent/substatus": "reconciliation",
+              "agent/settled": false,
+              "agent/error": "Terminal custody has no observed exit",
+            },
+            "closed",
+          );
+          continue;
+        }
+
+        const [stdout, stderr] = await Promise.all([
+          Bun.file(fact.output.stdout_ref).text(),
+          Bun.file(fact.output.stderr_ref).text(),
+        ]);
+        const definition = this.providerRun(run);
+        const outcome = requireValue(
+          this.providers.get(definition.provider),
+          "Provider unavailable",
+        ).finish(definition, fact.exit?.code ?? 1, stdout, stderr);
+
+        let integrationError: string | null = null;
+        if (outcome.sessionId !== null) {
+          try {
+            this.sessions.fromOutput(this.run(run.id), outcome.sessionId);
+          } catch (error) {
+            integrationError = String(error);
+          }
+        }
+
+        this.patch(
+          run.id,
+          {
+            "agent/state":
+              fact.cancellation !== undefined || (outcome.success && integrationError === null)
+                ? "stopped"
+                : "failed",
+            "agent/substatus":
+              fact.cancellation !== undefined
+                ? "requested"
+                : integrationError !== null
+                  ? "native-session"
+                  : outcome.success
+                    ? "completed"
+                    : "execution",
+            ...(integrationError === null ? {} : { "agent/session-confirmed": false }),
+            "agent/settled": true,
+            "agent/result": outcome.result,
+            "agent/error":
+              integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
+            "agent/custody": z.json().parse(fact),
+          },
+          "closed",
+        );
+      } catch (error) {
+        this.patch(
+          run.id,
+          {
+            "agent/state": "failed",
+            "agent/substatus": "reconciliation",
+            "agent/error": String(error),
+            "agent/settled": run.attributes["agent/launch"] === undefined,
+          },
+          "closed",
+        );
+      }
+    }
+  }
+
+  private active(run: Node): boolean {
+    return run.attributes["agent/settled"] !== true;
+  }
+
+  private begin(run: Node): Node {
+    return this.ctx.graph.atomic(() => {
+      const current = this.run(run.id);
+      if (current.attributes["agent/state"] !== "ready")
+        throw new Fault("attempt", "Run is not ready");
+      const target = this.ctx.graph.edges(run.id, "serves").find((edge) => edge.from_id === run.id);
+      if (
+        target !== undefined &&
+        this.ctx.graph.all({ ready: true, where: q.eq("id", target.to_id) }).length === 0
+      )
+        return current;
+
+      const invocation = crypto.randomUUID();
+      const definition = this.providerRun(current);
+      const plan = requireValue(
+        this.providers.get(definition.provider),
+        "Provider unavailable",
+      ).prepare(definition);
+      const trackingEnv: Record<string, string> = {
+        BL_AGENT_SEAT: text.parse(current.attributes["agent/seat"]),
+        ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
+        ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
+        ...(definition.resumes
+          ? { BL_ACTOR: text.parse(current.attributes["agent/identity"]) }
+          : {}),
+      };
+      const spec: ProcessSpec = {
+        owner: "agents",
+        key: `${current.id}/${invocation}`,
+        command: [
+          "env",
+          ...[
+            "BL_ACTOR",
+            "BL_AGENT_SEAT",
+            "BL_MODEL",
+            "BL_EFFORT",
+            "BL_NATIVE_SESSION_ID",
+            "BL_NATIVE_PROVIDER",
+          ].flatMap((key) => (trackingEnv[key] === undefined ? ["-u", key] : [])),
+          ...plan.command,
+        ],
+        cwd: definition.cwd,
+        stdin: plan.stdin,
+        env: {
+          ...plan.env,
+          ...trackingEnv,
+          BL_WORKSPACE: this.ctx.workspace,
+          BL_RUN_REFERENCE: `${current.id}:${invocation}`,
+        },
+      };
+
+      return this.patch(current.id, {
+        "agent/state": "running",
+        "agent/invocation": invocation,
+        "agent/attempt": z.number().parse(current.attributes["agent/attempt"]) + 1,
+        "agent/launch": z.json().parse(spec),
+      });
+    }, this.authority);
+  }
+
+  private patch(id: string, attributes: Attributes, state?: "active" | "closed"): Node {
+    return this.ctx.graph.atomic(
+      () => this.ctx.graph.update(id, { attributes, ...(state === undefined ? {} : { state }) }),
+      this.authority,
+    );
+  }
+
+  private run(id: string): Node {
+    const run = this.ctx.graph.show(id);
+    if (run.attributes["agent/run"] !== true) throw new Fault("run", "Expected tracked run");
+
+    return run;
+  }
+
+  private providerRun(run: Node): ProviderRun {
+    const seat = seatSchema.parse(run.attributes["agent/settings"]);
+
+    return {
+      provider: seat.provider,
+      cwd: text.parse(run.attributes["agent/cwd"]),
+      prompt: text.parse(run.attributes["agent/prompt"]),
+      ...(run.attributes["agent/resumes"] === true
+        ? { resumes: true, sessionId: text.parse(run.attributes["agent/session-id"]) }
+        : { resumes: false }),
+      model: seat.model,
+      effort: seat.effort,
+      extraArgs: seat.extraArgs,
+      systemPrompt: seat.systemPrompt,
+    };
+  }
+}
+
+// -- Private helpers --
+
+function fingerprint(value: unknown): string {
+  return createHash("sha256")
+    .update(canonical(z.json().parse(value)))
+    .digest("hex");
 }

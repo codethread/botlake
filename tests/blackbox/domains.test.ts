@@ -14,23 +14,6 @@ import { rejected } from "./assert.ts";
 
 const node = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
 
-async function world(
-  extensions: Extension[],
-  clock: ManualClock,
-  run: (runtime: Runtime, path: string) => Promise<void>,
-): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "botlake-domains-"));
-  const path = join(dir, "world.db");
-  const runtime = new Runtime({ database: path, clock });
-  try {
-    await runtime.start(extensions);
-
-    await run(runtime, path);
-  } finally {
-    await runtime.stop();
-    await rm(dir, { recursive: true, force: true });
-  }
-}
 test("Kanban preserves ownership evidence and fences generic writes, batch burns, links and stale references", async () => {
   await world([batteries(), identity(), kanban()], new ManualClock(1000), async (runtime) => {
     const invoke = (input: unknown): Promise<unknown> => runtime.invoke("kanban", input);
@@ -439,3 +422,23 @@ test("Cron allows explicitly concurrent occurrences and persists exhausted failu
     ).toEqual(["succeeded", "succeeded"]);
   });
 });
+
+// -- Private helpers --
+
+async function world(
+  extensions: Extension[],
+  clock: ManualClock,
+  run: (runtime: Runtime, path: string) => Promise<void>,
+): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "botlake-domains-"));
+  const path = join(dir, "world.db");
+  const runtime = new Runtime({ database: path, clock });
+  try {
+    await runtime.start(extensions);
+
+    await run(runtime, path);
+  } finally {
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}

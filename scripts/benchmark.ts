@@ -16,28 +16,6 @@ const output = resolve(Bun.argv[3] ?? "docs/pool-benchmark.json");
 const host = await system();
 const statusSchema = z.object({ memory: z.object({ rss: z.number() }) });
 
-async function invoke(workspace: string, name: string): Promise<unknown> {
-  const wire = await host.wire({
-    protocol_version: 1,
-    request_id: crypto.randomUUID(),
-    operation: "invoke",
-    workspace,
-    payload: { name, input: {} },
-  });
-  return z.object({ ok: z.literal(true), result: z.unknown() }).parse(JSON.parse(wire)).result;
-}
-
-function distribution(samples: number[]): {
-  median: number;
-  p95: number;
-  p99: number;
-  max: number;
-} {
-  const sorted = samples.toSorted((left, right) => left - right);
-  const at = (percentile: number): number =>
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * percentile))] ?? 0;
-  return { median: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
-}
 try {
   const baseline = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const startup: number[] = [];
@@ -153,4 +131,29 @@ try {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } finally {
   await host.close();
+}
+
+// -- Private helpers --
+
+async function invoke(workspace: string, name: string): Promise<unknown> {
+  const wire = await host.wire({
+    protocol_version: 1,
+    request_id: crypto.randomUUID(),
+    operation: "invoke",
+    workspace,
+    payload: { name, input: {} },
+  });
+  return z.object({ ok: z.literal(true), result: z.unknown() }).parse(JSON.parse(wire)).result;
+}
+
+function distribution(samples: number[]): {
+  median: number;
+  p95: number;
+  p99: number;
+  max: number;
+} {
+  const sorted = samples.toSorted((left, right) => left - right);
+  const at = (percentile: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * percentile))] ?? 0;
+  return { median: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
 }

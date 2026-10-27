@@ -70,11 +70,12 @@ Caller-sensitive allow/deny visibility, live alias registration/unregistration, 
 ```ts
 import { agents, type SessionContext } from "@botlake/extension-agents";
 
-const projectPrompt = ({ model }: SessionContext) =>
-  [
+function projectPrompt({ model }: SessionContext): string {
+  return [
     "This project uses Botlake. Use `bl prime agent` before delegating work.",
     ...(model?.startsWith("deepseek/") ? ["State acceptance criteria before editing."] : []),
   ].join("\n\n");
+}
 
 export default agents({
   unmanaged: { systemPrompt: projectPrompt },

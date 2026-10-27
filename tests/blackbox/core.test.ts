@@ -19,22 +19,6 @@ import { z } from "zod";
 
 import { rejected } from "./assert.ts";
 
-async function disposable(
-  run: (runtime: Runtime) => Promise<void>,
-  extensions: Extension[] = [batteries()],
-): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "botlake-"));
-  const runtime = new Runtime({ database: join(dir, "world.db") });
-  try {
-    await runtime.start(extensions);
-
-    await run(runtime);
-  } finally {
-    await runtime.stop();
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
 test("graph mutations, archive selection, stale writes and atomic rollback through public ops", async () => {
   await disposable(async (runtime) => {
     const graph = runtime.graph;
@@ -510,3 +494,21 @@ test("events follow commit, rollback stays silent, and nested domain authority d
     ],
   );
 });
+
+// -- Private helpers --
+
+async function disposable(
+  run: (runtime: Runtime) => Promise<void>,
+  extensions: Extension[] = [batteries()],
+): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "botlake-"));
+  const runtime = new Runtime({ database: join(dir, "world.db") });
+  try {
+    await runtime.start(extensions);
+
+    await run(runtime);
+  } finally {
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}

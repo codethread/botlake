@@ -5,6 +5,21 @@ import { join, resolve } from "node:path";
 
 export const source = resolve(import.meta.dir, "../../..");
 
+interface System {
+  dir: string;
+  home: string;
+  botlakeBin: string;
+  blBin: string;
+  env: Record<string, string | undefined>;
+  packages: Record<string, string>;
+  workspace(name: string, extensions: string[]): Promise<string>;
+  botlake(args: string[], ok?: boolean): Promise<unknown>;
+  bl(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
+  cli(args: string[], ok?: boolean): Promise<unknown>;
+  wire(request: unknown): Promise<string>;
+  close(): Promise<void>;
+}
+
 export async function install(path: string, dependencies: Record<string, string>): Promise<void> {
   await Bun.write(
     join(path, "package.json"),
@@ -27,20 +42,7 @@ export async function install(path: string, dependencies: Record<string, string>
   if (code !== 0) throw new Error(error);
 }
 
-export async function system(): Promise<{
-  dir: string;
-  home: string;
-  botlakeBin: string;
-  blBin: string;
-  env: Record<string, string | undefined>;
-  packages: Record<string, string>;
-  workspace(name: string, extensions: string[]): Promise<string>;
-  botlake(args: string[], ok?: boolean): Promise<unknown>;
-  bl(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
-  cli(args: string[], ok?: boolean): Promise<unknown>;
-  wire(request: unknown): Promise<string>;
-  close(): Promise<void>;
-}> {
+export async function system(): Promise<System> {
   const dir = await mkdtemp(join(tmpdir(), "botlake-system-"));
   const home = join(dir, "botlake");
   const bin = join(dir, "bin");

@@ -12,11 +12,17 @@ import {
 import { bl, nativeProject } from "./client.ts";
 
 export interface SessionReport {
+  /** Deterministic attribution for the native provider/session pair. */
   identity: string;
+  /** Host-facing attribution guidance. */
   instruction: string;
+  /** Project context supplied by the lake, or empty when unavailable. */
   systemPrompt: string;
+  /** Outcome of attempting to register this observation. */
   tracking: "registered" | "unavailable" | "outside-workspace";
+  /** Persisted linkage, supplied when registration succeeds. */
   binding?: NativeBinding;
+  /** User-visible tracking failure, when registration is unavailable. */
   error?: string;
 }
 

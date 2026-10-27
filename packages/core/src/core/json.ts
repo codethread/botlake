@@ -1,11 +1,15 @@
 import stringify from "fast-json-stable-stringify";
 import { z } from "zod";
 
+export const attributesSchema = z.record(z.string().min(1), z.json());
+
+// A worker and its installed extensions can resolve separate copies of this package.
+
+const faultBrand = Symbol.for("@botlake/core/Fault");
+
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
 export type Attributes = Record<string, Json>;
-
-export const attributesSchema = z.record(z.string().min(1), z.json());
 
 export function encode(value: unknown): string {
   return JSON.stringify(z.json().parse(value));
@@ -39,10 +43,6 @@ export function merge(base: Attributes, patch: Attributes): Attributes {
   }
   return Object.fromEntries(result);
 }
-
-// A worker and its installed extensions can resolve separate copies of this package.
-
-const faultBrand = Symbol.for("@botlake/core/Fault");
 
 export class Fault extends Error {
   readonly [faultBrand] = true;

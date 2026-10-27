@@ -32,12 +32,6 @@ interface ControlData {
   offset: number;
 }
 
-function flush(client: Bun.Socket<ControlData>): void {
-  if (client.data.offset === client.data.output.byteLength) return;
-  const written = client.write(client.data.output.subarray(client.data.offset));
-  if (written > 0) client.data.offset += written;
-}
-
 export function botlakeServices(
   socket: string,
   workspace: string,
@@ -146,4 +140,12 @@ export function botlakeServices(
       },
     },
   };
+}
+
+// -- Private helpers --
+
+function flush(client: Bun.Socket<ControlData>): void {
+  if (client.data.offset === client.data.output.byteLength) return;
+  const written = client.write(client.data.output.subarray(client.data.offset));
+  if (written > 0) client.data.offset += written;
 }

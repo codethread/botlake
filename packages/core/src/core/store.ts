@@ -20,23 +20,6 @@ import { sql } from "./sql.ts";
 
 const stateSchema = z.enum(["active", "closed", "replaced"]);
 
-export interface Node {
-  id: string;
-  title: string;
-  state: z.infer<typeof stateSchema>;
-  created_at: string;
-  updated_at: string;
-  revision: number;
-  attributes: Attributes;
-}
-
-export interface Edge {
-  from_id: string;
-  to_id: string;
-  relation: string;
-  attributes: Attributes;
-}
-
 const rowSchema = z.strictObject({
   id: z.string(),
   title: z.string(),
@@ -62,8 +45,6 @@ const patchSchema = z.strictObject({
   expectedRevision: z.number().int().positive().optional(),
 });
 
-export type Patch = z.infer<typeof patchSchema>;
-
 const edgeOpSchema = z.discriminatedUnion("op", [
   z.strictObject({
     op: z.literal("upsert"),
@@ -86,29 +67,6 @@ export const batchSchema = z.strictObject({
   edges: z.array(edgeOpSchema).default([]),
   burn: z.array(z.string().min(1)).default([]),
 });
-
-export interface Change {
-  kind: "node";
-  before: Node | null;
-  after: Node | null;
-  expectedRevision?: number | undefined;
-}
-
-export interface EdgeChange {
-  kind: "edge";
-  before: Edge | null;
-  after: Edge | null;
-}
-
-export type Mutation = Change | EdgeChange;
-
-export interface GraphEvent {
-  type: "graph/committed";
-  changes: Mutation[];
-  at: number;
-}
-
-export type Guard = (changes: readonly Mutation[], authority: symbol | undefined) => void;
 
 const ddl = sql`
   CREATE TABLE nodes (
@@ -174,6 +132,48 @@ const ddl = sql`
 
   PRAGMA user_version = 1;
 `;
+
+export interface Node {
+  id: string;
+  title: string;
+  state: z.infer<typeof stateSchema>;
+  created_at: string;
+  updated_at: string;
+  revision: number;
+  attributes: Attributes;
+}
+
+export interface Edge {
+  from_id: string;
+  to_id: string;
+  relation: string;
+  attributes: Attributes;
+}
+
+export type Patch = z.infer<typeof patchSchema>;
+
+export interface Change {
+  kind: "node";
+  before: Node | null;
+  after: Node | null;
+  expectedRevision?: number | undefined;
+}
+
+export interface EdgeChange {
+  kind: "edge";
+  before: Edge | null;
+  after: Edge | null;
+}
+
+export type Mutation = Change | EdgeChange;
+
+export interface GraphEvent {
+  type: "graph/committed";
+  changes: Mutation[];
+  at: number;
+}
+
+export type Guard = (changes: readonly Mutation[], authority: symbol | undefined) => void;
 
 export interface Selection {
   where?: Predicate | undefined;
@@ -281,11 +281,6 @@ export class Graph {
     return result;
   }
 
-  private record(change: Mutation): void {
-    if (this.currentAuthority !== undefined) this.permissions.set(change, this.currentAuthority);
-    this.changes.push(change);
-  }
-
   show(id: string, lean = false): Node {
     const row = rowSchema.parse(
       requireValue(
@@ -329,38 +324,6 @@ export class Graph {
     return this.select(options);
   }
 
-  private select(options: Selection, limit?: number): Node[] {
-    const query =
-      options.where === undefined
-        ? { sql: sql`1`, bindings: [] }
-        : compileQuery(options.where, options.params);
-    const ready =
-      options.ready === true
-        ? sql`
-          AND s.state = 'active'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM edges e
-            JOIN nodes target ON target.id = e.to_id
-            WHERE e.from_id = s.id
-              AND e.relation = 'depends-on'
-              AND target.state = 'active'
-          )
-        `
-        : "";
-    const ids = z.array(z.object({ id: z.string() })).parse(
-      this.db
-        .query(sql`
-          SELECT s.id
-          FROM nodes s
-          WHERE ${query.sql} ${ready}
-          ORDER BY s.created_at, s.id
-          ${limit === undefined ? "" : sql`LIMIT ?`}
-        `)
-        .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
-    );
-    return ids.map(({ id }) => this.show(id, options.lean ?? true));
-  }
   add(input: {
     title: string;
     state?: "active" | "closed" | undefined;
@@ -430,48 +393,6 @@ export class Graph {
       });
       return after;
     });
-  }
-
-  private writeAttributes(id: string, patch: Attributes): void {
-    const before = this.show(id).attributes;
-    const after = merge(before, patch);
-
-    const keys = z.array(z.object({ key: z.string() })).parse(
-      this.db
-        .query(sql`
-          SELECT key
-          FROM immutable_keys
-        `)
-        .all(),
-    );
-    for (const { key } of keys)
-      if (
-        before[key] !== undefined &&
-        (after[key] === undefined || canonical(before[key]) !== canonical(after[key]))
-      )
-        throw new Fault("immutable", `Immutable attribute: ${key}`);
-
-    for (const key of Object.keys(patch)) {
-      const value = after[key];
-      if (value === undefined)
-        this.db
-          .query(sql`
-            DELETE FROM attributes
-            WHERE node_id = ?
-              AND key = ?
-          `)
-          .run(id, key);
-      else
-        this.db
-          .query(sql`
-            INSERT INTO attributes
-            VALUES (?, ?, ?, 0)
-            ON CONFLICT (node_id, key) DO UPDATE SET
-              value = excluded.value,
-              archived = 0
-          `)
-          .run(id, key, encode(value));
-    }
   }
 
   archive(id: string, keys: string[]): Node {
@@ -822,5 +743,87 @@ export class Graph {
       this.burn(payload.burn.map((ref) => requireValue(refs[ref], `Unknown burn ref: ${ref}`)));
       return { refs, changes: this.changes.slice(start) };
     });
+  }
+
+  // -- Private helpers --
+
+  private record(change: Mutation): void {
+    if (this.currentAuthority !== undefined) this.permissions.set(change, this.currentAuthority);
+    this.changes.push(change);
+  }
+
+  private select(options: Selection, limit?: number): Node[] {
+    const query =
+      options.where === undefined
+        ? { sql: sql`1`, bindings: [] }
+        : compileQuery(options.where, options.params);
+    const ready =
+      options.ready === true
+        ? sql`
+          AND s.state = 'active'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM edges e
+            JOIN nodes target ON target.id = e.to_id
+            WHERE e.from_id = s.id
+              AND e.relation = 'depends-on'
+              AND target.state = 'active'
+          )
+        `
+        : "";
+    const ids = z.array(z.object({ id: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT s.id
+          FROM nodes s
+          WHERE ${query.sql} ${ready}
+          ORDER BY s.created_at, s.id
+          ${limit === undefined ? "" : sql`LIMIT ?`}
+        `)
+        .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
+    );
+    return ids.map(({ id }) => this.show(id, options.lean ?? true));
+  }
+
+  private writeAttributes(id: string, patch: Attributes): void {
+    const before = this.show(id).attributes;
+    const after = merge(before, patch);
+
+    const keys = z.array(z.object({ key: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT key
+          FROM immutable_keys
+        `)
+        .all(),
+    );
+    for (const { key } of keys)
+      if (
+        before[key] !== undefined &&
+        (after[key] === undefined || canonical(before[key]) !== canonical(after[key]))
+      )
+        throw new Fault("immutable", `Immutable attribute: ${key}`);
+
+    for (const key of Object.keys(patch)) {
+      const value = after[key];
+      if (value === undefined)
+        this.db
+          .query(sql`
+            DELETE FROM attributes
+            WHERE node_id = ?
+              AND key = ?
+          `)
+          .run(id, key);
+      else
+        this.db
+          .query(sql`
+            INSERT INTO attributes
+            VALUES (?, ?, ?, 0)
+            ON CONFLICT (node_id, key) DO UPDATE SET
+              value = excluded.value,
+              archived = 0
+          `)
+          .run(id, key, encode(value));
+    }
   }
 }

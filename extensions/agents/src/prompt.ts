@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import type { ProviderName } from "./providers/contract.ts";
 
+export const systemPromptSchema = z.union([
+  z.string(),
+  z.custom<(context: SessionContext) => string>((value) => typeof value === "function"),
+]);
+
 export interface SessionContext {
   provider: ProviderName;
   model: string | null;
@@ -12,11 +17,6 @@ export interface SessionContext {
 }
 
 export type SystemPrompt = string | ((context: SessionContext) => string);
-
-export const systemPromptSchema = z.union([
-  z.string(),
-  z.custom<(context: SessionContext) => string>((value) => typeof value === "function"),
-]);
 
 export function resolveSystemPrompt(
   source: SystemPrompt | undefined,

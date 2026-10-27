@@ -19,48 +19,6 @@ export class NativeSessions {
     private readonly unmanagedSystemPrompt: SystemPrompt | undefined,
   ) {}
 
-  private runs(provider: ProviderName, sessionId: string): Node[] {
-    return this.ctx.graph.all({
-      where: q.and(
-        q.eq(q.attr("agent/run"), true),
-        q.eq(q.attr("agent/provider"), provider),
-        q.eq(q.attr("agent/session-id"), sessionId),
-      ),
-      lean: false,
-    });
-  }
-
-  private managed(input: NativeRegistration): Node {
-    const run = this.ctx.graph.show(text.parse(input.runId));
-    if (
-      run.attributes["agent/run"] !== true ||
-      run.attributes["agent/external"] === true ||
-      run.attributes["agent/state"] !== "running" ||
-      run.attributes["agent/invocation"] !== input.invocation ||
-      run.attributes["agent/provider"] !== input.provider
-    )
-      throw new Fault("native", "Stale or mismatched native run registration");
-    const expected = run.attributes["agent/session-id"];
-    if (expected !== undefined && expected !== input.nativeSessionId)
-      throw new Fault("native", "Native session differs from the linked run");
-    if (
-      run.attributes["agent/integration"] === "unobserved" &&
-      run.attributes["agent/cwd"] !== input.cwd
-    )
-      throw new Fault("native", "Native startup cwd differs from its run");
-
-    if (
-      this.runs(input.provider, input.nativeSessionId).some(
-        (other) =>
-          other.id !== run.id &&
-          other.attributes["agent/external"] !== true &&
-          other.attributes["agent/settled"] !== true,
-      )
-    )
-      throw new Fault("native", "Native session already has an active managed writer");
-    return run;
-  }
-
   observe(input: NativeRegistration): NativeBinding {
     return this.ctx.graph.atomic(() => {
       let run: Node;
@@ -182,5 +140,49 @@ export class NativeSessions {
 
       recordParticipation(this.ctx, binding.identity, run.id, input.invocation ?? "external");
     }, this.authority);
+  }
+
+  // -- Private helpers --
+
+  private managed(input: NativeRegistration): Node {
+    const run = this.ctx.graph.show(text.parse(input.runId));
+    if (
+      run.attributes["agent/run"] !== true ||
+      run.attributes["agent/external"] === true ||
+      run.attributes["agent/state"] !== "running" ||
+      run.attributes["agent/invocation"] !== input.invocation ||
+      run.attributes["agent/provider"] !== input.provider
+    )
+      throw new Fault("native", "Stale or mismatched native run registration");
+    const expected = run.attributes["agent/session-id"];
+    if (expected !== undefined && expected !== input.nativeSessionId)
+      throw new Fault("native", "Native session differs from the linked run");
+    if (
+      run.attributes["agent/integration"] === "unobserved" &&
+      run.attributes["agent/cwd"] !== input.cwd
+    )
+      throw new Fault("native", "Native startup cwd differs from its run");
+
+    if (
+      this.runs(input.provider, input.nativeSessionId).some(
+        (other) =>
+          other.id !== run.id &&
+          other.attributes["agent/external"] !== true &&
+          other.attributes["agent/settled"] !== true,
+      )
+    )
+      throw new Fault("native", "Native session already has an active managed writer");
+    return run;
+  }
+
+  private runs(provider: ProviderName, sessionId: string): Node[] {
+    return this.ctx.graph.all({
+      where: q.and(
+        q.eq(q.attr("agent/run"), true),
+        q.eq(q.attr("agent/provider"), provider),
+        q.eq(q.attr("agent/session-id"), sessionId),
+      ),
+      lean: false,
+    });
   }
 }

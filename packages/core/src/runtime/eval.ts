@@ -10,6 +10,28 @@ interface EvalAPI {
   call(name: string, input: Json): Promise<Json>;
 }
 
+try {
+  const result = await run();
+  writeFileSync(3, `${JSON.stringify({ ok: true, result })}\n`);
+  process.exit(0);
+} catch (error) {
+  writeFileSync(
+    3,
+    `${JSON.stringify({
+      ok: false,
+      error: {
+        type: "error",
+        code: isFault(error) ? error.code : "eval",
+        message: error instanceof Error ? error.message : String(error),
+        details: isFault(error) ? error.details : null,
+      },
+    })}\n`,
+  );
+  process.exit(1);
+}
+
+// -- Private helpers --
+
 async function run(): Promise<Json> {
   const options = z
     .strictObject({
@@ -56,24 +78,4 @@ async function run(): Promise<Json> {
   const result = await evaluate(api, q);
   if (result === undefined) throw new Fault("eval", "Eval must return a JSON value; use return");
   return z.json().parse(result);
-}
-
-try {
-  const result = await run();
-  writeFileSync(3, `${JSON.stringify({ ok: true, result })}\n`);
-  process.exit(0);
-} catch (error) {
-  writeFileSync(
-    3,
-    `${JSON.stringify({
-      ok: false,
-      error: {
-        type: "error",
-        code: isFault(error) ? error.code : "eval",
-        message: error instanceof Error ? error.message : String(error),
-        details: isFault(error) ? error.details : null,
-      },
-    })}\n`,
-  );
-  process.exit(1);
 }

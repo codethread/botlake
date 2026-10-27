@@ -2,19 +2,6 @@ import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-function execute(
-  file: string,
-  args: string[],
-  options: { timeout?: number; maxBuffer?: number; env?: NodeJS.ProcessEnv } = {},
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(file, args, options, (error, stdout) => {
-      if (error === null) resolve(stdout);
-      else reject(new Error(error.message, { cause: error }));
-    });
-  });
-}
-
 export async function nativeProject(cwd: string): Promise<string | null> {
   let common: string;
   try {
@@ -50,4 +37,19 @@ export async function bl(
   );
 
   return JSON.parse(stdout);
+}
+
+// -- Private helpers --
+
+function execute(
+  file: string,
+  args: string[],
+  options: { timeout?: number; maxBuffer?: number; env?: NodeJS.ProcessEnv } = {},
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (error, stdout) => {
+      if (error === null) resolve(stdout);
+      else reject(new Error(error.message, { cause: error }));
+    });
+  });
 }

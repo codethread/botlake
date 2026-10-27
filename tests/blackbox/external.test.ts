@@ -81,11 +81,11 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       );
       await Bun.write(
         join(workspace, "node_modules/private-value/index.ts"),
-        `export default ${JSON.stringify(name)};`,
+        `export const value = ${JSON.stringify(name)};`,
       );
       await Bun.write(
         join(workspace, "deps.ts"),
-        `import value from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.object({}),output:z.string(),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.object({value:z.string(),operation:z.string().default("echo")}),output:z.string(),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
+        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.object({}),output:z.string(),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.object({value:z.string(),operation:z.string().default("echo")}),output:z.string(),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
       );
       await host.botlake(["lake", "start", "--workspace", workspace]);
       expect(await host.bl(name, "dep", {})).toBe(name);

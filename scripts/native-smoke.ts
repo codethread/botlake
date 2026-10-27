@@ -18,39 +18,6 @@ const evidence: unknown[] = [];
 const marker = "BL_NATIVE_SMOKE";
 const prompt = `Do not use tools or edit files. Reply with ${marker} followed by your exact Botlake identity from your system/developer context.`;
 
-function check(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new Error(message);
-}
-
-async function credential(source: string, target: string): Promise<void> {
-  if (await Bun.file(source).exists()) {
-    await copyFile(source, target);
-    await chmod(target, 0o600);
-  }
-}
-
-async function exec(command: string[], cwd: string, env = host.env, stdin = ""): Promise<string> {
-  const child = Bun.spawn(command, {
-    cwd,
-    env,
-    stdin: new Blob([stdin]),
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: 120_000,
-  });
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (code !== 0) throw new Error(`${command[0]} exited ${code}: ${stderr}`);
-  if (
-    stderr.includes("Botlake tracking unavailable") ||
-    stderr.includes("Botlake native adapter failed")
-  )
-    throw new Error(stderr);
-  return stdout;
-}
 try {
   const workspace = await host.workspace("native-smoke", [
     "@botlake/extension-identity",
@@ -271,4 +238,40 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
   } finally {
     await host.close();
   }
+}
+
+// -- Private helpers --
+
+function check(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+async function credential(source: string, target: string): Promise<void> {
+  if (await Bun.file(source).exists()) {
+    await copyFile(source, target);
+    await chmod(target, 0o600);
+  }
+}
+
+async function exec(command: string[], cwd: string, env = host.env, stdin = ""): Promise<string> {
+  const child = Bun.spawn(command, {
+    cwd,
+    env,
+    stdin: new Blob([stdin]),
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 120_000,
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  if (code !== 0) throw new Error(`${command[0]} exited ${code}: ${stderr}`);
+  if (
+    stderr.includes("Botlake tracking unavailable") ||
+    stderr.includes("Botlake native adapter failed")
+  )
+    throw new Error(stderr);
+  return stdout;
 }

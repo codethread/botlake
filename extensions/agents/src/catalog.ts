@@ -20,6 +20,19 @@ export const seatSchema = z.strictObject({
   systemPrompt: z.string().default(""),
 });
 
+const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
+  z.union([
+    text,
+    z.tuple([z.literal("and"), conditionSchema]).rest(conditionSchema),
+    z.tuple([z.literal("or"), conditionSchema]).rest(conditionSchema),
+    z.tuple([z.literal("not"), conditionSchema]),
+  ]),
+);
+
+const schemas = configSchemas(systemPromptSchema);
+
+export const agentConfigSchema = schemas.config;
+
 export type Seat = Omit<z.input<typeof seatSchema>, "systemPrompt"> & {
   systemPrompt?: SystemPrompt;
 };
@@ -30,59 +43,27 @@ type ResolvedSeat = Omit<z.output<typeof seatSchema>, "systemPrompt"> & {
 
 export type Condition = string | ["and" | "or", Condition, ...Condition[]] | ["not", Condition];
 
-const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
-  z.union([
-    text,
-    z.tuple([z.literal("and"), conditionSchema]).rest(conditionSchema),
-    z.tuple([z.literal("or"), conditionSchema]).rest(conditionSchema),
-    z.tuple([z.literal("not"), conditionSchema]),
-  ]),
-);
-
-function configSchemas<P extends z.ZodType>(prompt: P) {
-  const descriptor = {
-    doc: text.optional(),
-    when: conditionSchema.optional(),
-    ...settings,
-    systemPrompt: prompt.optional(),
-  };
-  const aliasDescriptor = z.strictObject({ parent: text, ...descriptor });
-  const candidate = z.union([
-    text,
-    aliasDescriptor,
-    z.strictObject({ provider: providerNameSchema, ...descriptor }),
-  ]);
-  const alias = z.union([candidate, z.array(candidate).min(1)]);
-  return {
-    aliasDescriptor,
-    candidate,
-    alias,
-    config: z.strictObject({
-      aliases: z.record(text, alias).default({}),
-      unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
-    }),
-  };
-}
-
-const schemas = configSchemas(systemPromptSchema);
-export const agentConfigSchema = schemas.config;
 export type Alias = z.input<typeof schemas.alias>;
+
 type Candidate = z.output<typeof schemas.candidate>;
 
 export type AgentConfig = z.input<typeof agentConfigSchema>;
 
-export function agentConfigJsonSchema(): unknown {
-  // JSON configuration supports text; callbacks belong to TypeScript configuration.
-  return z.toJSONSchema(configSchemas(z.string()).config, { io: "input" });
-}
-
+// A closed JSON payload needs the implicit index signature supplied by a type alias.
 type Reason = {
+  /** Seat whose resolution failed. */
   name: string;
+  /** Category explaining why this seat or candidate is unavailable. */
   reason: "not-registered" | "cycle" | "disabled" | "condition" | "candidate";
+  /** Provider flag responsible for a disabled seat. */
   flag?: string;
+  /** Candidate condition that evaluated to false. */
   when?: Condition;
+  /** Zero-based candidate index when resolving an alias. */
   candidate?: number;
+  /** Parent seat selected by the unavailable candidate. */
   parent?: string;
+  /** Nested failures explaining an unavailable parent. */
   causes?: Reason[];
 };
 
@@ -95,6 +76,11 @@ type Resolution =
       selectedCandidate?: number;
     }
   | { available: false; doc: string | null; reasons: Reason[] };
+
+export function agentConfigJsonSchema(): unknown {
+  // JSON configuration supports text; callbacks belong to TypeScript configuration.
+  return z.toJSONSchema(configSchemas(z.string()).config, { io: "input" });
+}
 
 export class Catalog {
   private readonly aliases = new Map<string, Candidate[]>();
@@ -109,18 +95,6 @@ export class Catalog {
         throw new Fault("collision", `Duplicate alias: ${name}`);
       this.aliases.set(name, Array.isArray(value) ? value : [value]);
     }
-  }
-
-  private condition(value: Condition): boolean {
-    if (typeof value === "string") return this.flag(value) === true;
-
-    const [operator, first, ...rest] = value;
-
-    return match(operator)
-      .with("and", () => [first, ...rest].every((part) => this.condition(part)))
-      .with("or", () => [first, ...rest].some((part) => this.condition(part)))
-      .with("not", () => !this.condition(first))
-      .exhaustive();
   }
 
   availability(name: string, seen: Set<string> = new Set()): Resolution {
@@ -219,17 +193,6 @@ export class Catalog {
     };
   }
 
-  private summary(resolved: Resolution): unknown {
-    if (!resolved.available) return resolved;
-
-    const {
-      settings: { extraArgs: _, systemPrompt: __, ...effective },
-      ...selection
-    } = resolved;
-
-    return { ...selection, ...effective };
-  }
-
   list(): Record<string, unknown> {
     return Object.fromEntries(
       [...this.providers.map((entry) => entry.name), ...this.aliases.keys()].map((name) => [
@@ -263,4 +226,56 @@ export class Catalog {
       ),
     };
   }
+
+  // -- Private helpers --
+
+  private condition(value: Condition): boolean {
+    if (typeof value === "string") return this.flag(value) === true;
+
+    const [operator, first, ...rest] = value;
+
+    return match(operator)
+      .with("and", () => [first, ...rest].every((part) => this.condition(part)))
+      .with("or", () => [first, ...rest].some((part) => this.condition(part)))
+      .with("not", () => !this.condition(first))
+      .exhaustive();
+  }
+
+  private summary(resolved: Resolution): unknown {
+    if (!resolved.available) return resolved;
+
+    const {
+      settings: { extraArgs: _, systemPrompt: __, ...effective },
+      ...selection
+    } = resolved;
+
+    return { ...selection, ...effective };
+  }
+}
+
+// -- Private helpers --
+
+function configSchemas<P extends z.ZodType>(prompt: P) {
+  const descriptor = {
+    doc: text.optional(),
+    when: conditionSchema.optional(),
+    ...settings,
+    systemPrompt: prompt.optional(),
+  };
+  const aliasDescriptor = z.strictObject({ parent: text, ...descriptor });
+  const candidate = z.union([
+    text,
+    aliasDescriptor,
+    z.strictObject({ provider: providerNameSchema, ...descriptor }),
+  ]);
+  const alias = z.union([candidate, z.array(candidate).min(1)]);
+  return {
+    aliasDescriptor,
+    candidate,
+    alias,
+    config: z.strictObject({
+      aliases: z.record(text, alias).default({}),
+      unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
+    }),
+  };
 }

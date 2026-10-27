@@ -45,21 +45,6 @@ interface PiApi {
   ): void;
 }
 
-async function parentSession(path: string): Promise<string> {
-  const stream = createReadStream(path, { encoding: "utf8" });
-  const lines = createInterface({ input: stream });
-  try {
-    for await (const line of lines) {
-      return z.object({ type: z.literal("session"), id: z.string().min(1) }).parse(JSON.parse(line))
-        .id;
-    }
-    throw new Error("Native parent session has no header");
-  } finally {
-    lines.close();
-    stream.destroy();
-  }
-}
-
 export default function identityExtension(pi: PiApi): void {
   let managedSession = process.env["BL_NATIVE_SESSION_ID"];
   let parentNativeSessionId: string | undefined;
@@ -157,4 +142,21 @@ export default function identityExtension(pi: PiApi): void {
     }
     return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
   });
+}
+
+// -- Private helpers --
+
+async function parentSession(path: string): Promise<string> {
+  const stream = createReadStream(path, { encoding: "utf8" });
+  const lines = createInterface({ input: stream });
+  try {
+    for await (const line of lines) {
+      return z.object({ type: z.literal("session"), id: z.string().min(1) }).parse(JSON.parse(line))
+        .id;
+    }
+    throw new Error("Native parent session has no header");
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
 }

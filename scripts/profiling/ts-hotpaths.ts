@@ -11,19 +11,6 @@ const queries = z
 const runtime = new Runtime({ database });
 const records: unknown[] = [];
 
-async function measure(name: string, run: () => unknown): Promise<void> {
-  const warmup = performance.now() + 500;
-  while (performance.now() < warmup) await run();
-  const samples: number[] = [];
-  const until = performance.now() + 2000;
-  while (performance.now() < until) {
-    const start = performance.now();
-    await run();
-    samples.push(performance.now() - start);
-  }
-  samples.sort((a, b) => a - b);
-  records.push({ name, n: samples.length, medianMs: samples[Math.floor(samples.length / 2)] });
-}
 try {
   await runtime.start([batteriesExtension]);
   records.push({
@@ -65,4 +52,20 @@ try {
   process.stdout.write(`${JSON.stringify(records, null, 2)}\n`);
 } finally {
   await runtime.stop();
+}
+
+// -- Private helpers --
+
+async function measure(name: string, run: () => unknown): Promise<void> {
+  const warmup = performance.now() + 500;
+  while (performance.now() < warmup) await run();
+  const samples: number[] = [];
+  const until = performance.now() + 2000;
+  while (performance.now() < until) {
+    const start = performance.now();
+    await run();
+    samples.push(performance.now() - start);
+  }
+  samples.sort((a, b) => a - b);
+  records.push({ name, n: samples.length, medianMs: samples[Math.floor(samples.length / 2)] });
 }
