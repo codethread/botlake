@@ -61,7 +61,7 @@ async function parentSession(path: string): Promise<string> {
 }
 
 export default function identityExtension(pi: PiApi): void {
-  let managedSession = process.env["BOTLAKE_NATIVE_SESSION_ID"];
+  let managedSession = process.env["BL_NATIVE_SESSION_ID"];
   let parentNativeSessionId: string | undefined;
   function observation(ctx: PiContext, event: NativeEvent): NativeObservation {
     return {
@@ -83,19 +83,18 @@ export default function identityExtension(pi: PiApi): void {
   }
   function local(ctx: PiContext): string {
     const input = observation(ctx, "metadata");
-    Object.assign(process.env, sessionEnvironment(input));
+    for (const [key, value] of Object.entries(sessionEnvironment(input, process.env))) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     const identity = sessionIdentity(input);
     if (ctx.hasUI === true) ctx.ui?.setStatus("botlake-identity", identity);
-    return identityInstruction(identity);
+    return identityInstruction(identity, true);
   }
   async function report(ctx: PiContext, event: NativeEvent, nativeEvent: string): Promise<void> {
     const input = observation(ctx, event);
     const child = process.env["PI_SUBAGENT"] === "1";
-    if (
-      managedSession === undefined &&
-      process.env["BOTLAKE_RUN_REFERENCE"] !== undefined &&
-      !child
-    )
+    if (managedSession === undefined && process.env["BL_RUN_REFERENCE"] !== undefined && !child)
       managedSession = input.nativeSessionId;
     local(ctx);
     const result = await reportNative(
@@ -111,7 +110,7 @@ export default function identityExtension(pi: PiApi): void {
   }
   pi.on("session_start", async (_, ctx) => {
     parentNativeSessionId =
-      process.env["PI_SUBAGENT"] === "1" && process.env["BOTLAKE_NATIVE_PROVIDER"] === "pi"
+      process.env["PI_SUBAGENT"] === "1" && process.env["BL_NATIVE_PROVIDER"] === "pi"
         ? managedSession
         : undefined;
     const parent = ctx.sessionManager.getHeader?.()?.parentSession;

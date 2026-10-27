@@ -30,8 +30,8 @@ if(name!=="codex" && (option(name==="pi"?"--thinking":"--effort")!=="medium" || 
 const resumed=name==="codex"?args.includes("resume"):args.includes(name==="pi"?"--session":"--resume");
 if(args.includes("--session-id"))throw new Error("Fresh sessions must be native-owned");
 const session=resumed?(name==="codex"?args.at(-2):option(name==="pi"?"--session":"--resume")):"native-"+crypto.randomUUID();
-const [runId,invocation]=process.env.BOTLAKE_RUN_REFERENCE.split(":");
-const binding=spawnSync(process.env.BOTLAKE_BL_BIN,["--workspace",process.env.BOTLAKE_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId,invocation}),"agent"],{encoding:"utf8"});
+const [runId,invocation]=process.env.BL_RUN_REFERENCE.split(":");
+const binding=spawnSync(process.env.BL_BIN,["--workspace",process.env.BL_WORKSPACE,"--input",JSON.stringify({command:"native",provider:name,cwd:process.cwd(),nativeSessionId:session,runId,invocation}),"agent"],{encoding:"utf8"});
 if(binding.status!==0)throw new Error(binding.stderr);
 const emit=event=>console.log(JSON.stringify(event));
 if(name==="claude") {

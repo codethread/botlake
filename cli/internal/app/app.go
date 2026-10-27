@@ -64,7 +64,7 @@ type Daemon struct {
 }
 
 func Home() string {
-	if home := os.Getenv("BOTLAKE_HOME"); home != "" {
+	if home := os.Getenv("BL_HOME"); home != "" {
 		return home
 	}
 
@@ -77,7 +77,7 @@ func Home() string {
 }
 
 func Core() string {
-	if path := os.Getenv("BOTLAKE_CORE"); path != "" {
+	if path := os.Getenv("BL_CORE"); path != "" {
 		return path
 	}
 

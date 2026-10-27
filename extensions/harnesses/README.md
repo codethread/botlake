@@ -75,4 +75,6 @@ Each `Provider` supplies `name`, catalog `doc`, `prepare(run)` and `finish(run, 
 
 [Native adapters](../../plugins/identity/README.md) are separately delivered as `@botlake/identity`. Harnesses never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
 
+Managed launches set `BL_AGENT_SEAT` and configured `BL_MODEL`/`BL_EFFORT`, clearing inherited tracking values when unknown. `BL_ACTOR` is supplied for verified resumes; native adapters establish it for fresh sessions. `bl agent native` defaults metadata from the caller's environment, with explicit fields taking precedence.
+
 `harness/integration` distinguishes `unobserved`, `native` and `output`. Missing plugins do not fail an otherwise successful run: native output can confirm identity, but does not fabricate activity or model metadata. Resume requires confirmed session evidence and settled custody. Activity snapshots are observations, not process state; successful processes do not automatically close their tasks.

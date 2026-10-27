@@ -116,6 +116,7 @@ export class NativeSessions {
             event: input.event,
             at: this.ctx.clock.now(),
             activity: session.attributes["identity/activity"] ?? "unknown",
+            agentSeat: session.attributes["identity/agent-seat"] ?? null,
             model: session.attributes["identity/model"] ?? null,
             thinkingLevel: session.attributes["identity/thinking-level"] ?? null,
             cwd: input.cwd,

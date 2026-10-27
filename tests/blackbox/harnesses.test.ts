@@ -25,13 +25,13 @@ test("Harnesses publishes, binds actual native sessions, fences writes, reconcil
     await Bun.write(
       childPath,
       `import {spawnSync} from "node:child_process"; import {existsSync,writeFileSync} from "node:fs";
-const session=process.env.BOTLAKE_SESSION_ID??crypto.randomUUID(); const prompt=process.env.TEST_PROMPT; const marker=${JSON.stringify(join(workspace, "attempted"))}; const skip=prompt==="retry"&&existsSync(marker);
+const session=process.env.BL_SESSION_ID??crypto.randomUUID(); const prompt=process.env.TEST_PROMPT; const marker=${JSON.stringify(join(workspace, "attempted"))}; const skip=prompt==="retry"&&existsSync(marker);
 if(!skip){const reply=spawnSync("bun",[${JSON.stringify(join(workspace, "node_modules/@botlake/identity/hook.ts"))},"codex"],{encoding:"utf8",input:JSON.stringify({hook_event_name:"SessionStart",session_id:session,cwd:process.cwd(),source:"startup"})});if(reply.status!==0||!JSON.parse(reply.stdout).hookSpecificOutput)throw new Error(reply.stderr+reply.stdout);}
 if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify({type:"thread.started",thread_id:session}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"done"}}));if(prompt==="retry"&&!skip){writeFileSync(marker,"attempted");console.log(JSON.stringify({type:"turn.failed",error:{message:"first failure"}}));process.exitCode=1;}else console.log(JSON.stringify({type:"turn.completed"}));}`,
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BOTLAKE_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
+      `import {harnesses,provider} from "@botlake/extension-harnesses";const base=provider("codex");export default harnesses({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));

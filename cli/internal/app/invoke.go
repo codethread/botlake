@@ -95,8 +95,8 @@ func BL(args []string) int {
 		return 0
 	}
 
-	if mode := os.Getenv("BOTLAKE_ERROR_FORMAT"); mode != "" && mode != "plain" && mode != "pretty" && mode != "json" {
-		return cliFailure(errors.New("BOTLAKE_ERROR_FORMAT must be plain, pretty or json"), p.json)
+	if mode := os.Getenv("BL_ERROR_FORMAT"); mode != "" && mode != "plain" && mode != "pretty" && mode != "json" {
+		return cliFailure(errors.New("BL_ERROR_FORMAT must be plain, pretty or json"), p.json)
 	}
 
 	name, argv := args[0], append([]string{}, args[1:]...)
@@ -318,5 +318,5 @@ Examples (with Batteries selected):
 
 Help is formatted for a terminal. Redirected output remains JSON/NDJSON.
 Operation arguments belong to the selected extension; -- ends its flag parsing.
-NO_COLOR disables color. BOTLAKE_ERROR_FORMAT selects plain|pretty|json errors.
+NO_COLOR disables color. BL_ERROR_FORMAT selects plain|pretty|json errors.
 `

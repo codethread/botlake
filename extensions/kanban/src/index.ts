@@ -11,7 +11,7 @@ import {
   type Context,
   type Extension,
 } from "@botlake/core";
-import { attribute, attribution } from "@botlake/extension-identity";
+import { attribute, attribution, callerActor } from "@botlake/extension-identity";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -50,7 +50,7 @@ const linkSchema = z.strictObject({ workspace: text, card: text });
 
 const claimInput = z.strictObject({
   id: text,
-  owner: text,
+  owner: text.optional(),
   branch: text.optional(),
   worktree: text.optional(),
   runId: text.optional(),
@@ -175,7 +175,10 @@ export class Kanban {
   }
 
   add(raw: z.input<typeof addInput>): Node {
-    const input = addInput.parse(raw);
+    const input = addInput.parse({
+      ...raw,
+      byIdentity: raw.byIdentity ?? callerActor(this.ctx),
+    });
 
     return this.ctx.graph.atomic(() => {
       if (input.epic !== undefined) {
@@ -227,7 +230,11 @@ export class Kanban {
   }
 
   claim(raw: z.infer<typeof claimInput>): { result: string; claim: Node } {
-    const input = claimInput.parse(raw);
+    const input = claimInput.parse({
+      ...raw,
+      byIdentity: raw.byIdentity ?? callerActor(this.ctx),
+    });
+    const owner = requireValue(input.owner ?? callerActor(this.ctx), "Supply --owner or BL_ACTOR");
 
     return this.ctx.graph.atomic(() => {
       const target = this.writable(input.id);
@@ -237,7 +244,7 @@ export class Kanban {
         throw new Fault("claim", "Feature claim requires a branch");
       const attrs: Attributes = {
         "kanban/ownership-claim": true,
-        "kanban/owner": input.owner,
+        "kanban/owner": owner,
         "kanban/claimed-at": new Date(this.ctx.clock.now()).toISOString(),
       };
       if (input.branch !== undefined) attrs["kanban/branch"] = input.branch;
@@ -246,7 +253,7 @@ export class Kanban {
       if (input.byIdentity !== undefined) attrs["identity/by-identity"] = input.byIdentity;
 
       const previous = this.history(input.id).at(-1);
-      if (previous?.attributes["kanban/owner"] === input.owner) {
+      if (previous?.attributes["kanban/owner"] === owner) {
         for (const key of [
           "kanban/branch",
           "kanban/worktree",
@@ -271,7 +278,7 @@ export class Kanban {
         attributes: attrs,
       });
       this.ctx.graph.connect(claim.id, input.id, "claims");
-      attribute(this.ctx, claim.id, input.owner, "claimed");
+      attribute(this.ctx, claim.id, owner, "claimed");
       if (input.byIdentity !== undefined)
         attribute(this.ctx, claim.id, input.byIdentity, "attributed");
       if (target.attributes["kanban/card"] === true)
@@ -370,6 +377,10 @@ export class Kanban {
   }
 
   note(id: string, body: string, attributes: Attributes = {}): Node {
+    const defaultActor =
+      attributes["identity/by-identity"] === undefined ? callerActor(this.ctx) : undefined;
+    if (defaultActor !== undefined)
+      attributes = { ...attributes, "identity/by-identity": defaultActor };
     return this.ctx.graph.atomic(() => {
       this.target(id);
       const note = this.ctx.graph.note(id, body, attributes);
@@ -725,7 +736,7 @@ export function kanban(): Extension {
           input,
           output: z.json(),
           primer:
-            "Inspect board or next, add a feature and its tasks, then claim work with an owner and branch. Claims preserve ownership history. Finish records a work outcome; an agent process exiting does not finish its card. Linked cards are read-only mirrors: change the downstream card and refresh the snapshot.",
+            "Inspect board or next, add a feature and its tasks, then claim work with an owner and branch. Authorship and omitted claim owners default to the caller's BL_ACTOR; explicit flags win. Claims preserve ownership history. Finish records a work outcome; an agent process exiting does not finish its card. Linked cards are read-only mirrors: change the downstream card and refresh the snapshot.",
           cli: {
             description: "Boards, ownership, tasks and linked cards",
             examples: [
@@ -744,7 +755,11 @@ export function kanban(): Extension {
                   priority: { type: "string" },
                   body: { type: "string" },
                   epic: { type: "string" },
-                  "by-identity": { key: "byIdentity", type: "string" },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Author (defaults to BL_ACTOR)",
+                  },
                   "reported-by": { key: "reportedBy", type: "string" },
                   labels: { type: "string", multiple: true },
                 },
@@ -762,10 +777,14 @@ export function kanban(): Extension {
                 description: "Claim or hand off",
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
-                  owner: { type: "string", required: true },
+                  owner: { type: "string", description: "Owner (defaults to BL_ACTOR)" },
                   branch: { type: "string" },
                   worktree: { type: "string" },
-                  "by-identity": { key: "byIdentity", type: "string" },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Author (defaults to BL_ACTOR)",
+                  },
                   "run-id": { key: "runId", type: "string" },
                 },
               },
@@ -855,7 +874,11 @@ export function kanban(): Extension {
                   { name: "text", type: "string", required: true },
                 ],
                 flags: {
-                  "by-identity": { key: "byIdentity", type: "string" },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Author (defaults to BL_ACTOR)",
+                  },
                   kind: { type: "string" },
                 },
               },

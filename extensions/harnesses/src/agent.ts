@@ -1,5 +1,5 @@
 import { defineOp, type Context } from "@botlake/core";
-import { registrationSchema } from "@botlake/native-session";
+import { agentMetadata, registrationSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -85,8 +85,17 @@ export function registerAgent(ctx: Context, service: Harnesses): void {
               "native-event": { key: "nativeEvent", type: "string" },
               "session-path": { key: "sessionPath", type: "string" },
               capabilities: { type: "string", multiple: true },
-              model: { type: "string" },
-              "thinking-level": { key: "thinkingLevel", type: "string" },
+              "agent-seat": {
+                key: "agentSeat",
+                type: "string",
+                description: "Seat (defaults to BL_AGENT_SEAT)",
+              },
+              model: { type: "string", description: "Model (defaults to BL_MODEL)" },
+              "thinking-level": {
+                key: "thinkingLevel",
+                type: "string",
+                description: "Effort (defaults to BL_EFFORT)",
+              },
             },
           },
           start: {
@@ -135,7 +144,10 @@ export function registerAgent(ctx: Context, service: Harnesses): void {
           .with({ command: "native" }, (commandInput) => {
             const { command: _, ...request } = commandInput;
 
-            return service.native(request);
+            return service.native({
+              ...request,
+              ...agentMetadata(request, ctx.env.bl),
+            });
           })
           .exhaustive();
 

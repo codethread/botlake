@@ -107,7 +107,7 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 
 `botlake lake start|restart|stop|status --workspace PATH|NAME` manages one worker; `botlake lake list` lists published routes. Without `--workspace`, CLI commands read `.git` and linked-worktree `commondir` metadata directly—no Git subprocess—to select the main checkout's `.botlake/package.json` and database, ignoring worktree-local configs. Invocation context still reports the actual worktree. Non-Git directories and layouts whose common directory is not named `.git` require `--workspace`. Explicit paths or published names bypass discovery, allowing isolated lakes. Names default to the workspace directory basename; duplicate names fail before activation. Bare selections prefer published names; explicit paths select paths. Replacement reloads configuration and publishes the new name only after readiness. `botlake status`, `restart-host`, `host-status`, and `stop` manage the daemon/pool.
 
-`BOTLAKE_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BOTLAKE_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
+`BL_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BL_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
 
 Extensions read the environment supplied to `botlake lake start|restart` through `ctx.env.lake`, and each invoking `bl` or lake eval caller's environment through `ctx.env.bl`. Values stay in their own namespaces; caller values apply only to that invocation.
 
@@ -132,7 +132,7 @@ JS
 
 `botlake lake eval [--workspace PATH|NAME] [--cwd DIR] [--timeout 5s] CODE|@FILE|-` accepts inline code, a caller-relative file or stdin. Source is a JavaScript async function body, not a module: use `await` and explicitly `return` a JSON value. `q` supplies the [core predicate builders](packages/core/README.md#queries); `api.call(OP, INPUT)` invokes selected operations with JSON input and returns their JSON result. No extensions are implicitly selected; the example requires Batteries. Streams are rejected.
 
-Evaluation runs in a separate local Bun process, never inside the lake. Script output goes to stderr; only the returned JSON goes to stdout. Errors exit nonzero. The default 30s deadline covers execution and all calls, including synchronous loops. Workspace discovery and relative paths use the caller’s directory or `--cwd`; `BOTLAKE_CORE` selects the evaluator package too.
+Evaluation runs in a separate local Bun process, never inside the lake. Script output goes to stderr; only the returned JSON goes to stdout. Errors exit nonzero. The default 30s deadline covers execution and all calls, including synchronous loops. Workspace discovery and relative paths use the caller’s directory or `--cwd`; `BL_CORE` selects the evaluator package too.
 
 This is trusted scripting, not a sandbox or read-only access. Scripts have the caller’s OS permissions; operations may mutate data, and completed mutations are not rolled back on error or timeout. Calls are not a shared snapshot. List/ready still default to 100 results (maximum 10,000); do not mistake limited selections for complete join inputs. Their shell flags omit `--where`; programmatic input and `bl --input` still accept predicates.
 

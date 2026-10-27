@@ -445,7 +445,7 @@ export default {name:"payloads",activate(ctx){
       workspace: "not-running",
       payload: { name: "echo", argv: [":stdin"], payloads: { stdin: "attached" }, is_tty: false },
     });
-    const unavailable = { BOTLAKE_HOME: join(host.dir, "absent") };
+    const unavailable = { BL_HOME: join(host.dir, "absent") };
     expect((await runCli(host, ["--help"], "", unavailable)).stdout).toContain("--stdin");
     expect(
       JSON.parse((await runCli(host, ["--json", "--help"], "", unavailable)).stdout),
@@ -455,7 +455,7 @@ export default {name:"payloads",activate(ctx){
       protocol_version: 1,
     });
     const error = await runCli(host, [...prefix, "unknown"], "", {
-      BOTLAKE_ERROR_FORMAT: "json",
+      BL_ERROR_FORMAT: "json",
     });
     expect(error.code).toBe(1);
     expect(error.stdout).toBe("");

@@ -11,6 +11,8 @@ import {
 } from "@botlake/core";
 import {
   activitySchema,
+  agentMetadata,
+  agentMetadataSchema,
   identityInstruction,
   observedActivity,
   sessionIdentity,
@@ -25,11 +27,14 @@ const text = z.string().trim().min(1);
 
 export const startupSchema = sessionSchema.extend({
   parentNativeSessionId: text.optional(),
-  model: text.nullable().optional(),
-  thinkingLevel: text.nullable().optional(),
+  ...agentMetadataSchema.shape,
 });
 
 export type Startup = z.infer<typeof startupSchema>;
+
+export function callerActor(ctx: Context): string | undefined {
+  return text.optional().parse(ctx.env.bl["BL_ACTOR"]);
+}
 
 export function identityRecords(graph: Graph): Node[] {
   return graph.all({ where: q.eq(q.attr("identity/session"), true), lean: false });
@@ -82,6 +87,7 @@ export function nativeStartup(
     });
 
     const patch: Attributes = {};
+    if (input.agentSeat !== undefined) patch["identity/agent-seat"] = input.agentSeat;
     if (input.model !== undefined) patch["identity/model"] = input.model;
     if (input.thinkingLevel !== undefined) patch["identity/thinking-level"] = input.thinkingLevel;
     if (Object.keys(patch).length > 0) ctx.graph.update(record.id, { attributes: patch });
@@ -175,14 +181,14 @@ export function identity(): Extension {
       ctx.graph.declareAcyclic("spawned");
       const commandSchema = z.discriminatedUnion("command", [
         startupSchema.extend({ command: z.literal("startup") }),
-        z.strictObject({ command: z.literal("show"), identity: text }),
+        z.strictObject({ command: z.literal("show"), identity: text.optional() }),
         z.strictObject({ command: z.literal("list") }),
       ]);
       ctx.register(
         defineOp({
           name: "identity",
           primer:
-            "Native sessions derive deterministic identities from provider and native session id. Show includes the last reported activity and metadata, not a liveness guarantee. Identity grants no process custody or task completion authority.",
+            "Native sessions derive deterministic identities from provider and native session id. Show defaults to the caller's BL_ACTOR. Startup defaults agent seat, model and thinking level from BL_AGENT_SEAT, BL_MODEL and BL_EFFORT; explicit input wins. Show includes the last reported activity and metadata, not a liveness guarantee. Identity grants no process custody or task completion authority.",
           input: commandSchema,
           output: z.json(),
           cli: {
@@ -195,13 +201,22 @@ export function identity(): Extension {
                   provider: { type: "string", required: true },
                   "native-session-id": { key: "nativeSessionId", type: "string", required: true },
                   "parent-native-session-id": { key: "parentNativeSessionId", type: "string" },
-                  model: { type: "string" },
-                  "thinking-level": { key: "thinkingLevel", type: "string" },
+                  "agent-seat": {
+                    key: "agentSeat",
+                    type: "string",
+                    description: "Seat (defaults to BL_AGENT_SEAT)",
+                  },
+                  model: { type: "string", description: "Model (defaults to BL_MODEL)" },
+                  "thinking-level": {
+                    key: "thinkingLevel",
+                    type: "string",
+                    description: "Effort (defaults to BL_EFFORT)",
+                  },
                 },
               },
               show: {
-                description: "Identity and last reported native activity",
-                positionals: [{ name: "identity", type: "string", required: true }],
+                description: "Identity and last reported native activity (defaults to BL_ACTOR)",
+                positionals: [{ name: "identity", type: "string" }],
               },
               list: { description: "List native identities" },
             },
@@ -211,14 +226,20 @@ export function identity(): Extension {
               case "startup": {
                 const { command: _, ...request } = input;
 
-                return nativeStartup(ctx, request);
+                return nativeStartup(ctx, {
+                  ...request,
+                  ...agentMetadata(request, ctx.env.bl),
+                });
               }
-              case "show":
+              case "show": {
+                const name = requireValue(
+                  input.identity ?? callerActor(ctx),
+                  "Supply identity or BL_ACTOR",
+                );
                 return z
                   .json()
-                  .parse(
-                    requireValue(resolveIdentity(ctx.graph, input.identity), "Unknown identity"),
-                  );
+                  .parse(requireValue(resolveIdentity(ctx.graph, name), "Unknown identity"));
+              }
               case "list":
                 return z.json().parse(identityRecords(ctx.graph));
             }

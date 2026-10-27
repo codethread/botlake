@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 
 import {
+  agentMetadata,
   bindingSchema,
   identityInstruction,
   sessionIdentity,
@@ -24,15 +25,18 @@ export async function reportNative(
   env: NodeJS.ProcessEnv,
   unmanaged = false,
 ): Promise<SessionReport> {
+  // Native children must not borrow their parent's seat/model/effort when the host omits them.
+  if (observation.parentNativeSessionId !== undefined)
+    env = { ...env, BL_AGENT_SEAT: undefined, BL_MODEL: undefined, BL_EFFORT: undefined };
   const identity = sessionIdentity(observation);
   const local = { identity, instruction: identityInstruction(identity) };
 
   try {
-    const explicit = env["BOTLAKE_WORKSPACE"];
+    const explicit = env["BL_WORKSPACE"];
     const workspace =
       explicit === undefined ? await nativeProject(observation.cwd) : realpathSync(explicit);
     if (workspace === null) return { ...local, tracking: "outside-workspace" };
-    const reference = unmanaged ? undefined : env["BOTLAKE_RUN_REFERENCE"];
+    const reference = unmanaged ? undefined : env["BL_RUN_REFERENCE"];
     const parts = reference?.split(":");
     if (parts !== undefined && (parts.length !== 2 || parts.some((part) => part.length === 0)))
       throw new Error("Malformed managed run reference");
@@ -59,10 +63,20 @@ export async function reportNative(
   }
 }
 
-export function sessionEnvironment(observation: NativeObservation): Record<string, string> {
+export function sessionEnvironment(
+  observation: NativeObservation,
+  env: NodeJS.ProcessEnv,
+): Record<string, string | undefined> {
+  const metadata = agentMetadata(
+    observation,
+    observation.parentNativeSessionId === undefined ? env : {},
+  );
   return {
-    BOTLAKE_IDENTITY: sessionIdentity(observation),
-    BOTLAKE_NATIVE_SESSION_ID: observation.nativeSessionId,
-    BOTLAKE_NATIVE_PROVIDER: observation.provider,
+    BL_ACTOR: sessionIdentity(observation),
+    BL_AGENT_SEAT: metadata.agentSeat ?? undefined,
+    BL_MODEL: metadata.model ?? undefined,
+    BL_EFFORT: metadata.thinkingLevel ?? undefined,
+    BL_NATIVE_SESSION_ID: observation.nativeSessionId,
+    BL_NATIVE_PROVIDER: observation.provider,
   };
 }

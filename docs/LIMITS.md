@@ -15,7 +15,7 @@ Catalog aliases support documented seats, inheritance, flag expressions and orde
 
 Provider tests use deterministic subprocess fixtures, not live model accounts. Configured model names do not establish installed CLI/model availability. Optional native events remain unknown when unavailable; GUI coverage requires a host that actually runs the adapters.
 
-`bun scripts/native-smoke.ts both /tmp/native-smoke.json` probes authenticated Pi and Codex against Luna: managed start/resume, direct native registration, identity context and lifecycle metadata. Use `pi` or `codex` to select one; `BOTLAKE_SMOKE_PI_MODEL` and `BOTLAKE_SMOKE_CODEX_MODEL` override models. It copies existing native credentials into disposable homes, uses packed plugins and a disposable database, and removes them on exit. It never installs plugins globally or restarts the live runtime.
+`bun scripts/native-smoke.ts both /tmp/native-smoke.json` probes authenticated Pi and Codex against Luna: managed start/resume, direct native registration, identity context and lifecycle metadata. Use `pi` or `codex` to select one; `BL_SMOKE_PI_MODEL` and `BL_SMOKE_CODEX_MODEL` override models. It copies existing native credentials into disposable homes, uses packed plugins and a disposable database, and removes them on exit. It never installs plugins globally or restarts the live runtime.
 
 ## Measurements
 

@@ -41,7 +41,7 @@ func cliFailure(err error, forceJSON bool) int {
 }
 
 func renderError(raw json.RawMessage, forceJSON bool) int {
-	mode := os.Getenv("BOTLAKE_ERROR_FORMAT")
+	mode := os.Getenv("BL_ERROR_FORMAT")
 	if forceJSON || mode == "json" {
 		fmt.Fprintln(os.Stderr, string(raw))
 

@@ -37,7 +37,7 @@ export async function bl(
   env: NodeJS.ProcessEnv,
 ): Promise<unknown> {
   const stdout = await execute(
-    env["BOTLAKE_BL_BIN"] ?? "bl",
+    env["BL_BIN"] ?? "bl",
     ["--workspace", workspace, "--input", JSON.stringify(input), "agent"],
     { timeout: 5000, maxBuffer: 1024 * 1024, env },
   );

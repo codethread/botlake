@@ -1,5 +1,6 @@
 import { appendFile } from "node:fs/promises";
 
+import { identityInstruction } from "@botlake/native-session";
 import { z } from "zod";
 
 import { sessionEnvironment } from "../session.ts";
@@ -38,11 +39,18 @@ export const claude: HookAdapter = {
   async deliver(event, report, env) {
     const path = env["CLAUDE_ENV_FILE"];
     if (event.nativeEvent === "SessionStart" && path !== undefined) {
-      const exports = Object.entries(sessionEnvironment(event.observation)).map(
-        ([key, value]) => `export ${key}='${value.replaceAll("'", "'\\''")}'`,
+      const exports = Object.entries(sessionEnvironment(event.observation, env)).map(
+        ([key, value]) =>
+          value === undefined
+            ? `unset ${key}`
+            : `export ${key}='${value.replaceAll("'", "'\\''")}'`,
       );
       try {
         await appendFile(path, `${exports.join("\n")}\n`);
+        return contextOutput(event, {
+          ...report,
+          instruction: identityInstruction(report.identity, true),
+        });
       } catch (error) {
         const message = `Botlake shell identity unavailable: ${String(error)}`;
         process.stderr.write(`${message}\n`);

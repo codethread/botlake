@@ -70,9 +70,9 @@ export async function system(): Promise<{
   await install(engine, { "@botlake/core": core });
   const env = {
     ...process.env,
-    BOTLAKE_HOME: home,
-    BOTLAKE_CORE: join(engine, "node_modules/@botlake/core"),
-    BOTLAKE_BL_BIN: blBin,
+    BL_HOME: home,
+    BL_CORE: join(engine, "node_modules/@botlake/core"),
+    BL_BIN: blBin,
   };
   for (const [name, binary] of [
     ["botlake", botlakeBin],

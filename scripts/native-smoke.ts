@@ -15,7 +15,7 @@ const runSchema = z.object({ id: z.string(), attributes: z.record(z.string(), z.
 const host = await system();
 const owned: string[] = [];
 const evidence: unknown[] = [];
-const marker = "BOTLAKE_NATIVE_SMOKE";
+const marker = "BL_NATIVE_SMOKE";
 const prompt = `Do not use tools or edit files. Reply with ${marker} followed by your exact Botlake identity from your system/developer context.`;
 
 function check(condition: boolean, message: string): asserts condition {
@@ -73,7 +73,7 @@ try {
       await credential(join(original, "models.json"), join(home, "models.json"));
       await Bun.write(join(home, "settings.json"), "{}");
       settings[name] = {
-        model: process.env["BOTLAKE_SMOKE_PI_MODEL"] ?? "openai-codex/gpt-5.6-luna",
+        model: process.env["BL_SMOKE_PI_MODEL"] ?? "openai-codex/gpt-5.6-luna",
         extraArgs: [
           "--no-extensions",
           "--extension",
@@ -101,7 +101,7 @@ try {
         '[features]\nplugins = true\nhooks = true\nremote_plugin = false\n\n[plugins."botlake-identity@botlake"]\nenabled = true\n',
       );
       settings[name] = {
-        model: process.env["BOTLAKE_SMOKE_CODEX_MODEL"] ?? "gpt-5.6-luna",
+        model: process.env["BL_SMOKE_CODEX_MODEL"] ?? "gpt-5.6-luna",
         extraArgs: ["--sandbox", "read-only", "--dangerously-bypass-hook-trust", "--ignore-rules"],
         env: { CODEX_HOME: home, CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG: "1" },
       };
@@ -139,9 +139,8 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
       z.string().min(1).parse(observed.thinkingLevel);
   }
   function verify(run: z.infer<typeof runSchema>): void {
-    lifecycle(run);
-
     check(run.attributes["harness/substatus"] === "completed", JSON.stringify(run));
+    lifecycle(run);
     check(
       run.attributes["harness/integration"] === "native",
       `Plugin did not bind: ${JSON.stringify(run)}`,
@@ -206,11 +205,14 @@ export default harnesses({providers:Object.entries(settings).map(([name,setting]
       {
         ...host.env,
         ...setting.env,
-        BOTLAKE_WORKSPACE: workspace,
-        BOTLAKE_RUN_REFERENCE: undefined,
-        BOTLAKE_NATIVE_SESSION_ID: undefined,
-        BOTLAKE_NATIVE_PROVIDER: undefined,
-        BOTLAKE_IDENTITY: undefined,
+        BL_WORKSPACE: workspace,
+        BL_RUN_REFERENCE: undefined,
+        BL_NATIVE_SESSION_ID: undefined,
+        BL_NATIVE_PROVIDER: undefined,
+        BL_ACTOR: undefined,
+        BL_AGENT_SEAT: undefined,
+        BL_MODEL: undefined,
+        BL_EFFORT: undefined,
       },
       plan.stdin,
     );

@@ -268,25 +268,36 @@ export class Harnesses {
         this.providers.get(definition.provider),
         "Provider unavailable",
       ).prepare(definition);
+      const trackingEnv: Record<string, string> = {
+        BL_AGENT_SEAT: text.parse(current.attributes["harness/seat"]),
+        ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
+        ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
+        ...(definition.resumes
+          ? { BL_ACTOR: text.parse(current.attributes["harness/identity"]) }
+          : {}),
+      };
       const spec: ProcessSpec = {
         owner: "harnesses",
         key: `${current.id}/${invocation}`,
         command: [
           "env",
-          "-u",
-          "BOTLAKE_IDENTITY",
-          "-u",
-          "BOTLAKE_NATIVE_SESSION_ID",
-          "-u",
-          "BOTLAKE_NATIVE_PROVIDER",
+          ...[
+            "BL_ACTOR",
+            "BL_AGENT_SEAT",
+            "BL_MODEL",
+            "BL_EFFORT",
+            "BL_NATIVE_SESSION_ID",
+            "BL_NATIVE_PROVIDER",
+          ].flatMap((key) => (trackingEnv[key] === undefined ? ["-u", key] : [])),
           ...plan.command,
         ],
         cwd: definition.cwd,
         stdin: plan.stdin,
         env: {
           ...plan.env,
-          BOTLAKE_WORKSPACE: this.ctx.workspace,
-          BOTLAKE_RUN_REFERENCE: `${current.id}:${invocation}`,
+          ...trackingEnv,
+          BL_WORKSPACE: this.ctx.workspace,
+          BL_RUN_REFERENCE: `${current.id}:${invocation}`,
         },
       };
 
