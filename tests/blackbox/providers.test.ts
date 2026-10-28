@@ -13,9 +13,15 @@ test("native providers preserve complete evidence on interrupted output and requ
   try {
     const workspace = await host.workspace("providers", [
       "@botlake/extension-identity",
-      "@botlake/extension-flags",
+      "./flags.ts",
       "./providers.ts",
     ]);
+    await Bun.write(
+      join(workspace, "flags.ts"),
+      `import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags } from "@botlake/extension-flags";
+export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], [agentFlags.claude, true]]);`,
+    );
     const executable = join(workspace, "native-cli");
     await Bun.write(
       executable,

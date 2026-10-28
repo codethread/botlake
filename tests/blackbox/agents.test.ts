@@ -17,10 +17,16 @@ test("Agents publishes, binds actual native sessions, fences writes, reconciles 
     const workspace = await host.workspace("agents", [
       "@botlake/extension-batteries",
       "@botlake/extension-identity",
-      "@botlake/extension-flags",
+      "./flags.ts",
       "./providers.ts",
       "@botlake/extension-kanban",
     ]);
+    await Bun.write(
+      join(workspace, "flags.ts"),
+      `import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags } from "@botlake/extension-flags";
+export default configureFlags([[agentFlags.codex, true]]);`,
+    );
     const childPath = join(workspace, "child.ts");
     await Bun.write(
       childPath,

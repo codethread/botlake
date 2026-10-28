@@ -40,12 +40,12 @@ The installed binaries use this checkout's core; keep the checkout and its depen
 
 The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, and Cron has no jobs until configured.
 
-[Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra and `tui` uses Sol. [Flag defaults](.botlake/flags.ts) enable model families and gate DeepSeek with `seat/allow-china`; Claude remains registered but disabled. Managed launches, including `tui`, are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
+[Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra. [Flag defaults](.botlake/flags.ts) configure exported `agentFlags` and local DeepSeek/Fable definitions; Claude remains registered but disabled. Managed launches are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 
 ```sh
 bl agent catalog
 bl agent catalog reviewer
-bl flag set seat/allow-china false # grunt now selects Luna.
+bl flag set agents/deepseek false # grunt now selects Luna.
 bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do not edit files."
 bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
 bl agent show RUN_ID # After reason=satisfied; inspect execution outcome, not just settlement.

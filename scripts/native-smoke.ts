@@ -22,7 +22,7 @@ try {
   const workspace = await host.workspace("native-smoke", [
     "@botlake/extension-batteries",
     "@botlake/extension-identity",
-    "@botlake/extension-flags",
+    "./flags.ts",
     "./agents.ts",
   ]);
 
@@ -76,6 +76,12 @@ try {
     }
   }
 
+  await Bun.write(
+    join(workspace, "flags.ts"),
+    `import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags } from "@botlake/extension-flags";
+export default configureFlags([${names.map((name) => `[agentFlags.${name}, true]`).join(", ")}]);`,
+  );
   await Bun.write(
     join(workspace, "agents.ts"),
     `import {agents,provider} from "@botlake/extension-agents";

@@ -266,12 +266,13 @@ export class Agents {
     return this.patch(id, { "agent/acknowledged": true });
   }
 
-  catalog(name?: string): unknown {
+  catalog(name?: string, all = false): unknown {
     if (name !== undefined) return this.seats.show(name);
 
+    const aliases = this.seats.list(all);
     return {
-      providers: [...this.providers.keys()],
-      aliases: this.seats.list(),
+      providers: [...this.providers.keys()].filter((entry) => Object.hasOwn(aliases, entry)),
+      aliases,
     };
   }
 

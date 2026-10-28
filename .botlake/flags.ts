@@ -1,27 +1,23 @@
-import { flags } from "@botlake/extension-flags";
+import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags, flags } from "@botlake/extension-flags";
 
-export const flagNames = {
-  agentClaude: "agent/claude",
-  seatAllowChina: "seat/allow-china",
-  modelOpenai: "model/openai",
-  modelAnthropic: "model/anthropic",
-} as const;
-
-export default flags({
-  [flagNames.agentClaude]: {
-    description: "Allow the Claude provider for new agent runs.",
-    value: false,
+export const workspaceFlags = flags({
+  deepseek: {
+    name: "agents/deepseek",
+    description: "Allow DeepSeek models.",
+    default: true,
   },
-  [flagNames.seatAllowChina]: {
-    description: "Allow China-hosted model seats, including DeepSeek.",
-    value: true,
-  },
-  [flagNames.modelOpenai]: {
-    description: "Enable seats gated on OpenAI models.",
-    value: true,
-  },
-  [flagNames.modelAnthropic]: {
-    description: "Enable seats gated on Anthropic models; the provider must also be enabled.",
-    value: true,
+  fable: {
+    name: "agents/fable",
+    description: "Enable Fable.",
+    default: true,
   },
 });
+
+export default configureFlags([
+  [agentFlags.codex, true],
+  [agentFlags.pi, true],
+  [agentFlags.claude, false],
+  [workspaceFlags.deepseek, true],
+  [workspaceFlags.fable, true],
+]);

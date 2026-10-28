@@ -1,4 +1,12 @@
-import { sql, defineOp, encode, requireValue, type Context, type Extension } from "@botlake/core";
+import {
+  Fault,
+  sql,
+  defineOp,
+  encode,
+  requireValue,
+  type Context,
+  type Extension,
+} from "@botlake/core";
 import { z } from "zod";
 
 const nameSchema = z.string().trim().min(1);
@@ -9,7 +17,15 @@ const flagUpdateSchema = flagSchema.partial({ description: true });
 
 const storedFlagSchema = flagSchema.readonly();
 
-export const flagsConfigSchema = z.record(nameSchema, storedFlagSchema);
+const definitionSchema = z
+  .strictObject({
+    name: nameSchema,
+    description: z.string().trim().min(1),
+    default: z.boolean(),
+  })
+  .readonly();
+
+export const flagsConfigSchema = z.array(z.tuple([definitionSchema, z.boolean()]));
 
 const overrideSchema = z.object({
   name: nameSchema,
@@ -23,6 +39,10 @@ const defaultsByContext = new WeakMap<Context, Map<string, Flag>>();
 
 export type Flag = z.infer<typeof storedFlagSchema>;
 
+export type FlagDefinition = z.infer<typeof definitionSchema>;
+
+export type FlagSetting = readonly [FlagDefinition, boolean];
+
 // Keep this closed payload assignable to the operation's JSON output.
 export type FlagState = {
   /** Effective flag, or null when absent or explicitly unset. */
@@ -33,11 +53,27 @@ export type FlagState = {
   overridden: boolean;
 };
 
+export function flags<K extends string>(
+  definitions: Record<K, FlagDefinition>,
+): Readonly<Record<K, FlagDefinition>> {
+  const defined = { ...definitions };
+  const names = new Set<string>();
+  for (const key in defined) {
+    const definition = definitionSchema.parse(defined[key]);
+    if (names.has(definition.name))
+      throw new Fault("collision", `Duplicate flag definition: ${definition.name}`);
+    names.add(definition.name);
+    defined[key] = definition;
+  }
+  return Object.freeze(defined);
+}
+
 export function flagsConfigJsonSchema(): unknown {
   return z.toJSONSchema(flagsConfigSchema);
 }
 
-export function inspectFlag(ctx: Context, name: string): FlagState {
+export function inspectFlag(ctx: Context, target: string | FlagDefinition): FlagState {
+  const name = flagName(target);
   const initial = defaultsFor(ctx).get(name);
   const row = ctx.graph.db
     .query(sql`
@@ -50,8 +86,8 @@ export function inspectFlag(ctx: Context, name: string): FlagState {
   return flagState(initial, row === null ? undefined : overrideSchema.parse(row).flag);
 }
 
-export function getFlag(ctx: Context, name: string): Flag | undefined {
-  return inspectFlag(ctx, name).current ?? undefined;
+export function getFlag(ctx: Context, target: string | FlagDefinition): Flag | undefined {
+  return inspectFlag(ctx, target).current ?? undefined;
 }
 
 export function listFlags(ctx: Context): Record<string, FlagState> {
@@ -73,17 +109,30 @@ export function listFlags(ctx: Context): Record<string, FlagState> {
 
 export function setFlag(
   ctx: Context,
-  name: string,
+  target: FlagDefinition,
+  update: boolean | z.input<typeof flagUpdateSchema>,
+): Flag;
+export function setFlag(
+  ctx: Context,
+  target: string,
   update: z.input<typeof flagUpdateSchema>,
+): Flag;
+export function setFlag(
+  ctx: Context,
+  target: string | FlagDefinition,
+  update: boolean | z.input<typeof flagUpdateSchema>,
 ): Flag {
-  name = nameSchema.parse(name);
+  const name = nameSchema.parse(flagName(target));
+  const value = typeof update === "boolean" ? { value: update } : update;
 
   return ctx.graph.atomic(() => {
     const current = getFlag(ctx, name);
     const flag = storedFlagSchema.parse({
-      ...update,
+      ...value,
       description: requireValue(
-        update.description ?? current?.description,
+        value.description ??
+          current?.description ??
+          (typeof target === "string" ? undefined : target.description),
         `New or unset flag ${name} requires a description`,
       ),
     });
@@ -100,8 +149,8 @@ export function setFlag(
   });
 }
 
-export function unsetFlag(ctx: Context, name: string): boolean {
-  name = nameSchema.parse(name);
+export function unsetFlag(ctx: Context, target: string | FlagDefinition): boolean {
+  const name = nameSchema.parse(flagName(target));
 
   return ctx.graph.atomic(() => {
     if (getFlag(ctx, name) === undefined) return false;
@@ -119,7 +168,7 @@ export function unsetFlag(ctx: Context, name: string): boolean {
   });
 }
 
-export function resetFlag(ctx: Context, name: string): boolean {
+export function resetFlag(ctx: Context, target: string | FlagDefinition): boolean {
   defaultsFor(ctx);
 
   return (
@@ -128,7 +177,7 @@ export function resetFlag(ctx: Context, name: string): boolean {
         DELETE FROM flag_overrides
         WHERE name = ?
       `)
-      .run(nameSchema.parse(name)).changes > 0
+      .run(nameSchema.parse(flagName(target))).changes > 0
   );
 }
 
@@ -142,11 +191,18 @@ export function resetFlags(ctx: Context): number {
     .run().changes;
 }
 
-export function flags(defaults: Record<string, Flag> = {}): Extension {
+export function configureFlags(settings: readonly FlagSetting[]): Extension {
+  const defaults = new Map<string, Flag>();
+  for (const [definition, value] of flagsConfigSchema.parse(settings)) {
+    if (defaults.has(definition.name))
+      throw new Fault("collision", `Duplicate configured flag: ${definition.name}`);
+    defaults.set(definition.name, Object.freeze({ description: definition.description, value }));
+  }
+
   return {
     name: "flags",
     activate(ctx) {
-      const initial = new Map(Object.entries(flagsConfigSchema.parse(defaults)));
+      const initial = new Map(defaults);
       ctx.graph.db.run(sql`
         CREATE TABLE IF NOT EXISTS flag_overrides (
           name TEXT PRIMARY KEY,
@@ -263,9 +319,13 @@ export function flags(defaults: Record<string, Flag> = {}): Extension {
   };
 }
 
-export default flags();
+export default configureFlags([]);
 
 // -- Private helpers --
+
+function flagName(target: string | FlagDefinition): string {
+  return typeof target === "string" ? target : target.name;
+}
 
 function defaultsFor(ctx: Context): Map<string, Flag> {
   return requireValue(

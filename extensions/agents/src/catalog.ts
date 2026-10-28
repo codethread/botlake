@@ -2,6 +2,7 @@ import { Fault } from "@botlake/core";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
+import { agentFlags } from "./flags.ts";
 import { resolveSystemPrompt, systemPromptSchema, type SystemPrompt } from "./prompt.ts";
 import { providerNameSchema, type Provider } from "./providers/contract.ts";
 
@@ -161,8 +162,9 @@ export class Catalog {
     const provider = this.providers.find((entry) => entry.name === name);
     if (provider === undefined)
       return { available: false, doc: null, reasons: [{ name, reason: "not-registered" }] };
-    const flag = `agent/${provider.name}`;
-    if (this.flag(flag) === false)
+    const definition = agentFlags[provider.name];
+    const flag = definition.name;
+    if (!(this.flag(flag) ?? definition.default))
       return {
         available: false,
         doc: provider.doc,
@@ -194,12 +196,14 @@ export class Catalog {
     };
   }
 
-  list(): Record<string, unknown> {
+  list(all = false): Record<string, unknown> {
+    const entries = [...this.providers.map((entry) => entry.name), ...this.aliases.keys()].map(
+      (name) => [name, this.availability(name)] as const,
+    );
     return Object.fromEntries(
-      [...this.providers.map((entry) => entry.name), ...this.aliases.keys()].map((name) => [
-        name,
-        this.summary(this.availability(name)),
-      ]),
+      entries
+        .filter(([, resolved]) => all || resolved.available)
+        .map(([name, resolved]) => [name, this.summary(resolved)]),
     );
   }
 

@@ -12,7 +12,11 @@ export function registerAgent(ctx: Context, service: Agents): void {
     startSchema.extend({ command: z.literal("start") }),
     z.strictObject({ command: z.literal("list") }),
     z.strictObject({ command: z.literal("show"), id: text }),
-    z.strictObject({ command: z.literal("catalog"), name: text.optional() }),
+    z.strictObject({
+      command: z.literal("catalog"),
+      name: text.optional(),
+      all: z.boolean().optional(),
+    }),
     z.strictObject({ command: z.literal("reconcile") }),
     z.strictObject({ command: z.literal("cancel"), id: text }),
     z.strictObject({ command: z.literal("retry"), id: text }),
@@ -30,13 +34,14 @@ export function registerAgent(ctx: Context, service: Agents): void {
     defineOp({
       name: "agent",
       primer:
-        'Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set agent/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
+        'Catalog lists available seats; catalog --all includes unavailable seats, and catalog NAME shows candidates, full settings and unavailability reasons. Provider flags default off; select providers with explicit agentFlags configuration. Flags affect new seat selection; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
       input,
       output: z.json(),
       cli: {
         description: "Tracked agent runs and native registration",
         examples: [
           "bl agent catalog",
+          "bl agent catalog --all",
           "bl agent catalog reviewer",
           "bl agent list",
           "bl agent show RUN_ID",
@@ -45,8 +50,12 @@ export function registerAgent(ctx: Context, service: Agents): void {
         commands: {
           list: { description: "Runs" },
           catalog: {
-            description: "Seat docs and availability; name expands candidates and settings",
+            description:
+              "Available seats; name expands candidates, settings and unavailability reasons",
             positionals: [{ name: "name", type: "string" }],
+            flags: {
+              all: { type: "boolean", description: "Include unavailable seats" },
+            },
           },
           reconcile: { description: "Reconcile custody" },
           show: {
@@ -126,7 +135,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           })
           .with({ command: "list" }, () => service.runs())
           .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
-          .with({ command: "catalog" }, ({ name }) => service.catalog(name))
+          .with({ command: "catalog" }, ({ name, all }) => service.catalog(name, all))
           .with({ command: "reconcile" }, async () => {
             await service.reconcile();
 

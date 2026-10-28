@@ -5,6 +5,8 @@ import { Agents, type AgentOptions } from "./runs.ts";
 
 export { agentConfigSchema, agentConfigJsonSchema } from "./catalog.ts";
 
+export { agentFlags } from "./flags.ts";
+
 export type { Seat, Alias, Condition, AgentConfig } from "./catalog.ts";
 
 export { Agents } from "./runs.ts";

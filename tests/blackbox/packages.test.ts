@@ -91,6 +91,32 @@ export default agents(agentConfigSchema.parse(config));`,
     await host.botlake(["lake", "start", "--workspace", agents]);
     expect(
       z
+        .object({ providers: z.array(z.string()) })
+        .parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
+    ).toEqual([]);
+    await Bun.write(
+      join(agents, "flags.ts"),
+      `import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags } from "@botlake/extension-flags";
+export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], [agentFlags.claude, true]]);`,
+    );
+    await Bun.write(
+      join(agents, ".botlake/package.json"),
+      JSON.stringify({
+        botlake: {
+          name: "configured",
+          extensions: [
+            "@botlake/extension-identity",
+            "./flags.ts",
+            "./agents.ts",
+            "@botlake/extension-cron",
+          ],
+        },
+      }),
+    );
+    await host.botlake(["lake", "restart", "--workspace", agents]);
+    expect(
+      z
         .object({ aliases: z.record(z.string(), z.unknown()) })
         .parse(await host.bl("configured", "agent", { command: "catalog" })).aliases,
     ).toHaveProperty("worker");

@@ -7,6 +7,8 @@ Select `"@botlake/extension-agents"` for Codex, Pi and Claude defaults. For conf
 ```ts
 import { agents } from "@botlake/extension-agents";
 
+import { modelFlags } from "./flags.ts";
+
 export default agents({
   aliases: {
     sol: {
@@ -14,31 +16,50 @@ export default agents({
       parent: "pi",
       model: "openai-codex/gpt-5.6-sol",
       effort: "low",
-      when: "model/openai",
+      when: modelFlags.openai.name,
     },
     opus: {
       doc: "Greenfield features, API design and critical review.",
       parent: "claude",
       model: "opus",
-      when: "model/anthropic",
+      when: modelFlags.anthropic.name,
     },
     reviewer: ["sol", "opus"],
   },
 });
 ```
 
-In a separate selected [Flags module](../flags/README.md), configure described defaults:
+In a separate selected [Flags module](../flags/README.md), import Agents' provider definitions and configure workspace defaults:
 
 ```ts
-import { flags } from "@botlake/extension-flags";
+import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags, flags } from "@botlake/extension-flags";
 
-export default flags({
-  "model/openai": { description: "Enable OpenAI model seats.", value: true },
-  "model/anthropic": { description: "Enable Anthropic model seats.", value: true },
+export const modelFlags = flags({
+  openai: {
+    name: "model/openai",
+    description: "Enable OpenAI model seats.",
+    default: true,
+  },
+  anthropic: {
+    name: "model/anthropic",
+    description: "Enable Anthropic model seats.",
+    default: true,
+  },
 });
+
+export default configureFlags([
+  [agentFlags.codex, true],
+  [agentFlags.pi, true],
+  [agentFlags.claude, false],
+  [modelFlags.openai, true],
+  [modelFlags.anthropic, true],
+]);
 ```
 
-Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unset custom flags are false in alias conditions. Every registered provider is enabled unless its `agent/NAME` flag's value is explicitly false.
+`agentFlags.codex`, `agentFlags.pi` and `agentFlags.claude` own their provider flag names, descriptions and disabled defaults. Providers are opt-in: configure each desired provider with `[definition, true]`. Every `configureFlags` entry requires an explicit boolean, so an author's default changes cannot alter configured choices. Importing definitions does not activate Agents.
+
+Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unconfigured or persistently unset provider flags disable the provider. Unset custom flags are false in alias conditions.
 
 ## Catalog and routing
 
@@ -49,9 +70,11 @@ Database flag overrides survive restarts; `bl flag reset NAME` restores its conf
 - Accepted runs freeze their resolved settings. Flag changes affect new starts, not queued/running runs, retries or native resumes. Exact request replay returns its original accepted run even if the alias is now disabled.
 
 ```sh
-bl agent catalog                  # Docs, effective settings and availability, including disabled seats.
-bl agent catalog reviewer         # Full candidates, settings and unavailability reasons.
-bl flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
+bl agent catalog                  # Available seats with docs and effective settings.
+bl agent catalog --all            # Include unavailable seats and their reasons.
+bl agent catalog reviewer         # Full candidates, settings and reasons, even when unavailable.
+bl flag set agent/claude true     # Enable Claude-backed seats.
+bl flag set model/openai false    # reviewer now selects opus.
 bl agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
 bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
 bl agent show RUN_ID
