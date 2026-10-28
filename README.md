@@ -11,12 +11,13 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/core`](packages/core/README.md) | Graph, operations, activation, events, durable wakes, workers | None |
 | [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
+| [`@botlake/extension-diary`](extensions/diary/README.md) | Identity-owned working history | Identity |
 | [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
 | [`@botlake/extension-agents`](extensions/agents/README.md) | Providers, tracked runs, assignment, reconciliation | Identity, Flags |
 | [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
 | [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
-Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Agents and Kanban; Flags is a peer of Agents. Installation does not imply activation.
+Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Agents, Diary and Kanban; Flags is a peer of Agents. Installation does not imply activation.
 
 Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core, Identity and Flags to their tarball paths as well as listing them in `dependencies`.
 

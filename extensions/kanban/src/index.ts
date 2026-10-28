@@ -51,16 +51,43 @@ const claimInput = z.strictObject({
   byIdentity: text.optional(),
 });
 
+const pageInput = {
+  limit: z.number().int().min(1).max(100).default(20),
+  offset: z.number().int().min(0).default(0),
+};
+
+const workFields = {
+  body: z.string().optional(),
+  acceptance: z.string().optional(),
+  summary: z.string().optional(),
+};
+
+const updateInput = z.strictObject({
+  id: text,
+  title: text.optional(),
+  ...workFields,
+  lane: lane.exclude(["claimed"]).optional(),
+  expectedRevision: z.number().int().positive().optional(),
+});
+
 const addInput = z.strictObject({
   title: text,
   type: z.enum(["feature", "epic"]).default("feature"),
   lane: z.enum(["pending", "refinement"]).default("pending"),
   priority: priority.default("p3"),
-  body: z.string().optional(),
+  ...workFields,
   epic: text.optional(),
   byIdentity: text.optional(),
   reportedBy: text.optional(),
   labels: z.array(text).optional(),
+});
+
+const taskInput = z.strictObject({
+  feature: text,
+  title: text,
+  ...workFields,
+  dependencies: z.array(text).default([]),
+  byIdentity: text.optional(),
 });
 
 export class Kanban {
@@ -85,6 +112,16 @@ export class Kanban {
             change.expectedRevision !== before.revision
           )
             throw new Fault("stale", "Reference writes require expectedRevision");
+          if (
+            token !== this.authority &&
+            before?.state === "active" &&
+            after?.state === "closed" &&
+            (before.attributes["kanban/card"] === true ||
+              before.attributes["kanban/task"] === true) &&
+            before.attributes["kanban/link"] === undefined &&
+            this.unfinished(before.id).length > 0
+          )
+            throw new Fault("finish", "Finish child work first; use Kanban for abandonment");
           if (after?.attributes["kanban/card"] === true) {
             const refs = after.attributes["kanban/external-refs"];
             if (refs !== undefined) refsSchema.parse(refs);
@@ -172,7 +209,8 @@ export class Kanban {
         "kanban/priority": input.priority,
         "kanban/labels": input.labels ?? [],
       };
-      if (input.body !== undefined) attrs["kanban/body"] = input.body;
+      for (const key of ["body", "acceptance", "summary"] as const)
+        if (input[key] !== undefined) attrs[`kanban/${key}`] = input[key];
       if (input.byIdentity !== undefined) attrs["identity/by-identity"] = input.byIdentity;
 
       const reporter = input.reportedBy ?? input.byIdentity;
@@ -188,16 +226,47 @@ export class Kanban {
     }, this.authority);
   }
 
-  task(feature: string, title: string, dependencies: string[] = []): Node {
+  update(raw: z.infer<typeof updateInput>): Node {
+    const input = updateInput.parse(raw);
     return this.ctx.graph.atomic(() => {
-      const parent = this.writable(feature);
+      const card = this.writable(input.id);
+      if (
+        input.lane !== undefined &&
+        (card.attributes["kanban/card"] !== true || card.state !== "active")
+      )
+        throw new Fault("kanban", "Only active cards have lanes");
+      const attributes: Attributes = {};
+      for (const key of ["body", "acceptance", "summary", "lane"] as const)
+        if (input[key] !== undefined) attributes[`kanban/${key}`] = input[key];
+      if (input.title === undefined && Object.keys(attributes).length === 0)
+        throw new Fault("kanban", "Supply a work field or lane to update");
+      return this.ctx.graph.update(input.id, {
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: input.expectedRevision }),
+        attributes,
+      });
+    }, this.authority);
+  }
+
+  task(raw: z.input<typeof taskInput>): Node {
+    const input = taskInput.parse({ ...raw, byIdentity: raw.byIdentity ?? callerActor(this.ctx) });
+    return this.ctx.graph.atomic(() => {
+      const parent = this.writable(input.feature);
       if (parent.attributes["kanban/type"] !== "feature" || parent.state !== "active")
         throw new Fault("kanban", "Tasks require an active feature");
 
-      const task = this.ctx.graph.add({ title, attributes: { "kanban/task": true } });
-      this.ctx.graph.connect(feature, task.id, "parent-of");
-      for (const dependency of dependencies)
+      const attributes: Attributes = { "kanban/task": true };
+      for (const key of ["body", "acceptance", "summary"] as const)
+        if (input[key] !== undefined) attributes[`kanban/${key}`] = input[key];
+      if (input.byIdentity !== undefined) attributes["identity/by-identity"] = input.byIdentity;
+      const task = this.ctx.graph.add({ title: input.title, attributes });
+      this.ctx.graph.connect(input.feature, task.id, "parent-of");
+      for (const dependency of input.dependencies)
         this.ctx.graph.connect(task.id, dependency, "depends-on");
+      if (input.byIdentity !== undefined)
+        attribute(this.ctx, task.id, input.byIdentity, "attributed");
 
       return task;
     }, this.authority);
@@ -216,6 +285,10 @@ export class Kanban {
         throw new Fault("claim", "Only active features and tasks can be claimed");
       if (target.attributes["kanban/type"] === "feature" && input.branch === undefined)
         throw new Fault("claim", "Feature claim requires a branch");
+      if (target.attributes["kanban/lane"] === "refinement")
+        throw new Fault("claim", "Move refined work to pending before claiming");
+      if (this.ctx.graph.all({ ready: true, where: q.eq("id", target.id) }).length === 0)
+        throw new Fault("claim", "Resolve dependencies before claiming");
       const attrs: Attributes = {
         "kanban/ownership-claim": true,
         "kanban/owner": owner,
@@ -273,14 +346,11 @@ export class Kanban {
       )
         throw new Fault("finish", "Epic must be pending or refinement");
 
-      const descendants = this.ctx.graph
-        .subgraph(id)
-        .nodes.filter(
-          (row) =>
-            row.id !== id &&
-            row.state === "active" &&
-            (row.attributes["kanban/card"] === true || row.attributes["kanban/task"] === true),
-        );
+      const descendants = this.unfinished(id);
+      if (outcome !== "abandoned" && descendants.length > 0)
+        throw new Fault("finish", "Finish child work before completing the parent", {
+          unfinished: descendants.map(({ id: childId, title }) => ({ id: childId, title })),
+        });
       for (const child of descendants) this.writable(child.id);
       for (const child of descendants)
         this.ctx.graph.update(child.id, {
@@ -439,7 +509,7 @@ export class Kanban {
     for (const card of cards) {
       const link = linkSchema.parse(card.attributes["kanban/link"]);
       try {
-        const view = await this.card(link.card, link.workspace);
+        const view = await this.view(link.card, link.workspace);
         const snapshot = this.snapshot(view.card, view.owner);
         this.ctx.graph.atomic(
           () =>
@@ -463,14 +533,99 @@ export class Kanban {
     return result;
   }
 
-  async card(
+  async card(id: string, history = false): Promise<unknown> {
+    const view = await this.view(id);
+    const { card } = view;
+    const parent = this.parent(id);
+    const tasks = this.ctx.graph
+      .edges(id, "parent-of")
+      .filter((edge) => edge.from_id === id)
+      .map((edge) => this.ctx.graph.show(edge.to_id))
+      .filter((row) => row.attributes["kanban/task"] === true)
+      .map((task) => ({
+        ...summary(task),
+        owner: this.owner(task.id),
+        status:
+          task.state !== "active"
+            ? "closed"
+            : this.ctx.graph.all({ ready: true, where: q.eq("id", task.id) }).length === 0
+              ? "blocked"
+              : this.history(task.id).length > 0
+                ? "doing"
+                : "ready",
+      }));
+
+    return {
+      ...view,
+      parent: parent === undefined ? null : summary(parent),
+      reporter:
+        typeof card.attributes["kanban/reported-by"] === "string"
+          ? attribution(this.ctx.graph, card.attributes["kanban/reported-by"])
+          : null,
+      tasks,
+      related: this.ctx.graph.edges(id, "depends-on"),
+      ...(history ? { history: this.history(id), notes: this.notes(id) } : {}),
+    };
+  }
+
+  async board(labels: string[] = [], limit = 20, offset = 0): Promise<unknown> {
+    const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
+      labels.every((label) =>
+        z
+          .array(z.string())
+          .parse(row.attributes["kanban/labels"] ?? [])
+          .includes(label),
+      ),
+    );
+    const views = await Promise.all(
+      cards.map(async (card) => {
+        const view = await this.view(card.id);
+        return { ...view, card: summary(view.card) };
+      }),
+    );
+
+    const active = views.filter((view) => view.card.state === "active");
+    const page = active.slice(offset, offset + limit);
+    return {
+      lanes: Object.fromEntries(
+        lane.options.map((name) => [
+          name,
+          page.filter((view) => view.card.attributes["kanban/lane"] === name),
+        ]),
+      ),
+      closed: views.filter((view) => view.card.state === "closed").length,
+      total: active.length,
+      nextOffset: offset + page.length < active.length ? offset + page.length : null,
+    };
+  }
+
+  next(limit = 20, offset = 0): { cards: Node[]; total: number; nextOffset: number | null } {
+    const ready = this.ctx.graph
+      .all({ ready: true, where: pendingFeaturePredicate })
+      .toSorted((a, b) =>
+        compare(
+          priority.parse(a.attributes["kanban/priority"]),
+          priority.parse(b.attributes["kanban/priority"]),
+          compare(a.created_at, b.created_at, a.id.localeCompare(b.id)),
+        ),
+      );
+    const cards = ready.slice(offset, offset + limit).map((card) => summary(card));
+    return {
+      cards,
+      total: ready.length,
+      nextOffset: offset + cards.length < ready.length ? offset + cards.length : null,
+    };
+  }
+
+  // -- Private helpers --
+
+  private async view(
     id: string,
     workspace?: string,
   ): Promise<{ card: Node; owner: Json; [key: string]: unknown }> {
     if (workspace !== undefined)
       return z
         .object({ card: nodeSchema, owner: z.json() })
-        .loose()
         .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
     let card = this.target(id);
     let link: unknown;
@@ -478,7 +633,7 @@ export class Kanban {
     if (card.attributes["kanban/link"] !== undefined) {
       const target = linkSchema.parse(card.attributes["kanban/link"]);
       try {
-        const view = await this.card(target.card, target.workspace);
+        const view = await this.view(target.card, target.workspace);
         card = {
           ...card,
           title: view.card.title,
@@ -500,78 +655,19 @@ export class Kanban {
         };
       }
     }
-    const tasks = this.ctx.graph
-      .edges(id, "parent-of")
-      .filter((edge) => edge.from_id === id)
-      .map((edge) => this.ctx.graph.show(edge.to_id))
-      .filter((row) => row.attributes["kanban/task"] === true)
-      .map((task) => ({
-        ...task,
-        owner: this.owner(task.id),
-        status:
-          task.state !== "active"
-            ? "closed"
-            : this.ctx.graph.all({ ready: true, where: q.eq("id", task.id) }).length === 0
-              ? "blocked"
-              : this.history(task.id).length > 0
-                ? "doing"
-                : "ready",
-        latestNote: this.notes(task.id).at(-1) ?? null,
-      }));
-
-    return {
-      card,
-      owner,
-      history: this.history(id),
-      reporter:
-        typeof card.attributes["kanban/reported-by"] === "string"
-          ? attribution(this.ctx.graph, card.attributes["kanban/reported-by"])
-          : null,
-      tasks,
-      notes: this.notes(id),
-      related: this.ctx.graph.edges(id, "depends-on"),
-      ...(link === undefined ? {} : { link }),
-    };
+    return { card, owner, ...(link === undefined ? {} : { link }) };
   }
 
-  async board(labels: string[] = []): Promise<unknown> {
-    const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
-      labels.every((label) =>
-        z
-          .array(z.string())
-          .parse(row.attributes["kanban/labels"] ?? [])
-          .includes(label),
-      ),
-    );
-    const views = await Promise.all(cards.map((card) => this.card(card.id)));
-
-    return {
-      lanes: Object.fromEntries(
-        lane.options.map((name) => [
-          name,
-          views.filter(
-            (view) => view.card.state === "active" && view.card.attributes["kanban/lane"] === name,
-          ),
-        ]),
-      ),
-      closed: views.filter((view) => view.card.state === "closed").length,
-      epics: views.filter((view) => view.card.attributes["kanban/type"] === "epic"),
-    };
-  }
-
-  next(): Node[] {
+  private unfinished(id: string): Node[] {
     return this.ctx.graph
-      .all({ ready: true, where: pendingFeaturePredicate })
-      .toSorted((a, b) =>
-        compare(
-          priority.parse(a.attributes["kanban/priority"]),
-          priority.parse(b.attributes["kanban/priority"]),
-          compare(a.created_at, b.created_at, a.id.localeCompare(b.id)),
-        ),
+      .subgraph(id)
+      .nodes.filter(
+        (row) =>
+          row.id !== id &&
+          row.state === "active" &&
+          (row.attributes["kanban/card"] === true || row.attributes["kanban/task"] === true),
       );
   }
-
-  // -- Private helpers --
 
   private writable(id: string): Node {
     const record = this.target(id);
@@ -677,16 +773,20 @@ export function kanban(): Extension {
       });
       const input = z.discriminatedUnion("command", [
         addInput.extend({ command: z.literal("add") }),
+        updateInput.extend({ command: z.literal("update") }),
         claimInput.extend({ command: z.literal("claim") }),
-        z.strictObject({ command: z.literal("board"), labels: z.array(text).default([]) }),
-        z.strictObject({ command: z.literal("card"), id: text }),
-        z.strictObject({ command: z.literal("next") }),
         z.strictObject({
-          command: z.literal("task"),
-          feature: text,
-          title: text,
-          dependencies: z.array(text).default([]),
+          command: z.literal("board"),
+          labels: z.array(text).default([]),
+          ...pageInput,
         }),
+        z.strictObject({
+          command: z.literal("card"),
+          id: text,
+          history: z.boolean().default(false),
+        }),
+        z.strictObject({ command: z.literal("next"), ...pageInput }),
+        taskInput.extend({ command: z.literal("task") }),
         z.strictObject({ command: z.literal("finish"), id: text, outcome: text.default("done") }),
         z.strictObject({ command: z.literal("reopen"), id: text }),
         z.strictObject({
@@ -731,8 +831,10 @@ export function kanban(): Extension {
           name: "kanban",
           input,
           output: z.json(),
+          about:
+            "Body: problem, outcome, scope and pointers. Acceptance: verifiable criteria. Summary: one current account of decisions, verification and next action; replace it while preserving useful conclusions. Notes: selective supporting evidence. Parent-of groups work; depends-on orders prerequisites. Linked cards mirror their source.",
           primer:
-            "Inspect board or next, add a feature and its tasks, then claim work with an owner and branch. Authorship and omitted claim owners default to the caller's BL_ACTOR; explicit flags win. Claims preserve ownership history. Finish records a work outcome; an agent process exiting does not finish its card. Linked cards are read-only mirrors: change the downstream card and refresh the snapshot.",
+            "Select with board/next, then read card and parent. Keep unfinished briefs in refinement; update --lane pending when scope and criteria are clear. Give each child its own brief and criteria. Claim authorized available work (features require a branch; owner defaults to caller BL_ACTOR). If Diary is selected, use bl prime diary for identity-owned working history; promote conclusions into summary at handoff/completion. Verify acceptance and finish children before the parent. Only --outcome abandoned cascades unfinished work. Process exit, review and merge are not task completion. Change linked work at its source.",
           cli: {
             description: "Boards, ownership, tasks and linked cards",
             examples: [
@@ -749,7 +851,12 @@ export function kanban(): Extension {
                   type: { type: "string" },
                   lane: { type: "string" },
                   priority: { type: "string" },
-                  body: { type: "string" },
+                  body: { type: "string", description: "Problem, outcome, scope and pointers" },
+                  acceptance: { type: "string", description: "Verifiable acceptance criteria" },
+                  summary: {
+                    type: "string",
+                    description: "Current decisions, verification and next action",
+                  },
                   epic: { type: "string" },
                   "by-identity": {
                     key: "byIdentity",
@@ -760,14 +867,55 @@ export function kanban(): Extension {
                   labels: { type: "string", multiple: true },
                 },
               },
-              board: {
-                description: "Board",
-                flags: { labels: { type: "string", multiple: true } },
-              },
-              next: { description: "Ready features" },
-              card: {
-                description: "Card",
+              update: {
+                description: "Revise the brief, criteria or current summary",
                 positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  title: { type: "string" },
+                  body: { type: "string" },
+                  acceptance: { type: "string" },
+                  summary: {
+                    type: "string",
+                    description: "Replace the current account; preserve useful conclusions",
+                  },
+                  lane: {
+                    type: "string",
+                    description:
+                      "refinement, pending, in_review or in_production; use claim for ownership",
+                  },
+                  "expected-revision": { key: "expectedRevision", type: "number" },
+                },
+              },
+              board: {
+                description: "Paged board summaries, without briefs or history",
+                flags: {
+                  labels: { type: "string", multiple: true },
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  offset: {
+                    type: "number",
+                    description: "Continue at nextOffset; pages are not a snapshot",
+                  },
+                },
+              },
+              next: {
+                description: "Paged ready feature summaries",
+                flags: {
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  offset: {
+                    type: "number",
+                    description: "Continue at nextOffset; pages are not a snapshot",
+                  },
+                },
+              },
+              card: {
+                description: "Current brief, criteria, summary, owner and task summaries",
+                positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  history: {
+                    type: "boolean",
+                    description: "Include all task-local notes and ownership claims",
+                  },
+                },
               },
               claim: {
                 description: "Claim or hand off",
@@ -785,7 +933,7 @@ export function kanban(): Extension {
                 },
               },
               finish: {
-                description: "Finish",
+                description: "Complete work; unfinished children require explicit abandonment",
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: { outcome: { type: "string" } },
               },
@@ -799,7 +947,17 @@ export function kanban(): Extension {
                   { name: "feature", type: "string", required: true },
                   { name: "title", type: "string", required: true },
                 ],
-                flags: { dependencies: { type: "string", multiple: true } },
+                flags: {
+                  body: { type: "string" },
+                  acceptance: { type: "string" },
+                  summary: { type: "string" },
+                  dependencies: { type: "string", multiple: true },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Author (defaults to BL_ACTOR)",
+                  },
+                },
               },
               ref: {
                 description: "External references",
@@ -864,7 +1022,8 @@ export function kanban(): Extension {
                 flags: { labels: { type: "string", multiple: true, required: true } },
               },
               note: {
-                description: "Add note",
+                description:
+                  "Record selective evidence; use update --summary for the current account",
                 positionals: [
                   { name: "id", type: "string", required: true },
                   { name: "text", type: "string", required: true },
@@ -892,12 +1051,20 @@ export function kanban(): Extension {
 
                 return board.claim(request);
               })
-              .with({ command: "board" }, ({ labels }) => board.board(labels))
-              .with({ command: "card" }, ({ id }) => board.card(id))
-              .with({ command: "next" }, () => board.next())
-              .with({ command: "task" }, ({ feature, title, dependencies }) =>
-                board.task(feature, title, dependencies),
+              .with({ command: "update" }, (value) => {
+                const { command: _, ...request } = value;
+                const card = board.update(request);
+                return { id: card.id, revision: card.revision };
+              })
+              .with({ command: "board" }, ({ labels, limit, offset }) =>
+                board.board(labels, limit, offset),
               )
+              .with({ command: "card" }, ({ id, history }) => board.card(id, history))
+              .with({ command: "next" }, ({ limit, offset }) => board.next(limit, offset))
+              .with({ command: "task" }, (value) => {
+                const { command: _, ...request } = value;
+                return board.task(request);
+              })
               .with({ command: "finish" }, ({ id, outcome }) => board.finish(id, outcome))
               .with({ command: "reopen" }, ({ id }) => board.reopen(id))
               .with({ command: "note" }, (value) => {
@@ -955,6 +1122,25 @@ export function kanban(): Extension {
 export default kanban();
 
 // -- Private helpers --
+
+function summary(node: Node): Node {
+  return {
+    ...node,
+    attributes: Object.fromEntries(
+      Object.entries(node.attributes).filter(([key]) =>
+        [
+          "kanban/card",
+          "kanban/task",
+          "kanban/type",
+          "kanban/lane",
+          "kanban/priority",
+          "kanban/labels",
+          "kanban/outcome",
+        ].includes(key),
+      ),
+    ),
+  };
+}
 
 function compare(left: string, right: string, fallback: number): number {
   const order = left.localeCompare(right);

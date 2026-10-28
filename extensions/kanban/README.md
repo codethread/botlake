@@ -1,7 +1,21 @@
 # @botlake/extension-kanban
 
-Boards, cards/tasks, immutable ownership history, notes, lifecycle operations and linked cards. Install the `@botlake/core` and `@botlake/extension-identity` peers; explicitly select both Identity and Kanban in workspace `extensions`.
+Boards, cards/tasks, ownership and linked cards. Install the Core and Identity peers and explicitly select both Identity and Kanban. Imports are inert; `kanban()` and `Kanban` are the programmatic interface. Batteries, Agents and Diary are not dependencies.
 
-`BL_ACTOR` in the invoking caller's environment defaults `--by-identity` for add, note and claim, and `--owner` for claim. Explicit flags override defaults; add's reporter still defaults to its author. Without either `--owner` or `BL_ACTOR`, claim fails. The lake environment is never an attribution fallback.
+```sh
+bl prime kanban
+bl kanban add "Investigate issue" --lane refinement --body "Problem, outcome and scope"
+bl kanban update ID --acceptance "Observable success criteria" --lane pending
+bl kanban claim ID --branch topic
+bl kanban update ID --summary "Decision, verification and next action" --expected-revision REVISION
+bl kanban card ID
+bl kanban card ID --history
+```
 
-The default export is an inert Kanban extension; `kanban()` and `Kanban` are the programmatic API. Batteries, Agents and Cron are not dependencies. Guards protect domain records even through generic graph mutations. Peer-linked cards remain mirrors of their authoritative workspace. Links resolve names/paths to canonical workspace identity, survive name changes, and reject duplicate sources, self-links and task targets. Reads show live data or explicitly mark the stored snapshot unavailable; refresh persists it.
+Cards and tasks share `body` (brief), `acceptance` (criteria) and `summary` (current account). Updates replace these fields; omitted fields stay unchanged. Keep tickets self-contained and concise. Notes hold selective supporting evidence; optional [Diary](../diary/README.md) holds identity-owned working history, reached through ownership rather than task links. Kanban never loads diary entries.
+
+`board` and `next` return summaries without briefs or history. Pages default to 20, maximum 100; continue with `--offset` set to `nextOffset` until null. Pages are not a shared snapshot. `card` returns the current record, parent and child-task summaries; `--history` additionally returns all task-local notes and ownership claims.
+
+`BL_ACTOR` in the invoking caller's environment defaults authorship and claim ownership; explicit flags win. Claim requires an owner, and feature claims require a branch. Claims retain immutable ownership history and reject refinement cards or unresolved dependencies. Finish refuses unfinished descendants unless `--outcome abandoned` explicitly cascades them as unactioned. Acceptance quality and verification remain the caller's responsibility; an agent exit or merge is not task completion.
+
+Linked cards mirror their authoritative workspace. Change the source and refresh its snapshot; reads show live state or explicitly mark the snapshot unavailable. Links use canonical workspace identity, survive renames, and reject duplicate sources, self-links and task targets.

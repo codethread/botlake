@@ -9,6 +9,7 @@
         "@botlake/extension-agents": "workspace:*",
         "@botlake/extension-batteries": "workspace:*",
         "@botlake/extension-cron": "workspace:*",
+        "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-kanban": "workspace:*",
@@ -31,6 +32,7 @@
         "@botlake/extension-agents": "workspace:*",
         "@botlake/extension-batteries": "workspace:*",
         "@botlake/extension-cron": "workspace:*",
+        "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-kanban": "workspace:*",
@@ -70,6 +72,17 @@
       },
       "peerDependencies": {
         "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/diary": {
+      "name": "@botlake/extension-diary",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-identity": "workspace:^",
       },
     },
     "extensions/flags": {
@@ -143,6 +156,8 @@
     "@botlake/extension-batteries": ["@botlake/extension-batteries@workspace:extensions/batteries"],
 
     "@botlake/extension-cron": ["@botlake/extension-cron@workspace:extensions/cron"],
+
+    "@botlake/extension-diary": ["@botlake/extension-diary@workspace:extensions/diary"],
 
     "@botlake/extension-flags": ["@botlake/extension-flags@workspace:extensions/flags"],
 

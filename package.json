@@ -27,6 +27,7 @@
     "@botlake/extension-agents": "workspace:*",
     "@botlake/extension-batteries": "workspace:*",
     "@botlake/extension-cron": "workspace:*",
+    "@botlake/extension-diary": "workspace:*",
     "@botlake/extension-flags": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
     "@botlake/extension-kanban": "workspace:*",

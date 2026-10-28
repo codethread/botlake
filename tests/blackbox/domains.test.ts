@@ -56,7 +56,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" });
     const history = z
       .object({ history: z.array(node) })
-      .parse(await invoke({ command: "card", id: feature.id })).history;
+      .parse(await invoke({ command: "card", id: feature.id, history: true })).history;
     expect(history.map((entry) => entry.attributes["kanban/owner"])).toEqual([
       "unresolved",
       "second",

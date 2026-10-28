@@ -66,7 +66,7 @@ export async function system(): Promise<System> {
     "@botlake/core": core,
     "@botlake/native-session": await pack("packages/native-session", "native-session"),
   };
-  for (const name of ["batteries", "identity", "kanban", "cron", "flags", "agents"])
+  for (const name of ["batteries", "identity", "diary", "kanban", "cron", "flags", "agents"])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
 
