@@ -13,6 +13,8 @@ export type { AgentOptions, StartRun } from "./runs.ts";
 
 export type { SessionContext, SystemPrompt } from "./prompt.ts";
 
+export type { Audience } from "@botlake/native-session";
+
 export { provider } from "./providers/index.ts";
 
 export type {

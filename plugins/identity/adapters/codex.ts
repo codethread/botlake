@@ -8,7 +8,9 @@ export const codex: HookAdapter = {
   decode(raw) {
     const event = hookEventSchema.parse(raw);
     const child =
-      event.hook_event_name === "SubagentStart" || event.hook_event_name === "SubagentStop";
+      event.agent_id !== undefined ||
+      event.hook_event_name === "SubagentStart" ||
+      event.hook_event_name === "SubagentStop";
     return {
       nativeEvent: event.hook_event_name,
       context:
@@ -21,7 +23,7 @@ export const codex: HookAdapter = {
         cwd: event.cwd,
         event: events[event.hook_event_name],
         nativeEvent: event.hook_event_name,
-        ...(child ? { parentNativeSessionId: event.session_id } : {}),
+        ...(child ? { parentNativeSessionId: event.session_id, audience: "agent" as const } : {}),
         ...(event.model === undefined ? {} : { model: event.model }),
         ...(event.transcript_path === undefined
           ? {}

@@ -13,7 +13,11 @@ import {
   type ProcessSpec,
 } from "@botlake/core";
 import { getFlag } from "@botlake/extension-flags";
-import { registrationSchema, type NativeRegistration } from "@botlake/native-session";
+import {
+  registrationSchema,
+  sessionAudience,
+  type NativeRegistration,
+} from "@botlake/native-session";
 import { z } from "zod";
 
 import { Catalog, agentConfigSchema, seatSchema, type AgentConfig } from "./catalog.ts";
@@ -121,7 +125,11 @@ export class Agents {
   native(raw: z.input<typeof registrationSchema>): unknown {
     const input: NativeRegistration = registrationSchema.parse(raw);
 
-    return this.sessions.observe({ ...input, cwd: realpathSync(input.cwd) });
+    return this.sessions.observe({
+      ...input,
+      audience: sessionAudience(input, {}),
+      cwd: realpathSync(input.cwd),
+    });
   }
 
   async cancel(id: string): Promise<Node> {
@@ -337,6 +345,7 @@ export class Agents {
         "agent/settled": false,
         "agent/attempt": 0,
         "agent/provider": seat.provider,
+        "agent/audience": "agent",
         "agent/seat": input.seat,
         "agent/cwd": cwd,
         "agent/prompt": input.prompt,
@@ -547,6 +556,7 @@ export class Agents {
         command: [
           "env",
           ...[
+            "BL_AUDIENCE",
             "BL_ACTOR",
             "BL_AGENT_SEAT",
             "BL_MODEL",
@@ -559,7 +569,7 @@ export class Agents {
         cwd: definition.cwd,
         stdin: plan.stdin,
         env: {
-          ...plan.env,
+          ...Object.fromEntries(Object.entries(plan.env).filter(([key]) => key !== "BL_AUDIENCE")),
           ...trackingEnv,
           BL_WORKSPACE: this.ctx.workspace,
           BL_RUN_REFERENCE: `${current.id}:${invocation}`,

@@ -54,6 +54,7 @@ export default function identityExtension(pi: PiApi): void {
       nativeSessionId: ctx.sessionManager.getSessionId(),
       cwd: ctx.cwd,
       event,
+      ...(process.env["PI_SUBAGENT"] === "1" ? { audience: "agent" as const } : {}),
       model:
         ctx.model === undefined
           ? null

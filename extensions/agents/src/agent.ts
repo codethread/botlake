@@ -1,5 +1,5 @@
 import { defineOp, type Context } from "@botlake/core";
-import { agentMetadata, registrationSchema } from "@botlake/native-session";
+import { agentMetadata, registrationSchema, sessionAudience } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
@@ -82,6 +82,10 @@ export function registerAgent(ctx: Context, service: Agents): void {
               "run-id": { key: "runId", type: "string" },
               invocation: { type: "string" },
               "parent-native-session-id": { key: "parentNativeSessionId", type: "string" },
+              audience: {
+                type: "string",
+                description: "Intended recipient (human, agent or unknown)",
+              },
               event: { type: "string" },
               "native-event": { key: "nativeEvent", type: "string" },
               "session-path": { key: "sessionPath", type: "string" },
@@ -148,6 +152,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
             return service.native({
               ...request,
               ...agentMetadata(request, ctx.env.bl),
+              audience: sessionAudience(request, ctx.env.bl),
             });
           })
           .exhaustive();

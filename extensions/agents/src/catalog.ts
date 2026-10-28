@@ -186,6 +186,7 @@ export class Catalog {
       systemPrompt: resolveSystemPrompt(selected.systemPrompt, {
         ...context,
         provider: selected.provider,
+        audience: "agent",
         model: selected.model ?? null,
         effort: selected.effort ?? null,
         seat: name,

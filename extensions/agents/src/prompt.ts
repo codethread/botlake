@@ -1,3 +1,4 @@
+import type { Audience } from "@botlake/native-session";
 import { z } from "zod";
 
 import type { ProviderName } from "./providers/contract.ts";
@@ -9,6 +10,8 @@ export const systemPromptSchema = z.union([
 
 export interface SessionContext {
   provider: ProviderName;
+  /** Intended recipient, independent of whether the session has a UI. */
+  audience: Audience;
   model: string | null;
   effort: string | null;
   seat: string | null;

@@ -7,6 +7,11 @@ const text = z.string().trim().min(1);
 
 export const providerSchema = z.enum(["codex", "pi", "claude"]);
 
+export const audienceSchema = z.enum(["human", "agent", "unknown"]);
+const audienceOverrideSchema = z.enum(["human", "agent"], {
+  error: "BL_AUDIENCE must be human or agent",
+});
+
 export const sessionSchema = z.strictObject({
   provider: providerSchema,
   nativeSessionId: text,
@@ -32,6 +37,7 @@ export const observationSchema = sessionSchema.extend({
   cwd: text,
   event: eventSchema.default("session-start"),
   nativeEvent: text.optional(),
+  audience: audienceSchema.optional(),
   ...agentMetadataSchema.shape,
   sessionPath: text.nullable().optional(),
   parentNativeSessionId: text.optional(),
@@ -59,6 +65,8 @@ export const bindingSchema = z.strictObject({
 export const activitySchema = z.enum(["unknown", "working", "idle", "ended"]);
 
 export type ProviderName = z.infer<typeof providerSchema>;
+
+export type Audience = z.infer<typeof audienceSchema>;
 
 export type NativeSession = z.infer<typeof sessionSchema>;
 
@@ -108,6 +116,22 @@ export function agentMetadata(
     model: input.model === undefined ? env["BL_MODEL"] : input.model,
     thinkingLevel: input.thinkingLevel === undefined ? env["BL_EFFORT"] : input.thinkingLevel,
   });
+}
+
+/** Managed runs and explicitly observed native children never inherit a caller override. */
+export function sessionAudience(
+  input: Pick<NativeRegistration, "audience" | "runId" | "nativeEvent">,
+  env: Readonly<Record<string, string | undefined>>,
+): Audience {
+  if (
+    input.runId !== undefined ||
+    input.nativeEvent === "SubagentStart" ||
+    input.nativeEvent === "SubagentStop"
+  )
+    return "agent";
+  if (input.audience !== undefined) return input.audience;
+  const override = env["BL_AUDIENCE"];
+  return override === undefined ? "unknown" : audienceOverrideSchema.parse(override);
 }
 
 export function observedActivity(event: NativeEvent, previous: Activity): Activity {

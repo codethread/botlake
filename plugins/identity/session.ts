@@ -5,6 +5,7 @@ import {
   bindingSchema,
   identityInstruction,
   sessionIdentity,
+  sessionAudience,
   type NativeBinding,
   type NativeObservation,
 } from "@botlake/native-session";
@@ -54,6 +55,7 @@ export async function reportNative(
         {
           command: "native",
           ...observation,
+          audience: sessionAudience({ ...observation, runId: parts?.[0] }, env),
           ...(parts === undefined ? {} : { runId: parts[0], invocation: parts[1] }),
         },
         env,

@@ -2,6 +2,7 @@ import { Fault, q, type Context, type Node } from "@botlake/core";
 import { nativeStartup, observeIdentity, recordParticipation } from "@botlake/extension-identity";
 import {
   providerSchema,
+  type Audience,
   type NativeBinding,
   type NativeRegistration,
   type ProviderName,
@@ -19,7 +20,7 @@ export class NativeSessions {
     private readonly unmanagedSystemPrompt: SystemPrompt | undefined,
   ) {}
 
-  observe(input: NativeRegistration): NativeBinding {
+  observe(input: NativeRegistration & { audience: Audience }): NativeBinding {
     return this.ctx.graph.atomic(() => {
       let run: Node;
       if (input.runId !== undefined) {
@@ -70,11 +71,13 @@ export class NativeSessions {
       this.ctx.graph.update(run.id, {
         attributes: {
           "agent/identity": binding.identity,
+          "agent/audience": input.audience,
           "agent/session-id": input.nativeSessionId,
           "agent/session-confirmed": true,
           "agent/integration": "native",
           "agent/observation": {
             event: input.event,
+            audience: input.audience,
             at: this.ctx.clock.now(),
             activity: session.attributes["identity/activity"] ?? "unknown",
             agentSeat: session.attributes["identity/agent-seat"] ?? null,
@@ -103,6 +106,7 @@ export class NativeSessions {
           external && (input.event === "session-start" || input.event === "metadata")
             ? resolveSystemPrompt(this.unmanagedSystemPrompt, {
                 provider: input.provider,
+                audience: input.audience,
                 model: input.model ?? null,
                 effort: input.thinkingLevel ?? null,
                 seat: input.agentSeat ?? null,

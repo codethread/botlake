@@ -8,6 +8,12 @@ import (
 	"os"
 )
 
+func warnAudienceEnvironment() {
+	if _, present := os.LookupEnv("BL_AUDIENCE"); present {
+		fmt.Fprintln(os.Stderr, "warning: BL_AUDIENCE is set at lake startup; it is session-scoped, not a lake default, and will be removed from managed agent launches")
+	}
+}
+
 func Botlake(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
@@ -31,6 +37,7 @@ func Botlake(args []string) int {
 		if len(args) != 1 {
 			return fail(errors.New("usage: botlake start (foreground daemon)"))
 		}
+		warnAudienceEnvironment()
 		if err := Serve(); err != nil {
 			return fail(err)
 		}
@@ -74,6 +81,7 @@ func Botlake(args []string) int {
 		}
 		var payload any
 		if action == "start" || action == "restart" {
+			warnAudienceEnvironment()
 			payload = map[string]any{"env": environment()}
 		}
 		return Relay(request("lake-"+action, *target, payload))

@@ -68,13 +68,21 @@ Caller-sensitive allow/deny visibility, live alias registration/unregistration, 
 
 ## System prompts
 
-`systemPrompt` accepts a string or synchronous `(context: SessionContext) => string`. Share values explicitly:
+`systemPrompt` accepts a string or synchronous `(context: SessionContext) => string`. Use `audience` to tailor communication without guessing who receives the response:
 
 ```ts
 import { agents, type SessionContext } from "@botlake/extension-agents";
 
-function projectPrompt({ model }: SessionContext): string {
+function projectPrompt({ audience, model }: SessionContext): string {
+  const communication =
+    audience === "human"
+      ? "Communicate efficiently and include assumptions, actions and next steps when they matter."
+      : audience === "agent"
+        ? "Communicate clearly and informatively; the recipient is another agent."
+        : "Communicate clearly without assuming the recipient is human or an agent.";
+
   return [
+    communication,
     "This project uses Botlake. Use `bl prime agent` before delegating work.",
     ...(model?.startsWith("deepseek/") ? ["State acceptance criteria before editing."] : []),
   ].join("\n\n");
@@ -89,7 +97,18 @@ export default agents({
 });
 ```
 
-`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`.
+`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`.
+
+Managed Botlake launches always have audience `agent`. Known native subagents are also `agent`, ignoring inherited `BL_AUDIENCE`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
+
+For a direct shell launch, keep the override scoped rather than exporting it globally:
+
+```sh
+human() { BL_AUDIENCE=human "$@"; }
+human pi
+```
+
+Botlake only scrubs processes it launches. Other provider/tool subprocesses may inherit `BL_AUDIENCE`; adapters ignore it for known native subagents. Audience describes the intended recipient, not whether a session has a UI.
 
 Managed runs use only the selected alias candidate's explicit prompt. Omission or `""` adds none, even when the parent has a prompt; string aliases do not inherit prompts either. Callbacks run after model/effort resolution and their text is frozen across replay, retry and resume. Catalog inspection does not evaluate callbacks; detail marks them `{ "dynamic": true }`.
 

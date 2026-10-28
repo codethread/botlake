@@ -12,7 +12,9 @@ export const claude: HookAdapter = {
   decode(raw) {
     const event = hookEventSchema.parse(raw);
     const child =
-      event.hook_event_name === "SubagentStart" || event.hook_event_name === "SubagentStop";
+      event.agent_id !== undefined ||
+      event.hook_event_name === "SubagentStart" ||
+      event.hook_event_name === "SubagentStop";
     const nativeSessionId = child
       ? `claude-child:${Buffer.from(JSON.stringify([event.session_id, z.string().min(1).parse(event.agent_id)])).toString("base64url")}`
       : event.session_id;
@@ -27,7 +29,7 @@ export const claude: HookAdapter = {
         cwd: event.cwd,
         event: events[event.hook_event_name],
         nativeEvent: event.hook_event_name,
-        ...(child ? { parentNativeSessionId: event.session_id } : {}),
+        ...(child ? { parentNativeSessionId: event.session_id, audience: "agent" as const } : {}),
         ...(event.model === undefined ? {} : { model: event.model }),
         ...(event.transcript_path === undefined
           ? {}
