@@ -1,12 +1,16 @@
 package app
 
 import (
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 )
+
+//go:embed completions.zsh
+var zshCompletions string
 
 func warnAudienceEnvironment() {
 	if _, present := os.LookupEnv("BL_AUDIENCE"); present {
@@ -16,7 +20,7 @@ func warnAudienceEnvironment() {
 
 func Botlake(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]")
+		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]\nbotlake completions zsh")
 
 		return 0
 	}
@@ -26,6 +30,14 @@ func Botlake(args []string) int {
 	}
 
 	switch args[0] {
+	case "completions":
+		if len(args) != 2 || args[1] != "zsh" {
+			return fail(errors.New("usage: botlake completions zsh"))
+		}
+		if _, err := io.WriteString(os.Stdout, zshCompletions); err != nil {
+			return fail(err)
+		}
+		return 0
 	case "--version":
 		if len(args) != 1 {
 			return fail(errors.New("usage: botlake --version"))

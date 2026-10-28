@@ -18,7 +18,6 @@
     "lint-staged": "lint-staged",
     "prepare": "husky",
     "build:cli": "mkdir -p out && cd cli && go build -o ../out/botlake ./cmd/botlake && go build -o ../out/bl ./cmd/bl",
-    "install:local": "bun run build:cli && mkdir -p \"$HOME/.local/bin\" && install -m 755 out/botlake out/bl \"$HOME/.local/bin/\"",
     "test": "bun test tests/blackbox",
     "check:go": "cd cli && go vet ./..."
   },

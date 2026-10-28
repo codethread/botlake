@@ -27,7 +27,7 @@ Requires Bun and Go (see `packageManager` and `cli/go.mod` for versions).
 
 ```sh
 bun install
-bun run install:local # Builds and installs botlake and bl into ~/.local/bin.
+GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl
 export PATH="$HOME/.local/bin:$PATH"
 botlake start # Foreground supervisor; leave running in its own terminal.
 # In another terminal, from this checkout:
@@ -36,7 +36,7 @@ bl add 'My first node' --attributes '{"stuff":"data"}'
 bl list
 ```
 
-The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run `bun run install:local` after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
+The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run the Go install command after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
 
 The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, and Cron has no jobs until configured.
 
@@ -96,6 +96,23 @@ export default {
   },
 } satisfies Extension;
 ```
+
+### Zsh completion
+
+Generate the shell script once after installing or upgrading the CLI; generation needs no running lake:
+
+```sh
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+botlake completions zsh > "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/botlake.zsh"
+```
+
+Source it from `~/.zshrc` **after** your existing `compinit` setup:
+
+```zsh
+source "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/botlake.zsh"
+```
+
+Only zsh is supported. The generated script registers completion for both `botlake` and `bl`; sourcing it runs no CLI commands. Base `botlake` commands and flags complete offline. Dynamic `bl` completion requires `jq` and a running lake, reading `bl help --json` so operations, nested subcommands, flags and boolean values follow the selected lake, including `--workspace` and `--cwd`. `@file` and named payload paths complete local files. The shell script is cached, not the command catalog.
 
 ## Operate
 
