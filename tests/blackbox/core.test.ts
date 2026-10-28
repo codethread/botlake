@@ -19,6 +19,9 @@ import { z } from "zod";
 
 import { rejected } from "./assert.ts";
 
+const text = z.compile(z.string());
+const titledRows = z.compile(z.array(z.object({ title: z.string() })));
+
 test("graph mutations, archive selection, stale writes and atomic rollback through public ops", async () => {
   await disposable(async (runtime) => {
     const graph = runtime.graph;
@@ -154,8 +157,7 @@ test("query negation requires present hot values and composes across named queri
       const archived = graph.add({ title: "archived", attributes: { a: 1, doc: { value: 3 } } });
       graph.archive(archived.id, ["doc"]);
       const titles = (result: unknown): string[] =>
-        z
-          .array(z.object({ title: z.string() }))
+        titledRows
           .parse(result)
           .map((row) => row.title)
           .toSorted();
@@ -217,7 +219,7 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
           { op: "upsert", from: "root", to: "child", relation: "custom" },
         ],
       });
-      const id = (ref: string): string => z.string().parse(created.refs[ref]);
+      const id = (ref: string): string => text.parse(created.refs[ref]);
       expect(
         graph
           .list({ ready: true })
@@ -298,8 +300,8 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
 test("async Zod and Valibot transformations, discovery, output validation and stream framing", async () => {
   const zod = defineOp({
     name: "zod",
-    input: z.string().transform(async (value) => value.length),
-    output: z.number().transform(async (value) => ({ value })),
+    input: z.compile(z.string().transform(async (value) => value.length)),
+    output: z.compile(z.number().transform(async (value) => ({ value }))),
     cli: { description: "async" },
     handler: (length) => length + 1,
   });
@@ -318,15 +320,15 @@ test("async Zod and Valibot transformations, discovery, output validation and st
   });
   const bad = defineOp({
     name: "bad",
-    input: z.object({}),
-    output: z.number().min(1),
+    input: z.compile(z.object({})),
+    output: z.compile(z.number().min(1)),
     cli: { description: "bad output" },
     handler: () => 0,
   });
   const stream = defineOp({
     name: "stream",
-    input: z.object({}),
-    output: z.number().min(1),
+    input: z.compile(z.object({})),
+    output: z.compile(z.number().min(1)),
     stream: true,
     cli: { description: "stream" },
     async *handler() {

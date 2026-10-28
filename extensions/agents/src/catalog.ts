@@ -1,12 +1,13 @@
 import { Fault } from "@botlake/core";
+import { providerSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { agentFlags } from "./flags.ts";
 import { resolveSystemPrompt, systemPromptSchema, type SystemPrompt } from "./prompt.ts";
-import { providerNameSchema, type Provider } from "./providers/contract.ts";
+import type { Provider } from "./providers/contract.ts";
 
-const text = z.string().trim().min(1);
+const text = z.compile(z.string().trim().min(1));
 
 const settings = {
   model: text.optional(),
@@ -14,23 +15,28 @@ const settings = {
   extraArgs: z.array(z.string()).optional(),
 };
 
-export const seatSchema = z.strictObject({
-  provider: providerNameSchema,
-  ...settings,
-  extraArgs: z.array(z.string()).default([]),
-  systemPrompt: z.string().default(""),
-});
-
-const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
-  z.union([
-    text,
-    z.tuple([z.literal("and"), conditionSchema]).rest(conditionSchema),
-    z.tuple([z.literal("or"), conditionSchema]).rest(conditionSchema),
-    z.tuple([z.literal("not"), conditionSchema]),
-  ]),
+export const seatSchema = z.compile(
+  z.strictObject({
+    provider: providerSchema,
+    ...settings,
+    extraArgs: z.array(z.string()).default([]),
+    systemPrompt: z.string().default(""),
+  }),
 );
 
+const conditionDefinition: z.ZodType<Condition> = z.lazy(() =>
+  z.union([
+    text,
+    z.tuple([z.literal("and"), conditionDefinition]).rest(conditionDefinition),
+    z.tuple([z.literal("or"), conditionDefinition]).rest(conditionDefinition),
+    z.tuple([z.literal("not"), conditionDefinition]),
+  ]),
+);
+// Initialize the recursive definition before eager compilation resolves its lazy getter.
+const conditionSchema = z.compile(conditionDefinition);
+
 const schemas = configSchemas(systemPromptSchema);
+const jsonConfigSchema = configSchemas(z.string()).config;
 
 export const agentConfigSchema = schemas.config;
 
@@ -80,7 +86,7 @@ type Resolution =
 
 export function agentConfigJsonSchema(): unknown {
   // JSON configuration supports text; callbacks belong to TypeScript configuration.
-  return z.toJSONSchema(configSchemas(z.string()).config, { io: "input" });
+  return z.toJSONSchema(jsonConfigSchema, { io: "input" });
 }
 
 export class Catalog {
@@ -271,16 +277,18 @@ function configSchemas<P extends z.ZodType>(prompt: P) {
   const candidate = z.union([
     text,
     aliasDescriptor,
-    z.strictObject({ provider: providerNameSchema, ...descriptor }),
+    z.strictObject({ provider: providerSchema, ...descriptor }),
   ]);
   const alias = z.union([candidate, z.array(candidate).min(1)]);
   return {
     aliasDescriptor,
     candidate,
     alias,
-    config: z.strictObject({
-      aliases: z.record(text, alias).default({}),
-      unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
-    }),
+    config: z.compile(
+      z.strictObject({
+        aliases: z.record(text, alias).default({}),
+        unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
+      }),
+    ),
   };
 }

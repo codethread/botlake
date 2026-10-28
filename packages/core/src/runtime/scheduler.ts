@@ -5,14 +5,19 @@ import { sql } from "../core/sql.ts";
 import type { Graph } from "../core/store.ts";
 import type { Clock } from "./clock.ts";
 
-const wakeSchema = z.strictObject({
-  key: z.string(),
-  at: z.number(),
-  handler: z.string(),
-  payload: z.string(),
-  generation: z.string(),
-  attempts: z.number(),
-});
+const wakeSchema = z.compile(
+  z.strictObject({
+    key: z.string(),
+    at: z.number(),
+    handler: z.string(),
+    payload: z.string(),
+    generation: z.string(),
+    attempts: z.number(),
+  }),
+);
+
+const wakeTimeSchema = z.compile(z.number().int());
+const wakesSchema = z.compile(z.array(wakeSchema));
 
 export type Wake = Omit<z.infer<typeof wakeSchema>, "payload"> & { payload: Json };
 
@@ -36,7 +41,7 @@ export class Scheduler {
   }
 
   schedule(key: string, at: number, handler: string, payload: Json = {}): string {
-    z.number().int().parse(at);
+    wakeTimeSchema.parse(at);
     if (!this.handlers.has(handler))
       throw new Fault("dependency", `Unknown wake handler: ${handler}`);
 
@@ -94,8 +99,7 @@ export class Scheduler {
   }
 
   pending(): Wake[] {
-    return z
-      .array(wakeSchema)
+    return wakesSchema
       .parse(
         this.graph.db
           .query(sql`

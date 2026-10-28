@@ -8,6 +8,19 @@ import { z } from "zod";
 
 import { system, install } from "./fixtures/system.ts";
 
+const extensionSchema = z.compile(
+  z.object({
+    default: z.object({
+      name: z.string(),
+      activate: z.custom<(ctx: Context) => Promise<void> | void>(
+        (value) => typeof value === "function",
+      ),
+    }),
+  }),
+);
+const idResult = z.compile(z.object({ id: z.string() }));
+const jsonValue = z.compile(z.json());
+
 test("external Bun package imports stay inert; worker deps, cleanup, wire streams, deadlines and peer links work", async () => {
   const host = await system();
   try {
@@ -31,8 +44,8 @@ test("external Bun package imports stay inert; worker deps, cleanup, wire stream
     await Bun.write(
       join(library, "index.ts"),
       `import {defineOp} from "@botlake/core";import {z} from "zod";
-export const op=defineOp({name:"echo",input:z.object({value:z.string()}),output:z.string(),cli:{description:"echo",positionals:[{name:"value",type:"string",required:true}]},handler:input=>input.value});
-export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defineOp({name:"issues",input:{"~standard":{version:1,vendor:"fixture",validate:()=>({issues:[{message:"invalid",path:[Symbol("field")]}]})}},output:z.string(),cli:{description:"issues"},handler:()=>"never"}));ctx.register(defineOp({name:"success-stream",input:z.object({}),output:z.number(),stream:true,cli:{description:"stream"},async *handler(){yield 1;yield 2;}}));ctx.bin("say",{description:"External executable",exec:{command:"echo"}});ctx.register(defineOp({name:"numbers",input:z.object({}),output:z.number().positive(),stream:true,cli:{description:"numbers"},async *handler(){yield 1;yield 2;yield 0;}}));ctx.register(defineOp({name:"wait",input:z.object({}),output:z.string(),cli:{description:"wait"},async handler(_,ctx,request){await new Promise((resolve,reject)=>{request.signal.addEventListener("abort",()=>reject(request.signal.reason),{once:true});});return "never";}}));ctx.resource({start(){return Bun.write(${JSON.stringify(marker)},"started").then(()=>{});},stop(){return Bun.write(${JSON.stringify(marker)},"stopped").then(()=>{});}});}};`,
+export const op=defineOp({name:"echo",input:z.compile(z.object({value:z.string()})),output:z.compile(z.string()),cli:{description:"echo",positionals:[{name:"value",type:"string",required:true}]},handler:input=>input.value});
+export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defineOp({name:"issues",input:{"~standard":{version:1,vendor:"fixture",validate:()=>({issues:[{message:"invalid",path:[Symbol("field")]}]})}},output:z.compile(z.string()),cli:{description:"issues"},handler:()=>"never"}));ctx.register(defineOp({name:"success-stream",input:z.compile(z.object({})),output:z.compile(z.number()),stream:true,cli:{description:"stream"},async *handler(){yield 1;yield 2;}}));ctx.bin("say",{description:"External executable",exec:{command:"echo"}});ctx.register(defineOp({name:"numbers",input:z.compile(z.object({})),output:z.compile(z.number().positive()),stream:true,cli:{description:"numbers"},async *handler(){yield 1;yield 2;yield 0;}}));ctx.register(defineOp({name:"wait",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"wait"},async handler(_,ctx,request){await new Promise((resolve,reject)=>{request.signal.addEventListener("abort",()=>reject(request.signal.reason),{once:true});});return "never";}}));ctx.resource({start(){return Bun.write(${JSON.stringify(marker)},"started").then(()=>{});},stop(){return Bun.write(${JSON.stringify(marker)},"stopped").then(()=>{});}});}};`,
     );
     const installing = Bun.spawn(["bun", "install", "--ignore-scripts", "--offline"], {
       cwd: library,
@@ -47,16 +60,7 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await Bun.file(join(library, "bun.lock")).exists()).toBe(true);
     const imported: unknown = await import(pathToFileURL(join(library, "index.ts")).href);
     expect(await Bun.file(marker).exists()).toBe(false);
-    const external = z
-      .object({
-        default: z.object({
-          name: z.string(),
-          activate: z.custom<(ctx: Context) => Promise<void> | void>(
-            (value) => typeof value === "function",
-          ),
-        }),
-      })
-      .parse(imported);
+    const external = extensionSchema.parse(imported);
     const runtime = new Runtime({ database: join(host.dir, "inert.db") });
     await runtime.start([external.default]);
     await runtime.stop();
@@ -85,7 +89,7 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       );
       await Bun.write(
         join(workspace, "deps.ts"),
-        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.object({}),output:z.string(),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.object({value:z.string(),operation:z.string().default("echo")}),output:z.string(),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
+        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.compile(z.object({value:z.string(),operation:z.string().default("echo")})),output:z.compile(z.string()),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
       );
       await host.botlake(["lake", "start", "--workspace", workspace]);
       expect(await host.bl(name, "dep", {})).toBe(name);
@@ -95,7 +99,7 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       bins: [{ name: "say", description: "External executable" }],
     });
     const unicode = "世界🙂—".repeat(50000);
-    const relayed = z.object({ ok: z.literal(true), result: z.string() }).parse(
+    const relayed = z.compile(z.object({ ok: z.literal(true), result: z.string() })).parse(
       JSON.parse(
         await host.wire({
           protocol_version: 1,
@@ -128,19 +132,20 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     const frames: unknown[] = streaming
       .trim()
       .split("\n")
-      .map((line) => z.json().parse(JSON.parse(line)));
+      .map((line) => jsonValue.parse(JSON.parse(line)));
     expect(frames.slice(1, 3)).toEqual([1, 2]);
     expect(
-      z.object({ done: z.literal(true), success: z.literal(false) }).parse(frames.at(-1)).success,
+      z.compile(z.object({ done: z.literal(true), success: z.literal(false) })).parse(frames.at(-1))
+        .success,
     ).toBe(false);
     expect(await host.cli(["--workspace", "alpha", "numbers"], false)).toContain("validation");
     expect(await host.cli(["--workspace", "alpha", "--timeout", "1ms", "wait"], false)).toContain(
       "deadline",
     );
-    const card = z
-      .object({ id: z.string() })
-      .parse(await host.bl("beta", "kanban", { command: "add", title: "Downstream" }));
-    const mirror = z.object({ id: z.string() }).parse(
+    const card = idResult.parse(
+      await host.bl("beta", "kanban", { command: "add", title: "Downstream" }),
+    );
+    const mirror = idResult.parse(
       await host.bl("alpha", "kanban", {
         command: "link",
         operation: "attach",
@@ -154,8 +159,9 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     await host.bl("beta", "kanban", { command: "finish", id: card.id });
     await host.bl("alpha", "kanban", { command: "link", operation: "refresh", id: mirror.id });
     expect(
-      z.object({ state: z.string() }).parse(await host.bl("alpha", "show", { id: mirror.id }))
-        .state,
+      z
+        .compile(z.object({ state: z.string() }))
+        .parse(await host.bl("alpha", "show", { id: mirror.id })).state,
     ).toBe("closed");
     expect(await host.cli(["--workspace", "alpha", "help", "kanban", "ref", "add"])).toBeArray();
     const bad = await host.workspace("bad", ["./bad.ts"]);
@@ -170,14 +176,14 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await Bun.file(disposed).text()).toBe("disposed");
     expect(
       z
-        .object({ members: z.array(z.object({ name: z.string() })) })
+        .compile(z.object({ members: z.array(z.object({ name: z.string() })) }))
         .parse(await host.botlake(["status"]))
         .members.map((member) => member.name),
     ).not.toContain("bad");
     await host.botlake(["lake", "stop", "--workspace", "beta"]);
     expect(
       z
-        .object({ link: z.object({ status: z.string() }) })
+        .compile(z.object({ link: z.object({ status: z.string() }) }))
         .parse(await host.bl("alpha", "kanban", { command: "card", id: mirror.id })).link.status,
     ).toBe("unavailable");
     const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);

@@ -18,55 +18,77 @@ import {
 import { compileQuery, type Predicate } from "./query.ts";
 import { sql } from "./sql.ts";
 
-const stateSchema = z.enum(["active", "closed", "replaced"]);
+const stateSchema = z.compile(z.enum(["active", "closed", "replaced"]));
 
-const rowSchema = z.strictObject({
-  id: z.string(),
-  title: z.string(),
-  state: stateSchema,
-  created_at: z.string(),
-  updated_at: z.string(),
-  revision: z.number(),
-});
-
-export const nodeSchema = rowSchema.extend({ attributes: attributesSchema });
-
-const edgeRow = z.strictObject({
-  from_id: z.string(),
-  to_id: z.string(),
-  relation: z.string(),
-  attributes: z.string(),
-});
-
-const patchSchema = z.strictObject({
-  title: z.string().trim().min(1).optional(),
-  state: z.enum(["active", "closed"]).optional(),
-  attributes: attributesSchema.optional(),
-  expectedRevision: z.number().int().positive().optional(),
-});
-
-const edgeOpSchema = z.discriminatedUnion("op", [
+const rowSchema = z.compile(
   z.strictObject({
-    op: z.literal("upsert"),
-    from: z.string().min(1),
-    to: z.string().min(1),
-    relation: z.string().min(1),
-    attributes: attributesSchema.default({}),
+    id: z.string(),
+    title: z.string(),
+    state: stateSchema,
+    created_at: z.string(),
+    updated_at: z.string(),
+    revision: z.number(),
   }),
-  z.strictObject({
-    op: z.literal("remove"),
-    from: z.string().min(1),
-    to: z.string().min(1),
-    relation: z.string().min(1),
-  }),
-]);
+);
 
-export const batchSchema = z.strictObject({
-  refs: z.record(z.string().min(1), z.string().min(1)).default({}),
-  nodes: z.array(patchSchema.extend({ ref: z.string().min(1) })).default([]),
-  edges: z.array(edgeOpSchema).default([]),
-  burn: z.array(z.string().min(1)).default([]),
-});
+export const nodeSchema = z.compile(rowSchema.extend({ attributes: attributesSchema }));
+
+const edgeRow = z.compile(
+  z.strictObject({
+    from_id: z.string(),
+    to_id: z.string(),
+    relation: z.string(),
+    attributes: z.string(),
+  }),
+);
+
+const patchSchema = z.compile(
+  z.strictObject({
+    title: z.string().trim().min(1).optional(),
+    state: stateSchema.exclude(["replaced"]).optional(),
+    attributes: attributesSchema.optional(),
+    expectedRevision: z.number().int().positive().optional(),
+  }),
+);
+
+const edgeOpSchema = z.compile(
+  z.discriminatedUnion("op", [
+    z.strictObject({
+      op: z.literal("upsert"),
+      from: z.string().min(1),
+      to: z.string().min(1),
+      relation: z.string().min(1),
+      attributes: attributesSchema.default({}),
+    }),
+    z.strictObject({
+      op: z.literal("remove"),
+      from: z.string().min(1),
+      to: z.string().min(1),
+      relation: z.string().min(1),
+    }),
+  ]),
+);
+
+export const batchSchema = z.compile(
+  z.strictObject({
+    refs: z.record(z.string().min(1), z.string().min(1)).default({}),
+    nodes: z.array(patchSchema.extend({ ref: z.string().min(1) })).default([]),
+    edges: z.array(edgeOpSchema).default([]),
+    burn: z.array(z.string().min(1)).default([]),
+  }),
+);
+
+const databaseVersionSchema = z.compile(z.object({ user_version: z.number() }));
+const attributeRowsSchema = z.compile(z.array(z.object({ key: z.string(), value: z.string() })));
+const limitSchema = z.compile(z.number().int().positive().max(10000));
+const positiveIntegerSchema = z.compile(z.number().int().positive());
+const countSchema = z.compile(z.object({ count: z.number().int().nonnegative() }));
+const createSchema = z.compile(patchSchema.required({ title: true }));
+const attributeKeysSchema = z.compile(z.array(z.string().min(1)).min(1));
+const edgeRowsSchema = z.compile(z.array(edgeRow));
+const nonemptyTextSchema = z.compile(z.string().min(1));
+const idRowsSchema = z.compile(z.array(z.object({ id: z.string() })));
+const keyRowsSchema = z.compile(z.array(z.object({ key: z.string() })));
 
 const ddl = sql`
   CREATE TABLE nodes (
@@ -204,9 +226,9 @@ export class Graph {
         PRAGMA foreign_keys = ON;
         PRAGMA busy_timeout = 5000;
       `);
-      const version = z
-        .object({ user_version: z.number() })
-        .parse(this.db.query(sql`PRAGMA user_version`).get()).user_version;
+      const version = databaseVersionSchema.parse(
+        this.db.query(sql`PRAGMA user_version`).get(),
+      ).user_version;
       if (version === 0) {
         const tables = this.db
           .query(sql`
@@ -294,7 +316,7 @@ export class Graph {
         `Unknown node: ${id}`,
       ),
     );
-    const attrs = z.array(z.object({ key: z.string(), value: z.string() })).parse(
+    const attrs = attributeRowsSchema.parse(
       this.db
         .query(sql`
           SELECT key, value
@@ -311,12 +333,7 @@ export class Graph {
   }
 
   list(options: Selection & { limit?: number | undefined } = {}): Node[] {
-    const limit = z
-      .number()
-      .int()
-      .positive()
-      .max(10000)
-      .parse(options.limit ?? 100);
+    const limit = limitSchema.parse(options.limit ?? 100);
     return this.select(options, limit);
   }
 
@@ -326,7 +343,7 @@ export class Graph {
 
   count(options: Selection & { limit?: number | undefined } = {}): number {
     const limit =
-      options.limit === undefined ? undefined : z.number().int().positive().parse(options.limit);
+      options.limit === undefined ? undefined : positiveIntegerSchema.parse(options.limit);
     const selection = this.compileSelection(options);
     const row = this.db
       .query(sql`
@@ -339,7 +356,7 @@ export class Graph {
         )
       `)
       .get(...selection.bindings, ...(limit === undefined ? [] : [limit]));
-    return z.object({ count: z.number().int().nonnegative() }).parse(row).count;
+    return countSchema.parse(row).count;
   }
 
   add(input: {
@@ -347,7 +364,7 @@ export class Graph {
     state?: "active" | "closed" | undefined;
     attributes?: Attributes | undefined;
   }): Node {
-    const parsed = patchSchema.required({ title: true }).parse(input);
+    const parsed = createSchema.parse(input);
 
     return this.atomic(() => {
       const id = crypto.randomUUID();
@@ -414,7 +431,7 @@ export class Graph {
   }
 
   archive(id: string, keys: string[]): Node {
-    z.array(z.string().min(1)).min(1).parse(keys);
+    attributeKeysSchema.parse(keys);
 
     return this.atomic(() => {
       const before = this.show(id);
@@ -456,8 +473,7 @@ export class Graph {
   }
 
   edges(id?: string, relation?: string): Edge[] {
-    return z
-      .array(edgeRow)
+    return edgeRowsSchema
       .parse(
         this.db
           .query(sql`
@@ -488,7 +504,7 @@ export class Graph {
   }
 
   connect(from: string, to: string, relation: string, attributes: Attributes = {}): Edge {
-    z.string().min(1).parse(relation);
+    nonemptyTextSchema.parse(relation);
     attributesSchema.parse(attributes);
 
     return this.atomic(() => {
@@ -674,8 +690,7 @@ export class Graph {
   }
   subgraph(root: string, relation = "parent-of"): { nodes: Node[]; edges: Edge[] } {
     this.show(root);
-    const ids = z
-      .array(z.object({ id: z.string() }))
+    const ids = idRowsSchema
       .parse(
         this.db
           .query(sql`
@@ -701,7 +716,7 @@ export class Graph {
   }
 
   note(target: string, text: string, attributes: Attributes = {}): Node {
-    z.string().min(1).parse(text);
+    nonemptyTextSchema.parse(text);
 
     return this.atomic(() => {
       this.show(target);
@@ -772,7 +787,7 @@ export class Graph {
 
   private select(options: Selection, limit?: number): Node[] {
     const selection = this.compileSelection(options);
-    const ids = z.array(z.object({ id: z.string() })).parse(
+    const ids = idRowsSchema.parse(
       this.db
         .query(sql`
           SELECT s.id
@@ -812,7 +827,7 @@ export class Graph {
     const before = this.show(id).attributes;
     const after = merge(before, patch);
 
-    const keys = z.array(z.object({ key: z.string() })).parse(
+    const keys = keyRowsSchema.parse(
       this.db
         .query(sql`
           SELECT key

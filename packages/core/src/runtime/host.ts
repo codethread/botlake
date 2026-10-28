@@ -3,11 +3,17 @@ import { Worker } from "node:worker_threads";
 import { z } from "zod";
 
 import { Fault } from "../core/json.ts";
-import { invocationSchema } from "./protocol.ts";
+import { environmentSchema, invocationSchema } from "./protocol.ts";
 
-const socket = z.string().min(1).parse(Bun.argv[2]);
+const socketPathSchema = z.compile(z.string().min(1));
+const envelopeSchema = z.compile(
+  z.strictObject({ type: z.enum(["/control", "/invoke"]), body: z.unknown() }),
+);
+const workspacePathSchema = z.compile(z.string());
 
-const botlakeSocket = z.string().min(1).parse(Bun.argv[3]);
+const socket = socketPathSchema.parse(Bun.argv[2]);
+
+const botlakeSocket = socketPathSchema.parse(Bun.argv[3]);
 
 const members = new Map<string, Member>();
 
@@ -15,21 +21,25 @@ const streams = new Map<string, { member: Member; socket: Bun.Socket<Connection>
 
 const encoder = new TextEncoder();
 
-const frameSchema = z.object({
-  request_id: z.string().optional(),
-  frame: z.string().optional(),
-  end: z.boolean().optional(),
-  ready: z.boolean().optional(),
-  stopped: z.boolean().optional(),
-  stop_error: z.unknown().optional(),
-  fatal: z.unknown().optional(),
-});
+const frameSchema = z.compile(
+  z.object({
+    request_id: z.string().optional(),
+    frame: z.string().optional(),
+    end: z.boolean().optional(),
+    ready: z.boolean().optional(),
+    stopped: z.boolean().optional(),
+    stop_error: z.unknown().optional(),
+    fatal: z.unknown().optional(),
+  }),
+);
 
-const controlSchema = z.strictObject({
-  action: z.enum(["start", "stop", "restart", "status", "member-status"]),
-  workspace: z.string().optional(),
-  env: z.record(z.string(), z.string()).default({}),
-});
+const controlSchema = z.compile(
+  z.strictObject({
+    action: z.enum(["start", "stop", "restart", "status", "member-status"]),
+    workspace: z.string().optional(),
+    env: environmentSchema.default({}),
+  }),
+);
 
 interface Member {
   worker: Worker;
@@ -118,9 +128,7 @@ process.on("SIGTERM", () => {
 // -- Private helpers --
 
 async function handle(client: Bun.Socket<Connection>, line: string): Promise<void> {
-  const envelope = z
-    .strictObject({ type: z.enum(["/control", "/invoke"]), body: z.unknown() })
-    .parse(JSON.parse(line));
+  const envelope = envelopeSchema.parse(JSON.parse(line));
 
   if (envelope.type === "/control") {
     const control = controlSchema.parse(envelope.body);
@@ -133,7 +141,7 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
       return;
     }
 
-    const workspace = z.string().parse(control.workspace);
+    const workspace = workspacePathSchema.parse(control.workspace);
     if (control.action === "member-status") {
       const member = members.get(workspace);
       if (member === undefined || member.closing)

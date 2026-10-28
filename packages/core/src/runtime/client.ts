@@ -2,16 +2,18 @@ import { createConnection } from "node:net";
 
 import { z } from "zod";
 
-import { Fault, type Json } from "../core/json.ts";
+import { jsonSchema, Fault, type Json } from "../core/json.ts";
 
-const frameSchema = z.union([
-  z.object({ ok: z.literal(true), result: z.json() }),
-  z.object({
-    ok: z.literal(false),
-    error: z.object({ code: z.string(), message: z.string(), details: z.json().optional() }),
-  }),
-  z.object({ stream: z.literal(true) }),
-]);
+const frameSchema = z.compile(
+  z.union([
+    z.object({ ok: z.literal(true), result: jsonSchema }),
+    z.object({
+      ok: z.literal(false),
+      error: z.object({ code: z.string(), message: z.string(), details: jsonSchema.optional() }),
+    }),
+    z.object({ stream: z.literal(true) }),
+  ]),
+);
 
 export function botlakeCall(
   socket: string,

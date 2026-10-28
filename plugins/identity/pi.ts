@@ -11,6 +11,10 @@ import { z } from "zod";
 
 import { reportNative, sessionEnvironment, type SessionReport } from "./session.ts";
 
+const sessionHeaderSchema = z.compile(
+  z.object({ type: z.literal("session"), id: z.string().min(1) }),
+);
+
 interface PiContext {
   cwd: string;
   sessionManager: {
@@ -152,8 +156,7 @@ async function parentSession(path: string): Promise<string> {
   const lines = createInterface({ input: stream });
   try {
     for await (const line of lines) {
-      return z.object({ type: z.literal("session"), id: z.string().min(1) }).parse(JSON.parse(line))
-        .id;
+      return sessionHeaderSchema.parse(JSON.parse(line)).id;
     }
     throw new Error("Native parent session has no header");
   } finally {

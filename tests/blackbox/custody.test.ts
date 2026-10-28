@@ -5,18 +5,21 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-const fact = z.object({
-  handle: z.string(),
-  owner: z.string(),
-  key: z.string(),
-  phase: z.string(),
-  output: z.object({ stdout_ref: z.string(), stderr_ref: z.string() }),
-  exit: z.object({ code: z.number() }).optional(),
-  cancellation: z
-    .object({ stop: z.string(), observed_exit: z.object({ code: z.number() }).optional() })
-    .optional(),
-  launch_failure: z.object({ message: z.string() }).optional(),
-});
+const fact = z.compile(
+  z.object({
+    handle: z.string(),
+    owner: z.string(),
+    key: z.string(),
+    phase: z.string(),
+    output: z.object({ stdout_ref: z.string(), stderr_ref: z.string() }),
+    exit: z.object({ code: z.number() }).optional(),
+    cancellation: z
+      .object({ stop: z.string(), observed_exit: z.object({ code: z.number() }).optional() })
+      .optional(),
+    launch_failure: z.object({ message: z.string() }).optional(),
+  }),
+);
+const text = z.compile(z.string());
 
 test("process custody fences owners and keys, retains terminal evidence, and prevents relaunch after acknowledgement", async () => {
   const host = await system();
@@ -25,13 +28,14 @@ test("process custody fences owners and keys, retains terminal evidence, and pre
     await Bun.write(
       join(workspace, "processes.ts"),
       `import {defineOp} from "@botlake/core";import {z} from "zod";
-export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"process",input:z.object({command:z.enum(["launch","get","list","cancel","ack"]),owner:z.string(),key:z.string(),handle:z.string().optional(),argv:z.array(z.string()).optional()}),output:z.json(),cli:{description:"process custody"},async handler(input){
+const text=z.compile(z.string());const argv=z.compile(z.array(z.string()));
+export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"process",input:z.compile(z.object({command:z.enum(["launch","get","list","cancel","ack"]),owner:z.string(),key:z.string(),handle:z.string().optional(),argv:z.array(z.string()).optional()})),output:z.compile(z.json()),cli:{description:"process custody"},async handler(input){
   switch(input.command){
-    case "launch":return await ctx.processes.launch({owner:input.owner,key:input.key,command:z.array(z.string()).parse(input.argv)});
+    case "launch":return await ctx.processes.launch({owner:input.owner,key:input.key,command:argv.parse(input.argv)});
     case "list":return await ctx.processes.listOwned(input.owner);
-    case "get":return await ctx.processes.get(z.string().parse(input.handle));
-    case "cancel":return await ctx.processes.cancel(z.string().parse(input.handle),input.owner,input.key);
-    case "ack":await ctx.processes.acknowledge(z.string().parse(input.handle),input.owner,input.key);return null;
+    case "get":return await ctx.processes.get(text.parse(input.handle));
+    case "cancel":return await ctx.processes.cancel(text.parse(input.handle),input.owner,input.key);
+    case "ack":await ctx.processes.acknowledge(text.parse(input.handle),input.owner,input.key);return null;
   }
 }}));}};`,
     );
@@ -104,7 +108,7 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
     const cancel = { ...owner, command: "cancel", key: "cancel", handle: cancellable.handle };
     const cancelled = fact.parse(await host.bl("custody", "process", cancel));
     expect(cancelled.phase).toBe("terminal");
-    expect(["graceful", "forced"]).toContain(z.string().parse(cancelled.cancellation?.stop));
+    expect(["graceful", "forced"]).toContain(text.parse(cancelled.cancellation?.stop));
     expect(cancelled.cancellation?.observed_exit?.code).toBeNumber();
     expect(fact.parse(await host.bl("custody", "process", cancel))).toEqual(cancelled);
   } finally {

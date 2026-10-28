@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { resolveSystemPrompt, type SystemPrompt } from "./prompt.ts";
 
-const text = z.string().min(1);
+const text = z.compile(z.string().min(1));
 
 export class NativeSessions {
   constructor(

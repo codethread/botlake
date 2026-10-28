@@ -1,27 +1,41 @@
 import { z } from "zod";
 
-import { Fault } from "../core/json.ts";
+import { jsonSchema, Fault } from "../core/json.ts";
 import type { Processes, ProcessFact, ProcessSpec, Peers } from "./context.ts";
 
-export const factSchema = z.object({
-  handle: z.string(),
-  owner: z.string(),
-  key: z.string(),
-  phase: z.enum(["starting", "running", "terminal"]),
-  output: z.object({ stdout_ref: z.string(), stderr_ref: z.string() }),
-  exit: z.object({ code: z.number(), signal: z.string().nullable() }).optional(),
-  cancellation: z
-    .object({
-      reason: z.string(),
-      stop: z.string(),
-      observed_exit: z
-        .object({ code: z.number(), signal: z.string().nullable() })
-        .nullable()
-        .optional(),
-    })
-    .optional(),
-  launch_failure: z.object({ message: z.string() }).optional(),
-});
+const exitSchema = z.compile(z.object({ code: z.number(), signal: z.string().nullable() }));
+
+export const factSchema = z.compile(
+  z.object({
+    handle: z.string(),
+    owner: z.string(),
+    key: z.string(),
+    phase: z.enum(["starting", "running", "terminal"]),
+    output: z.object({ stdout_ref: z.string(), stderr_ref: z.string() }),
+    exit: exitSchema.optional(),
+    cancellation: z
+      .object({
+        reason: z.string(),
+        stop: z.string(),
+        observed_exit: exitSchema.nullable().optional(),
+      })
+      .optional(),
+    launch_failure: z.object({ message: z.string() }).optional(),
+  }),
+);
+
+const controlFrameSchema = z.compile(
+  z.union([
+    z.object({
+      ok: z.boolean(),
+      result: z.unknown().optional(),
+      error: jsonSchema.optional(),
+    }),
+    z.object({ stream: z.literal(true) }),
+  ]),
+);
+const factsSchema = z.compile(z.array(factSchema));
+const peerSchema = z.compile(z.object({ path: z.string(), name: z.string() }));
 
 interface ControlData {
   resolve(value: unknown): void;
@@ -49,16 +63,7 @@ export function botlakeServices(
           const end = client.data.buffer.indexOf("\n");
           if (end < 0) return;
           try {
-            const frame = z
-              .union([
-                z.object({
-                  ok: z.boolean(),
-                  result: z.unknown().optional(),
-                  error: z.json().optional(),
-                }),
-                z.object({ stream: z.literal(true) }),
-              ])
-              .parse(JSON.parse(client.data.buffer.slice(0, end)));
+            const frame = controlFrameSchema.parse(JSON.parse(client.data.buffer.slice(0, end)));
             if ("stream" in frame) throw new Fault("peer", "Streaming peer calls are unsupported");
             if (frame.ok) client.data.resolve(frame.result);
             else
@@ -116,7 +121,7 @@ export function botlakeServices(
         return factSchema.parse(await control("process.get", { handle }));
       },
       async listOwned(owner): Promise<ProcessFact[]> {
-        return z.array(factSchema).parse(await control("process.list-owned", { owner }));
+        return factsSchema.parse(await control("process.list-owned", { owner }));
       },
       async cancel(handle, owner, key): Promise<ProcessFact> {
         const fact = factSchema.parse(await control("process.get", { handle }));
@@ -131,9 +136,7 @@ export function botlakeServices(
     },
     peers: {
       async resolve(target) {
-        return z
-          .object({ path: z.string(), name: z.string() })
-          .parse(await control("lake-resolve", {}, target));
+        return peerSchema.parse(await control("lake-resolve", {}, target));
       },
       async call(target, name, input) {
         return control("invoke", { name, input }, target);

@@ -4,24 +4,28 @@ import { isAbsolute } from "node:path";
 
 import { z } from "zod";
 
-import { Fault } from "../core/json.ts";
+import { jsonSchema, Fault } from "../core/json.ts";
 import type { Op } from "./context.ts";
 import { defineOp } from "./ops.ts";
 
-const absolutePath = z.string().min(1).refine(isAbsolute, "Expected an absolute path");
+const binNameSchema = z.compile(z.string().regex(/^\S+$/u));
 
-const environment = z.record(z.string().regex(/^[^=\0]+$/u), z.string());
+const absolutePath = z.compile(z.string().min(1).refine(isAbsolute, "Expected an absolute path"));
 
-const binSchema = z.strictObject({
-  description: z.string().min(1),
-  exec: z.union([
-    z.strictObject({ path: absolutePath, env: environment.default({}) }),
-    z.strictObject({ command: z.string().regex(/^[^/\\\s]+$/u), env: environment.default({}) }),
-  ]),
-  build: z
-    .strictObject({ argv: z.array(z.string().min(1)).min(1), cwd: absolutePath })
-    .exactOptional(),
-});
+const environment = z.compile(z.record(z.string().regex(/^[^=\0]+$/u), z.string()));
+
+const binSchema = z.compile(
+  z.strictObject({
+    description: z.string().min(1),
+    exec: z.union([
+      z.strictObject({ path: absolutePath, env: environment.default({}) }),
+      z.strictObject({ command: z.string().regex(/^[^/\\\s]+$/u), env: environment.default({}) }),
+    ]),
+    build: z
+      .strictObject({ argv: z.array(z.string().min(1)).min(1), cwd: absolutePath })
+      .exactOptional(),
+  }),
+);
 
 export type Bin = z.input<typeof binSchema>;
 
@@ -29,7 +33,7 @@ export class Bins {
   private readonly entries = new Map<string, z.output<typeof binSchema>>();
 
   register(name: string, bin: Bin): void {
-    z.string().regex(/^\S+$/u).parse(name);
+    binNameSchema.parse(name);
     if (this.entries.has(name)) throw new Fault("collision", `Duplicate bin: ${name}`);
     this.entries.set(name, binSchema.parse(bin));
   }
@@ -37,11 +41,13 @@ export class Bins {
   operation(): Op {
     return defineOp({
       name: "bins",
-      input: z.discriminatedUnion("command", [
-        z.strictObject({ command: z.literal("list") }),
-        z.strictObject({ command: z.literal("plan"), name: z.string().min(1) }),
-      ]),
-      output: z.json(),
+      input: z.compile(
+        z.discriminatedUnion("command", [
+          z.strictObject({ command: z.literal("list") }),
+          z.strictObject({ command: z.literal("plan"), name: z.string().min(1) }),
+        ]),
+      ),
+      output: jsonSchema,
       cli: {
         description: "Inspect extension-declared executables and build recipes",
         commands: {

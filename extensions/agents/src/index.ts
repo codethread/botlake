@@ -1,7 +1,7 @@
 import { q, type Extension } from "@botlake/core";
 
 import { registerAgent } from "./agent.ts";
-import { Agents, type AgentOptions } from "./runs.ts";
+import { Agents, runStateSchema, type AgentOptions } from "./runs.ts";
 
 export { agentConfigSchema, agentConfigJsonSchema } from "./catalog.ts";
 
@@ -34,7 +34,7 @@ export function agents(options: AgentOptions = {}): Extension {
     requires: ["identity", "flags"],
     activate(ctx) {
       const service = new Agents(ctx, options);
-      for (const state of ["ready", "running", "stopped", "failed"])
+      for (const state of runStateSchema.options.filter((value) => value !== "external"))
         ctx.registerQuery(`agent-run-${state}`, {
           where: q.and(q.eq(q.attr("agent/run"), true), q.eq(q.attr("agent/state"), state)),
           description: `Agent runs in ${state} state`,

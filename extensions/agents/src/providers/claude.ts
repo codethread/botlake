@@ -3,6 +3,14 @@ import { z } from "zod";
 import type { Provider } from "./contract.ts";
 import { malformedOutput, result } from "./output.ts";
 
+const envelopeSchema = z.compile(
+  z.object({
+    session_id: z.string().optional(),
+    result: z.string().optional(),
+    is_error: z.boolean().optional(),
+  }),
+);
+
 export const claude: Provider = {
   name: "claude",
   doc: "Claude Code CLI. Uses the provider's default model unless an alias selects one.",
@@ -30,13 +38,7 @@ export const claude: Provider = {
   finish(_run, exitCode, stdout, stderr) {
     // Report evidence from this invocation, never the requested resume id.
     try {
-      const envelope = z
-        .object({
-          session_id: z.string().optional(),
-          result: z.string().optional(),
-          is_error: z.boolean().optional(),
-        })
-        .parse(JSON.parse(stdout));
+      const envelope = envelopeSchema.parse(JSON.parse(stdout));
       const observed = envelope.session_id !== undefined && envelope.session_id.trim().length > 0;
 
       return result(

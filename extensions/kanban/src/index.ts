@@ -1,4 +1,5 @@
 import {
+  jsonSchema,
   encode,
   Fault,
   requireValue,
@@ -15,11 +16,12 @@ import { attribute, attribution, callerActor } from "@botlake/extension-identity
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-const text = z.string().trim().min(1);
+const text = z.compile(z.string().trim().min(1));
+const stringArray = z.compile(z.array(z.string()));
 
-const lane = z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]);
+const lane = z.compile(z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]));
 
-const priority = z.enum(["p1", "p2", "p3", "p4"]);
+const priority = z.compile(z.enum(["p1", "p2", "p3", "p4"]));
 
 const pendingFeaturePredicate = q.and(
   q.eq(q.attr("kanban/card"), true),
@@ -28,28 +30,31 @@ const pendingFeaturePredicate = q.and(
   q.missing(q.attr("kanban/link")),
 );
 
-const refsSchema = z
-  .array(
-    z.strictObject({
-      url: z.url({ protocol: /^https?$/u }),
-      label: z.string().optional(),
-    }),
-  )
-  .superRefine((refs, ctx) => {
+const referenceSchema = z.compile(
+  z.strictObject({
+    url: z.url({ protocol: /^https?$/u }),
+    label: z.string().optional(),
+  }),
+);
+const refsSchema = z.compile(
+  z.array(referenceSchema).superRefine((refs, ctx) => {
     if (new Set(refs.map((ref) => ref.url)).size !== refs.length)
       ctx.addIssue({ code: "custom", message: "Duplicate reference URL" });
-  });
+  }),
+);
 
-const linkSchema = z.strictObject({ workspace: text, card: text });
+const linkSchema = z.compile(z.strictObject({ workspace: text, card: text }));
 
-const claimInput = z.strictObject({
-  id: text,
-  owner: text.optional(),
-  branch: text.optional(),
-  worktree: text.optional(),
-  runId: text.optional(),
-  byIdentity: text.optional(),
-});
+const claimInput = z.compile(
+  z.strictObject({
+    id: text,
+    owner: text.optional(),
+    branch: text.optional(),
+    worktree: text.optional(),
+    runId: text.optional(),
+    byIdentity: text.optional(),
+  }),
+);
 
 const pageInput = {
   limit: z.number().int().min(1).max(100).default(20),
@@ -62,33 +67,54 @@ const workFields = {
   summary: z.string().optional(),
 };
 
-const updateInput = z.strictObject({
-  id: text,
-  title: text.optional(),
-  ...workFields,
-  lane: lane.exclude(["claimed"]).optional(),
-  expectedRevision: z.number().int().positive().optional(),
-});
+const updateInput = z.compile(
+  z.strictObject({
+    id: text,
+    title: text.optional(),
+    ...workFields,
+    lane: lane.exclude(["claimed"]).optional(),
+    expectedRevision: z.number().int().positive().optional(),
+  }),
+);
 
-const addInput = z.strictObject({
-  title: text,
-  type: z.enum(["feature", "epic"]).default("feature"),
-  lane: z.enum(["pending", "refinement"]).default("pending"),
-  priority: priority.default("p3"),
-  ...workFields,
-  epic: text.optional(),
-  byIdentity: text.optional(),
-  reportedBy: text.optional(),
-  labels: z.array(text).optional(),
-});
+const addInput = z.compile(
+  z.strictObject({
+    title: text,
+    type: z.enum(["feature", "epic"]).default("feature"),
+    lane: z.enum(["pending", "refinement"]).default("pending"),
+    priority: priority.default("p3"),
+    ...workFields,
+    epic: text.optional(),
+    byIdentity: text.optional(),
+    reportedBy: text.optional(),
+    labels: z.array(text).optional(),
+  }),
+);
 
-const taskInput = z.strictObject({
-  feature: text,
-  title: text,
-  ...workFields,
-  dependencies: z.array(text).default([]),
-  byIdentity: text.optional(),
-});
+const taskInput = z.compile(
+  z.strictObject({
+    feature: text,
+    title: text,
+    ...workFields,
+    dependencies: z.array(text).default([]),
+    byIdentity: text.optional(),
+  }),
+);
+
+const exportInput = z.compile(z.strictObject({ id: text }));
+const idResponse = z.compile(z.object({ id: text }));
+const cardView = z.compile(z.object({ card: nodeSchema, owner: jsonSchema }));
+const mirrorResponse = z.compile(
+  z.object({
+    card: z.object({
+      id: text,
+      title: text,
+      state: nodeSchema.shape.state,
+      attributes: z.record(z.string(), jsonSchema),
+    }),
+    owner: jsonSchema,
+  }),
+);
 
 export class Kanban {
   private readonly authority = Symbol("kanban");
@@ -456,7 +482,7 @@ export class Kanban {
       const target = requireValue(url, "Reference URL required");
       const existing = refs.find((ref) => ref.url === target);
       if (operation === "add") {
-        const next = refsSchema.element.parse({
+        const next = referenceSchema.parse({
           url: target,
           ...(label === undefined ? {} : { label }),
         });
@@ -471,7 +497,7 @@ export class Kanban {
       return {
         card: this.ctx.graph.update(id, {
           expectedRevision: expectedRevision ?? card.revision,
-          attributes: { "kanban/external-refs": z.json().parse(refs) },
+          attributes: { "kanban/external-refs": jsonSchema.parse(refs) },
         }),
         refs,
       };
@@ -484,9 +510,9 @@ export class Kanban {
 
   async addLink(workspace: string, title: string): Promise<Node> {
     workspace = await this.linkWorkspace(workspace);
-    const { id } = z
-      .object({ id: text })
-      .parse(await this.ctx.peers.call(workspace, "kanban", { command: "add", title }));
+    const { id } = idResponse.parse(
+      await this.ctx.peers.call(workspace, "kanban", { command: "add", title }),
+    );
     try {
       return await this.mirror(workspace, id);
     } catch (error) {
@@ -569,14 +595,13 @@ export class Kanban {
   }
 
   async board(labels: string[] = [], limit = 20, offset = 0): Promise<unknown> {
-    const cards = this.ctx.graph.all({ where: q.eq(q.attr("kanban/card"), true) }).filter((row) =>
-      labels.every((label) =>
-        z
-          .array(z.string())
-          .parse(row.attributes["kanban/labels"] ?? [])
-          .includes(label),
-      ),
-    );
+    const cards = this.ctx.graph
+      .all({ where: q.eq(q.attr("kanban/card"), true) })
+      .filter((row) =>
+        labels.every((label) =>
+          stringArray.parse(row.attributes["kanban/labels"] ?? []).includes(label),
+        ),
+      );
     const views = await Promise.all(
       cards.map(async (card) => {
         const view = await this.view(card.id);
@@ -624,9 +649,9 @@ export class Kanban {
     workspace?: string,
   ): Promise<{ card: Node; owner: Json; [key: string]: unknown }> {
     if (workspace !== undefined)
-      return z
-        .object({ card: nodeSchema, owner: z.json() })
-        .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
+      return cardView.parse(
+        await this.ctx.peers.call(workspace, "kanban", { command: "card", id }),
+      );
     let card = this.target(id);
     let link: unknown;
     let owner = this.owner(id);
@@ -697,17 +722,9 @@ export class Kanban {
   }
 
   private async mirror(workspace: string, id: string): Promise<Node> {
-    const source = z
-      .object({
-        card: z.object({
-          id: text,
-          title: text,
-          state: z.enum(["active", "closed", "replaced"]),
-          attributes: z.record(z.string(), z.json()),
-        }),
-        owner: z.json(),
-      })
-      .parse(await this.ctx.peers.call(workspace, "kanban", { command: "card", id }));
+    const source = mirrorResponse.parse(
+      await this.ctx.peers.call(workspace, "kanban", { command: "card", id }),
+    );
     if (source.card.attributes["kanban/card"] !== true || source.card.state !== "active")
       throw new Fault("link", "Only active cards can be attached");
     return this.ctx.graph.atomic(() => {
@@ -771,66 +788,68 @@ export function kanban(): Extension {
         where: pendingFeaturePredicate,
         description: "Pending authoritative features",
       });
-      const input = z.discriminatedUnion("command", [
-        addInput.extend({ command: z.literal("add") }),
-        updateInput.extend({ command: z.literal("update") }),
-        claimInput.extend({ command: z.literal("claim") }),
-        z.strictObject({
-          command: z.literal("board"),
-          labels: z.array(text).default([]),
-          ...pageInput,
-        }),
-        z.strictObject({
-          command: z.literal("card"),
-          id: text,
-          history: z.boolean().default(false),
-        }),
-        z.strictObject({ command: z.literal("next"), ...pageInput }),
-        taskInput.extend({ command: z.literal("task") }),
-        z.strictObject({ command: z.literal("finish"), id: text, outcome: text.default("done") }),
-        z.strictObject({ command: z.literal("reopen"), id: text }),
-        z.strictObject({
-          command: z.literal("note"),
-          id: text,
-          text,
-          byIdentity: text.optional(),
-          kind: text.optional(),
-        }),
-        z.strictObject({
-          command: z.literal("ref"),
-          id: text,
-          operation: z.enum(["list", "add", "remove"]),
-          url: text.optional(),
-          label: z.string().optional(),
-          expectedRevision: z.number().int().positive().optional(),
-        }),
-        z.discriminatedUnion("operation", [
+      const input = z.compile(
+        z.discriminatedUnion("command", [
+          addInput.extend({ command: z.literal("add") }),
+          updateInput.extend({ command: z.literal("update") }),
+          claimInput.extend({ command: z.literal("claim") }),
           z.strictObject({
-            command: z.literal("link"),
-            operation: z.literal("attach"),
-            workspace: text,
+            command: z.literal("board"),
+            labels: z.array(text).default([]),
+            ...pageInput,
+          }),
+          z.strictObject({
+            command: z.literal("card"),
             id: text,
+            history: z.boolean().default(false),
+          }),
+          z.strictObject({ command: z.literal("next"), ...pageInput }),
+          taskInput.extend({ command: z.literal("task") }),
+          z.strictObject({ command: z.literal("finish"), id: text, outcome: text.default("done") }),
+          z.strictObject({ command: z.literal("reopen"), id: text }),
+          z.strictObject({
+            command: z.literal("note"),
+            id: text,
+            text,
+            byIdentity: text.optional(),
+            kind: text.optional(),
           }),
           z.strictObject({
-            command: z.literal("link"),
-            operation: z.literal("add"),
-            workspace: text,
-            title: text,
+            command: z.literal("ref"),
+            id: text,
+            operation: z.enum(["list", "add", "remove"]),
+            url: text.optional(),
+            label: z.string().optional(),
+            expectedRevision: z.number().int().positive().optional(),
           }),
-          z.strictObject({
-            command: z.literal("link"),
-            operation: z.literal("refresh"),
-            id: text.optional(),
-          }),
+          z.discriminatedUnion("operation", [
+            z.strictObject({
+              command: z.literal("link"),
+              operation: z.literal("attach"),
+              workspace: text,
+              id: text,
+            }),
+            z.strictObject({
+              command: z.literal("link"),
+              operation: z.literal("add"),
+              workspace: text,
+              title: text,
+            }),
+            z.strictObject({
+              command: z.literal("link"),
+              operation: z.literal("refresh"),
+              id: text.optional(),
+            }),
+          ]),
+          z.strictObject({ command: z.literal("priority"), id: text, priority }),
+          z.strictObject({ command: z.literal("label"), id: text, labels: z.array(text) }),
         ]),
-        z.strictObject({ command: z.literal("priority"), id: text, priority }),
-        z.strictObject({ command: z.literal("label"), id: text, labels: z.array(text) }),
-      ]);
+      );
       ctx.register(
         defineOp({
           name: "kanban",
           input,
-          output: z.json(),
+          output: jsonSchema,
           about:
             "Body: problem, outcome, scope and pointers. Acceptance: verifiable criteria. Summary: one current account of decisions, verification and next action; replace it while preserving useful conclusions. Notes: selective supporting evidence. Parent-of groups work; depends-on orders prerequisites. Linked cards mirror their source.",
           primer:
@@ -1099,20 +1118,20 @@ export function kanban(): Extension {
               )
               .exhaustive();
 
-            return z.json().parse(result);
+            return jsonSchema.parse(result);
           },
         }),
       );
       ctx.register(
         defineOp({
           name: "kanban-export",
-          input: z.strictObject({ id: text }),
-          output: z.json(),
+          input: exportInput,
+          output: jsonSchema,
           cli: {
             description: "Export card subtree",
             positionals: [{ name: "id", type: "string", required: true }],
           },
-          handler: ({ id }) => z.json().parse(ctx.graph.subgraph(id)),
+          handler: ({ id }) => jsonSchema.parse(ctx.graph.subgraph(id)),
         }),
       );
     },

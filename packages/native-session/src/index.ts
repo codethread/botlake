@@ -3,66 +3,76 @@ import { createHash } from "node:crypto";
 import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
-const text = z.string().trim().min(1);
+const text = z.compile(z.string().trim().min(1));
 
-export const providerSchema = z.enum(["codex", "pi", "claude"]);
+export const providerSchema = z.compile(z.enum(["codex", "pi", "claude"]));
 
-export const audienceSchema = z.enum(["human", "agent", "unknown"]);
-const audienceOverrideSchema = z.enum(["human", "agent"], {
-  error: "BL_AUDIENCE must be human or agent",
-});
+export const audienceSchema = z.compile(z.enum(["human", "agent", "unknown"]));
+const audienceOverrideSchema = z.compile(
+  z.enum(["human", "agent"], {
+    error: "BL_AUDIENCE must be human or agent",
+  }),
+);
 
-export const sessionSchema = z.strictObject({
-  provider: providerSchema,
-  nativeSessionId: text,
-});
+export const sessionSchema = z.compile(
+  z.strictObject({
+    provider: providerSchema,
+    nativeSessionId: text,
+  }),
+);
 
-export const agentMetadataSchema = z.strictObject({
-  agentSeat: text.nullable().optional(),
-  model: text.nullable().optional(),
-  thinkingLevel: text.nullable().optional(),
-});
+export const agentMetadataSchema = z.compile(
+  z.strictObject({
+    agentSeat: text.nullable().optional(),
+    model: text.nullable().optional(),
+    thinkingLevel: text.nullable().optional(),
+  }),
+);
 
-export const eventSchema = z.enum([
-  "session-start",
-  "agent-start",
-  "agent-end",
-  "session-end",
-  "metadata",
-]);
+export const eventSchema = z.compile(
+  z.enum(["session-start", "agent-start", "agent-end", "session-end", "metadata"]),
+);
 
-export const capabilitySchema = z.enum(["activity", "model", "effort", "session-end", "parent"]);
+export const capabilitySchema = z.compile(
+  z.enum(["activity", "model", "effort", "session-end", "parent"]),
+);
 
-export const observationSchema = sessionSchema.extend({
-  cwd: text,
-  event: eventSchema.default("session-start"),
-  nativeEvent: text.optional(),
-  audience: audienceSchema.optional(),
-  ...agentMetadataSchema.shape,
-  sessionPath: text.nullable().optional(),
-  parentNativeSessionId: text.optional(),
-  capabilities: z.array(capabilitySchema).optional(),
-});
+export const observationSchema = z.compile(
+  sessionSchema.extend({
+    cwd: text,
+    event: eventSchema.default("session-start"),
+    nativeEvent: text.optional(),
+    audience: audienceSchema.optional(),
+    ...agentMetadataSchema.shape,
+    sessionPath: text.nullable().optional(),
+    parentNativeSessionId: text.optional(),
+    capabilities: z.array(capabilitySchema).optional(),
+  }),
+);
 
-export const registrationSchema = observationSchema
-  .extend({
-    runId: text.optional(),
-    invocation: text.optional(),
-  })
-  .refine((value) => (value.runId === undefined) === (value.invocation === undefined), {
-    message: "runId and invocation must be supplied together",
-  });
+export const registrationSchema = z.compile(
+  observationSchema
+    .extend({
+      runId: text.optional(),
+      invocation: text.optional(),
+    })
+    .refine((value) => (value.runId === undefined) === (value.invocation === undefined), {
+      message: "runId and invocation must be supplied together",
+    }),
+);
 
-export const bindingSchema = z.strictObject({
-  identity: text,
-  nodeId: text,
-  instruction: text,
-  runId: text,
-  external: z.boolean(),
-  systemPrompt: z.string(),
-});
+export const bindingSchema = z.compile(
+  z.strictObject({
+    identity: text,
+    nodeId: text,
+    instruction: text,
+    runId: text,
+    external: z.boolean(),
+    systemPrompt: z.string(),
+  }),
+);
 
-export const activitySchema = z.enum(["unknown", "working", "idle", "ended"]);
+export const activitySchema = z.compile(z.enum(["unknown", "working", "idle", "ended"]));
 
 export type ProviderName = z.infer<typeof providerSchema>;
 

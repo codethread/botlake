@@ -1,13 +1,16 @@
 // Diagnostic only: use a copy of a seeded disposable database, after the wire benchmarks.
 // bun --cpu-prof --cpu-prof-dir /tmp/profile scripts/profiling/ts-hotpaths.ts DB QUERIES_JSON
-import { sql, compileQuery, predicateSchema, Runtime } from "@botlake/core";
+import { jsonSchema, sql, compileQuery, predicateSchema, Runtime } from "@botlake/core";
 import batteriesExtension from "@botlake/extension-batteries";
 import { z } from "zod";
 
-const [database, queriesPath] = z.tuple([z.string(), z.string()]).parse(Bun.argv.slice(2));
+const [database, queriesPath] = z
+  .compile(z.tuple([z.string(), z.string()]))
+  .parse(Bun.argv.slice(2));
 const queries = z
-  .record(z.string(), z.tuple([z.string(), z.json()]))
+  .compile(z.record(z.string(), z.tuple([z.string(), jsonSchema])))
   .parse(await Bun.file(queriesPath).json());
+const querySchema = z.compile(z.object({ where: predicateSchema, limit: z.number() }));
 const runtime = new Runtime({ database });
 const records: unknown[] = [];
 
@@ -22,7 +25,7 @@ try {
   });
   for (const [name, [op, input]] of Object.entries(queries)) {
     if (op !== "list") continue;
-    const query = z.object({ where: predicateSchema, limit: z.number() }).parse(input);
+    const query = querySchema.parse(input);
     const compiled = compileQuery(query.where);
     const querySql = sql`
       SELECT s.id

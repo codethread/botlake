@@ -1,8 +1,6 @@
-import { z } from "zod";
+import type { ProviderName } from "@botlake/native-session";
 
-export const providerNameSchema = z.enum(["codex", "pi", "claude"]);
-
-export type ProviderName = z.infer<typeof providerNameSchema>;
+export type { ProviderName } from "@botlake/native-session";
 
 export interface ProviderSettings {
   model?: string | undefined;

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Provider } from "./contract.ts";
 import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 
+const itemSchema = z.compile(z.object({ type: z.string(), text: z.string().optional() }));
+
 export const codex: Provider = {
   name: "codex",
   doc: "Codex CLI. Uses the provider's default model unless an alias selects one.",
@@ -39,9 +41,7 @@ export const codex: Provider = {
 
       const messages = events
         .filter((event) => event["type"] === "item.completed")
-        .map((event) =>
-          z.object({ type: z.string(), text: z.string().optional() }).parse(event["item"]),
-        )
+        .map((event) => itemSchema.parse(event["item"]))
         .filter((item) => item.type === "agent_message");
 
       const failure = events.find(

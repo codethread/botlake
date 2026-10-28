@@ -1,4 +1,5 @@
 import {
+  jsonSchema,
   Fault,
   requireValue,
   defineOp,
@@ -23,17 +24,20 @@ import { z } from "zod";
 
 const authority = Symbol("identity");
 
-const text = z.string().trim().min(1);
+const text = z.compile(z.string().trim().min(1));
+const optionalText = z.compile(text.optional());
 
-export const startupSchema = sessionSchema.extend({
-  parentNativeSessionId: text.optional(),
-  ...agentMetadataSchema.shape,
-});
+export const startupSchema = z.compile(
+  sessionSchema.extend({
+    parentNativeSessionId: text.optional(),
+    ...agentMetadataSchema.shape,
+  }),
+);
 
 export type Startup = z.infer<typeof startupSchema>;
 
 export function callerActor(ctx: Context): string | undefined {
-  return text.optional().parse(ctx.env.bl["BL_ACTOR"]);
+  return optionalText.parse(ctx.env.bl["BL_ACTOR"]);
 }
 
 export function identityRecords(graph: Graph): Node[] {
@@ -185,18 +189,20 @@ export function identity(): Extension {
         }
       });
       ctx.graph.declareAcyclic("spawned");
-      const commandSchema = z.discriminatedUnion("command", [
-        startupSchema.extend({ command: z.literal("startup") }),
-        z.strictObject({ command: z.literal("show"), identity: text.optional() }),
-        z.strictObject({ command: z.literal("list") }),
-      ]);
+      const commandSchema = z.compile(
+        z.discriminatedUnion("command", [
+          startupSchema.extend({ command: z.literal("startup") }),
+          z.strictObject({ command: z.literal("show"), identity: text.optional() }),
+          z.strictObject({ command: z.literal("list") }),
+        ]),
+      );
       ctx.register(
         defineOp({
           name: "identity",
           primer:
             "Native sessions derive deterministic identities from provider and native session id. Show defaults to the caller's BL_ACTOR. Startup defaults agent seat, model and thinking level from BL_AGENT_SEAT, BL_MODEL and BL_EFFORT; explicit input wins. Show includes the last reported activity and metadata, not a liveness guarantee. Identity grants no process custody or task completion authority.",
           input: commandSchema,
-          output: z.json(),
+          output: jsonSchema,
           cli: {
             description: "Native session identities and observations",
             examples: ["bl identity list", "bl identity show IDENTITY"],
@@ -242,12 +248,12 @@ export function identity(): Extension {
                   input.identity ?? callerActor(ctx),
                   "Supply identity or BL_ACTOR",
                 );
-                return z
-                  .json()
-                  .parse(requireValue(resolveIdentity(ctx.graph, name), "Unknown identity"));
+                return jsonSchema.parse(
+                  requireValue(resolveIdentity(ctx.graph, name), "Unknown identity"),
+                );
               }
               case "list":
-                return z.json().parse(identityRecords(ctx.graph));
+                return jsonSchema.parse(identityRecords(ctx.graph));
             }
           },
         }),

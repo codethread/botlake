@@ -6,10 +6,15 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
+const titles = z.compile(z.array(z.object({ title: z.string() })));
+const handleRow = z.compile(z.object({ handle: z.string() }));
+const handleRows = z.compile(z.array(z.object({ handle: z.string() })));
+const hostStatus = z.compile(z.object({ hostPid: z.number(), hostReady: z.boolean() }));
+
 test("real Go Botlake pools independent workers, routes names, and retains command custody across host recovery", async () => {
   const host = await system();
   try {
-    const extension = `import { defineOp } from "@botlake/core"; import { z } from "zod"; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.object({command:z.enum(["launch","list"])}),output:z.json(),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(host.dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.object({}),output:z.number(),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));} };`;
+    const extension = `import { defineOp } from "@botlake/core"; import { z } from "zod"; export default { name: "probe", activate(ctx) { ctx.register(defineOp({name:"process", input:z.compile(z.object({command:z.enum(["launch","list"])})),output:z.compile(z.json()),cli:{description:"process"},async handler(input){return input.command==="list"?await ctx.processes.listOwned("probe"):await ctx.processes.launch({owner:"probe",key:"one",command:["sh","-c","read x < \\"$1\\"; printf done", "sh",${JSON.stringify(join(host.dir, "release"))}]});}}));ctx.register(defineOp({name:"load",input:z.compile(z.object({})),output:z.compile(z.number()),cli:{description:"db load"},handler(){let x=0;for(let i=0;i<10000;i++)x+=ctx.graph.db.query("select 1 as n").get().n;return x;}}));} };`;
     // A FIFO gives the process an explicit release point without timing assumptions.
     const fifo = Bun.spawn(["mkfifo", join(host.dir, "release")]);
     expect(await fifo.exited).toBe(0);
@@ -19,36 +24,24 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
       await host.botlake(["lake", "start", "--workspace", name]);
     }
     await host.cli(["--workspace", "./alpha", "add", "A"]);
-    expect(
-      z
-        .array(z.object({ title: z.string() }))
-        .parse(await host.bl("alpha", "list", {}))
-        .map((row) => row.title),
-    ).toEqual(["A"]);
+    expect(titles.parse(await host.bl("alpha", "list", {})).map((row) => row.title)).toEqual(["A"]);
     expect(await host.bl("beta", "list", {})).toEqual([]);
-    const before = z
-      .object({ handle: z.string() })
-      .parse(await host.bl("alpha", "process", { command: "launch" }));
+    const before = handleRow.parse(await host.bl("alpha", "process", { command: "launch" }));
     await host.botlake(["lake", "restart", "--workspace", "alpha"]);
     expect(
-      z
-        .array(z.object({ handle: z.string() }))
-        .parse(await host.bl("alpha", "process", { command: "list" }))[0]?.handle,
+      handleRows.parse(await host.bl("alpha", "process", { command: "list" }))[0]?.handle,
     ).toBe(before.handle);
     await host.botlake(["restart-host"]);
-    expect(
-      z
-        .object({ handle: z.string() })
-        .parse(await host.bl("alpha", "process", { command: "launch" })).handle,
-    ).toBe(before.handle);
-    const status = z.object({ hostPid: z.number(), hostReady: z.boolean() });
-    const crashed = status.parse(await host.botlake(["status"])).hostPid;
+    expect(handleRow.parse(await host.bl("alpha", "process", { command: "launch" })).handle).toBe(
+      before.handle,
+    );
+    const crashed = hostStatus.parse(await host.botlake(["status"])).hostPid;
     process.kill(crashed, "SIGKILL");
     let recovered = false;
     // Observe the supervisor's actual replacement, without replaying a launch or
     // guessing how long startup takes. Each status call crosses the real socket.
     for (let attempt = 0; attempt < 1000; attempt++) {
-      const current = status.parse(await host.botlake(["status"]));
+      const current = hostStatus.parse(await host.botlake(["status"]));
       if (current.hostPid !== crashed && current.hostReady) {
         recovered = true;
         break;
@@ -59,16 +52,12 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
       name: "alpha",
       ready: true,
     });
-    expect(
-      z
-        .object({ handle: z.string() })
-        .parse(await host.bl("alpha", "process", { command: "launch" })).handle,
-    ).toBe(before.handle);
-    expect(
-      z
-        .array(z.object({ handle: z.string() }))
-        .parse(await host.bl("alpha", "process", { command: "list" })),
-    ).toHaveLength(1);
+    expect(handleRow.parse(await host.bl("alpha", "process", { command: "launch" })).handle).toBe(
+      before.handle,
+    );
+    expect(handleRows.parse(await host.bl("alpha", "process", { command: "list" }))).toHaveLength(
+      1,
+    );
     expect(await Promise.all([host.bl("alpha", "load", {}), host.bl("beta", "list", {})])).toEqual([
       10000,
       [],

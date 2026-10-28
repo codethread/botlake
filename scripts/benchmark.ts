@@ -6,15 +6,12 @@ import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
 
-const count = z.coerce
-  .number()
-  .int()
-  .min(4)
-  .max(128)
-  .parse(Bun.argv[2] ?? 24);
+const count = z.compile(z.coerce.number().int().min(4).max(128)).parse(Bun.argv[2] ?? 24);
 const output = resolve(Bun.argv[3] ?? "docs/pool-benchmark.json");
+const statusSchema = z.compile(z.object({ memory: z.object({ rss: z.number() }) }));
+const numberSchema = z.compile(z.number());
+const responseSchema = z.compile(z.object({ ok: z.literal(true), result: z.unknown() }));
 const host = await system();
-const statusSchema = z.object({ memory: z.object({ rss: z.number() }) });
 
 try {
   const baseline = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
@@ -23,6 +20,9 @@ try {
   const extension = `
     import { defineOp } from "@botlake/core";
     import { z } from "zod";
+
+    const emptyInput = z.compile(z.object({}));
+    const elapsed = z.compile(z.number());
 
     export default {
       name: "benchmark",
@@ -36,8 +36,8 @@ try {
         `)});
         ctx.register(defineOp({
           name: "load",
-          input: z.object({}),
-          output: z.number(),
+          input: emptyInput,
+          output: elapsed,
           cli: { description: "load" },
           handler() {
             const start = performance.now();
@@ -54,8 +54,8 @@ try {
         }));
         ctx.register(defineOp({
           name: "lag",
-          input: z.object({}),
-          output: z.number(),
+          input: emptyInput,
+          output: elapsed,
           cli: { description: "event loop delay" },
           async handler() {
             const start = performance.now();
@@ -86,7 +86,7 @@ try {
   const loadMs: number[] = [];
   async function loadDatabase(): Promise<void> {
     for (let index = 0; index < 20; index++)
-      loadMs.push(z.number().parse(await invoke("w0", "load")));
+      loadMs.push(numberSchema.parse(await invoke("w0", "load")));
   }
   const latency: number[] = [];
   const delay: number[] = [];
@@ -96,7 +96,7 @@ try {
     for (let index = 0; index < 100; index++) {
       const workspace = requireValue(siblings[index % siblings.length], "No sibling workspace");
       const start = performance.now();
-      delay.push(z.number().parse(await invoke(workspace, "lag")));
+      delay.push(numberSchema.parse(await invoke(workspace, "lag")));
       latency.push(performance.now() - start);
     }
   }
@@ -143,7 +143,7 @@ async function invoke(workspace: string, name: string): Promise<unknown> {
     workspace,
     payload: { name, input: {} },
   });
-  return z.object({ ok: z.literal(true), result: z.unknown() }).parse(JSON.parse(wire)).result;
+  return responseSchema.parse(JSON.parse(wire)).result;
 }
 
 function distribution(samples: number[]): {

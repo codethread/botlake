@@ -5,15 +5,27 @@ import { z } from "zod";
 
 import type { Extension } from "./context.ts";
 
-const configSchema = z.strictObject({
-  name: z
-    .string()
-    .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
-    .optional(),
-  extensions: z.array(z.string().min(1)).default([]),
-});
+const extensionModuleSchema = z.compile(
+  z.object({
+    default: z.object({
+      name: z.string(),
+      requires: z.array(z.string()).optional(),
+      activate: z.custom<Extension["activate"]>((value) => typeof value === "function"),
+    }),
+  }),
+);
 
-export const workspaceSchema = z.looseObject({ botlake: configSchema });
+const configSchema = z.compile(
+  z.strictObject({
+    name: z
+      .string()
+      .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
+      .optional(),
+    extensions: z.array(z.string().min(1)).default([]),
+  }),
+);
+
+export const workspaceSchema = z.compile(z.looseObject({ botlake: configSchema }));
 
 export type WorkspaceConfig = z.infer<typeof configSchema>;
 
@@ -31,15 +43,7 @@ export async function loadWorkspace(
         ? resolve(path, specifier)
         : Bun.resolveSync(specifier, resolve(path, ".botlake"));
     const module: unknown = await import(pathToFileURL(location).href);
-    const parsed = z
-      .object({
-        default: z.object({
-          name: z.string(),
-          requires: z.array(z.string()).optional(),
-          activate: z.custom<Extension["activate"]>((value) => typeof value === "function"),
-        }),
-      })
-      .parse(module);
+    const parsed = extensionModuleSchema.parse(module);
     extensions.push({ ...parsed.default, requires: parsed.default.requires ?? [] });
   }
   return { config, extensions };

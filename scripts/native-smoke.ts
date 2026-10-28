@@ -3,16 +3,38 @@ import { copyFile, cp, mkdir, symlink, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { q } from "@botlake/core";
+import { jsonSchema, q } from "@botlake/core";
 import { provider } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
 
-const selection = z.enum(["pi", "codex", "both"]).parse(Bun.argv[2] ?? "both");
+const selection = z.compile(z.enum(["pi", "codex", "both"])).parse(Bun.argv[2] ?? "both");
 const names: Array<"pi" | "codex"> = selection === "both" ? ["pi", "codex"] : [selection];
 const output = resolve(Bun.argv[3] ?? `/tmp/botlake-native-smoke-${Date.now()}.json`);
-const runSchema = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+const runSchema = z.compile(
+  z.object({ id: z.string(), attributes: z.record(z.string(), jsonSchema) }),
+);
+const idSchema = z.compile(runSchema.pick({ id: true }));
+const textSchema = z.compile(z.string());
+const nonEmptyTextSchema = z.compile(z.string().min(1));
+const waitSchema = z.compile(z.object({ reason: z.enum(["satisfied", "timeout"]) }));
+const observationSchema = z.compile(
+  z.object({
+    event: z.literal("session-end"),
+    activity: z.literal("ended"),
+    model: z.string().min(1),
+    thinkingLevel: z.string().optional(),
+  }),
+);
+const settingSchema = z.compile(
+  z.object({
+    model: z.string(),
+    extraArgs: z.array(z.string()),
+    env: z.record(z.string(), z.string()),
+  }),
+);
+const runListSchema = z.compile(z.array(runSchema));
 const host = await system();
 const owned: string[] = [];
 const evidence: unknown[] = [];
@@ -91,7 +113,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
   );
   await host.botlake(["lake", "start", "--workspace", workspace]);
   async function settled(id: string): Promise<z.infer<typeof runSchema>> {
-    const waited = z.object({ reason: z.enum(["satisfied", "timeout"]) }).parse(
+    const waited = waitSchema.parse(
       await host.bl("native-smoke", "await", {
         query: "agent-run-settled",
         params: { runId: id },
@@ -103,15 +125,8 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     return runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
   }
   function lifecycle(run: z.infer<typeof runSchema>): void {
-    const observed = z
-      .object({
-        event: z.literal("session-end"),
-        activity: z.literal("ended"),
-        model: z.string().min(1),
-        thinkingLevel: z.string().optional(),
-      })
-      .parse(run.attributes["agent/observation"]);
-    if (run.attributes["agent/provider"] === "pi") z.string().min(1).parse(observed.thinkingLevel);
+    const observed = observationSchema.parse(run.attributes["agent/observation"]);
+    if (run.attributes["agent/provider"] === "pi") nonEmptyTextSchema.parse(observed.thinkingLevel);
   }
   function verify(run: z.infer<typeof runSchema>): void {
     check(run.attributes["agent/substatus"] === "completed", JSON.stringify(run));
@@ -120,16 +135,16 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       run.attributes["agent/integration"] === "native",
       `Plugin did not bind: ${JSON.stringify(run)}`,
     );
-    const result = z.string().parse(run.attributes["agent/result"]);
+    const result = textSchema.parse(run.attributes["agent/result"]);
     check(result.includes(marker), `Missing probe answer: ${result}`);
     check(
-      result.includes(z.string().parse(run.attributes["agent/identity"])),
+      result.includes(textSchema.parse(run.attributes["agent/identity"])),
       `Identity context missing: ${result}`,
     );
   }
   for (const name of names) {
     process.stderr.write(`Testing ${name} Luna: managed start, resume, direct native session\n`);
-    const started = runSchema.pick({ id: true }).parse(
+    const started = idSchema.parse(
       await host.bl("native-smoke", "agent", {
         command: "start",
         seat: `${name}-luna`,
@@ -141,9 +156,9 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     owned.push(started.id);
     const first = await settled(started.id);
     verify(first);
-    const resumed = runSchema
-      .pick({ id: true })
-      .parse(await host.bl("native-smoke", "agent", { command: "resume", id: first.id, prompt }));
+    const resumed = idSchema.parse(
+      await host.bl("native-smoke", "agent", { command: "resume", id: first.id, prompt }),
+    );
     owned.push(resumed.id);
     const continuation = await settled(resumed.id);
     verify(continuation);
@@ -155,13 +170,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       first.attributes["agent/identity"] === continuation.attributes["agent/identity"],
       "Resume changed identity",
     );
-    const setting = z
-      .object({
-        model: z.string(),
-        extraArgs: z.array(z.string()),
-        env: z.record(z.string(), z.string()),
-      })
-      .parse(settings[name]);
+    const setting = settingSchema.parse(settings[name]);
 
     const definition = {
       provider: name,
@@ -193,7 +202,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     );
     const outcome = provider(name).finish(definition, 0, stdout, "");
     check(outcome.success, JSON.stringify(outcome));
-    const [external] = z.array(runSchema).parse(
+    const [external] = runListSchema.parse(
       await host.bl("native-smoke", "list", {
         where: q.and(
           q.eq(q.attr("agent/external"), true),
@@ -205,7 +214,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     );
     check(external !== undefined, "Direct native session was not registered");
     lifecycle(external);
-    const identity = z.string().parse(external.attributes["agent/identity"]);
+    const identity = textSchema.parse(external.attributes["agent/identity"]);
     check(
       outcome.result?.includes(identity) === true,
       `Direct native identity context mismatch: expected ${identity}, received ${JSON.stringify(outcome.result)}`,

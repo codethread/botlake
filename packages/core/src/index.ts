@@ -1,7 +1,15 @@
 export { Graph, batchSchema, nodeSchema } from "./core/store.ts";
 
 export type { Node, Edge, Mutation, Patch, Guard, GraphEvent, Selection } from "./core/store.ts";
-export { Fault, isFault, attributesSchema, canonical, encode, requireValue } from "./core/json.ts";
+export {
+  Fault,
+  isFault,
+  jsonSchema,
+  attributesSchema,
+  canonical,
+  encode,
+  requireValue,
+} from "./core/json.ts";
 
 export type { Json, Attributes } from "./core/json.ts";
 export { sql } from "./core/sql.ts";

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 
 import {
+  jsonSchema,
   attributesSchema,
   canonical,
   Fault,
@@ -25,26 +26,36 @@ import { NativeSessions } from "./native.ts";
 import type { Provider, ProviderName, ProviderRun } from "./providers/contract.ts";
 import { provider } from "./providers/index.ts";
 
-const text = z.string().min(1);
+export const runStateSchema = z.compile(
+  z.enum(["ready", "running", "stopped", "failed", "external"]),
+);
 
-export const startSchema = z.strictObject({
-  seat: text,
-  cwd: text,
-  prompt: text,
-  requestId: text.optional(),
-  target: text.optional(),
-  policy: z.enum(["stop-on-complete", "close-on-complete"]).default("stop-on-complete"),
-  context: attributesSchema.default({}),
-});
+const text = z.compile(z.string().min(1));
+const policy = z.compile(z.enum(["stop-on-complete", "close-on-complete"]));
+const number = z.compile(z.number());
 
-const launchSchema = z.strictObject({
-  owner: text,
-  key: text,
-  command: z.array(text).min(1),
-  cwd: text,
-  env: z.record(z.string(), z.string()),
-  stdin: z.string(),
-});
+export const startSchema = z.compile(
+  z.strictObject({
+    seat: text,
+    cwd: text,
+    prompt: text,
+    requestId: text.optional(),
+    target: text.optional(),
+    policy: policy.default("stop-on-complete"),
+    context: attributesSchema.default({}),
+  }),
+);
+
+const launchSchema = z.compile(
+  z.strictObject({
+    owner: text,
+    key: text,
+    command: z.array(text).min(1),
+    cwd: text,
+    env: z.record(z.string(), z.string()),
+    stdin: z.string(),
+  }),
+);
 
 export type AgentOptions = AgentConfig & { providers?: Provider[] };
 
@@ -240,9 +251,7 @@ export class Agents {
           prompt,
           ...(requestId === undefined ? {} : { requestId }),
           ...(target === undefined ? {} : { target }),
-          policy: z
-            .enum(["stop-on-complete", "close-on-complete"])
-            .parse(parent.attributes["agent/policy"]),
+          policy: policy.parse(parent.attributes["agent/policy"]),
           context: attributesSchema.parse(parent.attributes["agent/context"]),
         },
         parent,
@@ -361,7 +370,7 @@ export class Agents {
         "agent/resumes": parent !== undefined,
         "agent/session-confirmed": false,
         "agent/integration": "unobserved",
-        "agent/settings": z.json().parse(
+        "agent/settings": jsonSchema.parse(
           parent === undefined
             ? {
                 ...seat,
@@ -442,7 +451,7 @@ export class Agents {
               "agent/state": "stopped",
               "agent/substatus": "requested",
               "agent/settled": false,
-              "agent/custody": z.json().parse(fact),
+              "agent/custody": jsonSchema.parse(fact),
             },
             "closed",
           );
@@ -502,7 +511,7 @@ export class Agents {
             "agent/result": outcome.result,
             "agent/error":
               integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
-            "agent/custody": z.json().parse(fact),
+            "agent/custody": jsonSchema.parse(fact),
           },
           "closed",
         );
@@ -580,8 +589,8 @@ export class Agents {
       return this.patch(current.id, {
         "agent/state": "running",
         "agent/invocation": invocation,
-        "agent/attempt": z.number().parse(current.attributes["agent/attempt"]) + 1,
-        "agent/launch": z.json().parse(spec),
+        "agent/attempt": number.parse(current.attributes["agent/attempt"]) + 1,
+        "agent/launch": jsonSchema.parse(spec),
       });
     }, this.authority);
   }
@@ -622,6 +631,6 @@ export class Agents {
 
 function fingerprint(value: unknown): string {
   return createHash("sha256")
-    .update(canonical(z.json().parse(value)))
+    .update(canonical(jsonSchema.parse(value)))
     .digest("hex");
 }

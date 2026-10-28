@@ -1,5 +1,7 @@
 import {
+  jsonSchema,
   attributesSchema,
+  nodeSchema,
   Fault,
   predicateSchema,
   batchSchema,
@@ -38,22 +40,24 @@ const coordinationQueries: Record<string, NamedQuery> = {
   },
 };
 
-const id = z.string().min(1);
+const id = z.compile(z.string().min(1));
 
 const patch = {
   title: z.string().min(1).optional(),
-  state: z.enum(["active", "closed"]).optional(),
+  state: nodeSchema.shape.state.exclude(["replaced"]).optional(),
   attributes: attributesSchema.optional(),
   expectedRevision: z.number().int().positive().optional(),
 };
 
-const queryInput = z.strictObject({
-  query: z.string().optional(),
-  where: predicateSchema.optional(),
-  params: attributesSchema.optional(),
-  limit: z.number().int().positive().optional(),
-  lean: z.boolean().optional(),
-});
+const queryInput = z.compile(
+  z.strictObject({
+    query: z.string().optional(),
+    where: predicateSchema.optional(),
+    params: attributesSchema.optional(),
+    limit: z.number().int().positive().optional(),
+    lean: z.boolean().optional(),
+  }),
+);
 
 const guidance = {
   add: {
@@ -157,39 +161,41 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
           defineOp({
             name,
             input,
-            output: z.json(),
+            output: jsonSchema,
             primer: guidance[name].primer,
             cli: {
               description: guidance[name].description,
               examples: guidance[name].examples,
               ...(commands === undefined ? { positionals, flags } : { commands }),
             },
-            jsonSchema: { input, output: z.json() },
-            handler: (value, context) => z.json().parse(handler(value, context)),
+            jsonSchema: { input, output: jsonSchema },
+            handler: (value, context) => jsonSchema.parse(handler(value, context)),
           }),
         );
       }
       register(
         "add",
-        z.strictObject({
-          title: id,
-          state: z.enum(["active", "closed"]).optional(),
-          attributes: attributesSchema.optional(),
-        }),
+        z.compile(
+          z.strictObject({
+            title: id,
+            state: nodeSchema.shape.state.exclude(["replaced"]).optional(),
+            attributes: attributesSchema.optional(),
+          }),
+        ),
         (input) => ctx.graph.add(input),
         [{ name: "title", type: "string", required: true }],
         { state: { type: "string" }, attributes: { type: "json" } },
       );
       register(
         "show",
-        z.strictObject({ id, lean: z.boolean().optional() }),
+        z.compile(z.strictObject({ id, lean: z.boolean().optional() })),
         (input) => ctx.graph.show(input.id, input.lean),
         [{ name: "id", type: "string", required: true }],
         { lean: { type: "boolean" } },
       );
       register(
         "update",
-        z.strictObject({ id, ...patch }),
+        z.compile(z.strictObject({ id, ...patch })),
         ({ id: node, ...input }) => ctx.graph.update(node, input),
         [{ name: "id", type: "string", required: true }],
         {
@@ -232,7 +238,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
         );
       register(
         "query",
-        z.strictObject({ name: id.optional() }),
+        z.compile(z.strictObject({ name: id.optional() })),
         ({ name }) =>
           name === undefined
             ? ctx.queryCatalog()
@@ -250,7 +256,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
       });
       register(
         "supersede",
-        z.strictObject({ id, replacement: id }),
+        z.compile(z.strictObject({ id, replacement: id })),
         (input) => ctx.graph.supersede(input.id, input.replacement),
         [
           { name: "id", type: "string", required: true },
@@ -259,13 +265,13 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
       );
       register(
         "burn",
-        z.strictObject({ ids: z.array(id).min(1) }),
+        z.compile(z.strictObject({ ids: z.array(id).min(1) })),
         (input) => ctx.graph.burn(input.ids),
         [{ name: "ids", type: "string", multiple: true, required: true }],
       );
       register(
         "note",
-        z.strictObject({ id, text: id, attributes: attributesSchema.optional() }),
+        z.compile(z.strictObject({ id, text: id, attributes: attributesSchema.optional() })),
         (input) => ctx.graph.note(input.id, input.text, input.attributes),
         [
           { name: "id", type: "string", required: true },
@@ -275,7 +281,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
       );
       register(
         "archive",
-        z.strictObject({ id, keys: z.array(id).min(1) }),
+        z.compile(z.strictObject({ id, keys: z.array(id).min(1) })),
         (input) => ctx.graph.archive(input.id, input.keys),
         [
           { name: "id", type: "string", required: true },
@@ -284,28 +290,30 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
       );
       register(
         "subgraph",
-        z.strictObject({ id, relation: id.optional() }),
+        z.compile(z.strictObject({ id, relation: id.optional() })),
         (input) => ctx.graph.subgraph(input.id, input.relation),
         [{ name: "id", type: "string", required: true }],
         { relation: { type: "string", description: "Traversal relation (default parent-of)" } },
       );
       register(
         "edge",
-        z.discriminatedUnion("command", [
-          z.strictObject({
-            command: z.literal("add"),
-            from: id,
-            to: id,
-            relation: id,
-            attributes: attributesSchema.optional(),
-          }),
-          z.strictObject({ command: z.literal("remove"), from: id, to: id, relation: id }),
-          z.strictObject({
-            command: z.literal("list"),
-            id: id.optional(),
-            relation: id.optional(),
-          }),
-        ]),
+        z.compile(
+          z.discriminatedUnion("command", [
+            z.strictObject({
+              command: z.literal("add"),
+              from: id,
+              to: id,
+              relation: id,
+              attributes: attributesSchema.optional(),
+            }),
+            z.strictObject({ command: z.literal("remove"), from: id, to: id, relation: id }),
+            z.strictObject({
+              command: z.literal("list"),
+              id: id.optional(),
+              relation: id.optional(),
+            }),
+          ]),
+        ),
         (input) => {
           switch (input.command) {
             case "add":

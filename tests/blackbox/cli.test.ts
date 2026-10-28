@@ -17,6 +17,8 @@ interface TerminalResult {
   output: string;
 }
 
+const idResult = z.compile(z.object({ id: z.string() }));
+
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
   const host = await system();
   try {
@@ -24,10 +26,12 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     await host.botlake(["lake", "start", "--workspace", workspace]);
 
     const committed = z
-      .object({
-        refs: z.object({ root: z.string(), child: z.string() }),
-        changes: z.array(z.object({ kind: z.enum(["node", "edge"]) })),
-      })
+      .compile(
+        z.object({
+          refs: z.object({ root: z.string(), child: z.string() }),
+          changes: z.array(z.object({ kind: z.enum(["node", "edge"]) })),
+        }),
+      )
       .parse(
         await host.bl("nodes", "batch", {
           nodes: [
@@ -40,10 +44,14 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
 
     expect(committed.changes.map(({ kind }) => kind)).toEqual(["node", "node", "edge"]);
     const subgraph = z
-      .object({
-        nodes: z.array(z.object({ id: z.string() })),
-        edges: z.array(z.object({ from_id: z.string(), to_id: z.string(), relation: z.string() })),
-      })
+      .compile(
+        z.object({
+          nodes: z.array(z.object({ id: z.string() })),
+          edges: z.array(
+            z.object({ from_id: z.string(), to_id: z.string(), relation: z.string() }),
+          ),
+        }),
+      )
       .parse(await host.bl("nodes", "subgraph", { id: committed.refs.root }));
     expect(subgraph.nodes.map(({ id }) => id).toSorted()).toEqual(
       [committed.refs.root, committed.refs.child].toSorted(),
@@ -94,12 +102,12 @@ test("bl preserves payloads, caller-relative files and literal arguments", async
       `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 export default {name:"commands",activate(ctx){
-  ctx.register(defineOp({name:"echo", input:z.object({value:z.string()}), output:z.string(),
+  ctx.register(defineOp({name:"echo", input:z.compile(z.object({value:z.string()})), output:z.compile(z.string()),
     cli:{description:"echo",flags:{value:{type:"string"}},positionals:[{name:"value",type:"string",required:true}]},
     handler:input=>input.value}));
-  ctx.register(defineOp({name:"scalar",input:z.union([z.null(),z.literal(false),z.literal(0),z.literal("")]),
-    output:z.json(),cli:{description:"scalar"},handler:input=>input}));
-  ctx.register(defineOp({name:"wait",input:z.object({}),output:z.string(),cli:{description:"wait"},
+  ctx.register(defineOp({name:"scalar",input:z.compile(z.union([z.null(),z.literal(false),z.literal(0),z.literal("")])),
+    output:z.compile(z.json()),cli:{description:"scalar"},handler:input=>input}));
+  ctx.register(defineOp({name:"wait",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"wait"},
     handler:(_,ctx,request)=>new Promise((resolve,reject)=>{
       request.signal.addEventListener("abort",()=>reject(request.signal.reason),{once:true});
     })}));
@@ -136,16 +144,12 @@ export default {name:"commands",activate(ctx){
       error: { message: "invoke payload must be an object" },
     });
     expect(await host.bl("cli", "echo", { value: "still running" })).toBe("still running");
-    const root = z
-      .object({ id: z.string() })
-      .parse(await host.cli(["--workspace", "cli", "add", "Root"]));
-    const child = z
-      .object({ id: z.string() })
-      .parse(await host.cli(["--workspace", "cli", "add", "Dependency"]));
+    const root = idResult.parse(await host.cli(["--workspace", "cli", "add", "Root"]));
+    const child = idResult.parse(await host.cli(["--workspace", "cli", "add", "Dependency"]));
     await host.cli(["--workspace", "cli", "edge", "add", root.id, child.id, "depends-on"]);
     expect(
       z
-        .object({ nodes: z.array(z.object({ id: z.string() })) })
+        .compile(z.object({ nodes: z.array(z.object({ id: z.string() })) }))
         .parse(
           await host.cli(["--workspace", "cli", "subgraph", root.id, "--relation", "depends-on"]),
         )
@@ -300,13 +304,13 @@ test("stdin, named payloads, context flags and dry-run stay thin while operation
       `import {defineOp} from "@botlake/core";
 import {z} from "zod";
 export default {name:"payloads",activate(ctx){
-  ctx.register(defineOp({name:"echo",input:z.object({value:z.string()}),output:z.string(),
+  ctx.register(defineOp({name:"echo",input:z.compile(z.object({value:z.string()})),output:z.compile(z.string()),
     cli:{description:"Echo text",positionals:[{name:"value",type:"string",required:true}]},handler:input=>input.value}));
-  ctx.register(defineOp({name:"json",input:z.object({value:z.json()}),output:z.json(),
+  ctx.register(defineOp({name:"json",input:z.compile(z.object({value:z.json()})),output:z.compile(z.json()),
     cli:{description:"JSON",flags:{value:{type:"json",required:true}}},handler:input=>input.value}));
-  ctx.register(defineOp({name:"owned",input:z.object({workspace:z.string(),timeout:z.string()}),output:z.json(),
+  ctx.register(defineOp({name:"owned",input:z.compile(z.object({workspace:z.string(),timeout:z.string()})),output:z.compile(z.json()),
     cli:{description:"Extension-owned flags",flags:{workspace:{type:"string",required:true},timeout:{type:"string",required:true}}},handler:input=>input}));
-  ctx.register(defineOp({name:"context",input:z.object({}),output:z.json(),cli:{description:"Invocation context"},
+  ctx.register(defineOp({name:"context",input:z.compile(z.object({})),output:z.compile(z.json()),cli:{description:"Invocation context"},
     handler:(_,ctx,request)=>({cwd:request.cwd,root:request.worktreeRoot??null,common:request.gitCommonDir??null,terminal:request.terminal})}));
 }};`,
     );
@@ -431,8 +435,8 @@ test("nested discovery renders for real terminals and stays machine-readable whe
       join(workspace, "commands.ts"),
       `import {defineOp} from "@botlake/core";
 import {z} from "zod";
-const input=z.object({area:z.literal("bundle"),action:z.literal("collect"),count:z.number().int().positive(),ids:z.array(z.string()),tag:z.array(z.string()).default([])});
-const output=z.json();
+const input=z.compile(z.object({area:z.literal("bundle"),action:z.literal("collect"),count:z.number().int().positive(),ids:z.array(z.string()),tag:z.array(z.string()).default([])}));
+const output=z.compile(z.json());
 export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",input,output,jsonSchema:{input,output},
   about:"Collect explicitly selected items into a bundle.",primer:"Choose items first. Inspect the result before publishing.",
   cli:{description:"Bundle operations",selector:"area",commands:{group:{description:"Manage bundles",value:"bundle",selector:"action",commands:{take:{
@@ -473,7 +477,7 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
     expect(
       await host.cli([...prefix, "nested", "group", "take", "--count=2", "--count=3", "a"], false),
     ).toContain("Repeated flag");
-    const catalog = z.array(z.object({ name: z.string() }));
+    const catalog = z.compile(z.array(z.object({ name: z.string() })));
     expect(catalog.parse(await host.cli([...prefix, "help"]))).toEqual([
       { name: "bins" },
       { name: "nested" },

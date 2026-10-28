@@ -1,7 +1,9 @@
 import stringify from "fast-json-stable-stringify";
 import { z } from "zod";
 
-export const attributesSchema = z.record(z.string().min(1), z.json());
+export const jsonSchema = z.compile(z.json());
+
+export const attributesSchema = z.compile(z.record(z.string().min(1), jsonSchema));
 
 // A worker and its installed extensions can resolve separate copies of this package.
 
@@ -12,11 +14,11 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 export type Attributes = Record<string, Json>;
 
 export function encode(value: unknown): string {
-  return JSON.stringify(z.json().parse(value));
+  return JSON.stringify(jsonSchema.parse(value));
 }
 
 export function decode(text: string): Json {
-  return z.json().parse(JSON.parse(text));
+  return jsonSchema.parse(JSON.parse(text));
 }
 
 export function object(text: string): Attributes {
@@ -66,5 +68,5 @@ export function requireValue<T>(value: T | null | undefined, message: string): T
 }
 
 export function canonical(value: Json): string {
-  return stringify(z.json().parse(value));
+  return stringify(jsonSchema.parse(value));
 }

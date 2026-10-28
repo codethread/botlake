@@ -1,40 +1,44 @@
-import { defineOp, q, type Context, type Node } from "@botlake/core";
+import { jsonSchema, defineOp, q, type Context, type Node } from "@botlake/core";
 import { agentMetadata, registrationSchema, sessionAudience } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { startSchema, type Agents } from "./runs.ts";
+import { runStateSchema, startSchema, type Agents } from "./runs.ts";
 
-const text = z.string().min(1);
-const listSchema = z.strictObject({
-  command: z.literal("list"),
-  state: z.enum(["ready", "running", "stopped", "failed", "external"]).optional(),
-  limit: z.number().int().min(1).max(100).default(20),
-  offset: z.number().int().min(0).default(0),
-});
+const text = z.compile(z.string().min(1));
+const listSchema = z.compile(
+  z.strictObject({
+    command: z.literal("list"),
+    state: runStateSchema.optional(),
+    limit: z.number().int().min(1).max(100).default(20),
+    offset: z.number().int().min(0).default(0),
+  }),
+);
 
 export function registerAgent(ctx: Context, service: Agents): void {
-  const input = z.discriminatedUnion("command", [
-    startSchema.extend({ command: z.literal("start") }),
-    listSchema,
-    z.strictObject({ command: z.literal("show"), id: text }),
-    z.strictObject({
-      command: z.literal("catalog"),
-      name: text.optional(),
-      all: z.boolean().optional(),
-    }),
-    z.strictObject({ command: z.literal("reconcile") }),
-    z.strictObject({ command: z.literal("cancel"), id: text }),
-    z.strictObject({ command: z.literal("retry"), id: text }),
-    z.strictObject({
-      command: z.literal("resume"),
-      id: text,
-      prompt: text,
-      requestId: text.optional(),
-    }),
-    z.strictObject({ command: z.literal("acknowledge"), id: text }),
-    registrationSchema.safeExtend({ command: z.literal("native") }),
-  ]);
+  const input = z.compile(
+    z.discriminatedUnion("command", [
+      startSchema.extend({ command: z.literal("start") }),
+      listSchema,
+      z.strictObject({ command: z.literal("show"), id: text }),
+      z.strictObject({
+        command: z.literal("catalog"),
+        name: text.optional(),
+        all: z.boolean().optional(),
+      }),
+      z.strictObject({ command: z.literal("reconcile") }),
+      z.strictObject({ command: z.literal("cancel"), id: text }),
+      z.strictObject({ command: z.literal("retry"), id: text }),
+      z.strictObject({
+        command: z.literal("resume"),
+        id: text,
+        prompt: text,
+        requestId: text.optional(),
+      }),
+      z.strictObject({ command: z.literal("acknowledge"), id: text }),
+      registrationSchema.safeExtend({ command: z.literal("native") }),
+    ]),
+  );
 
   ctx.register(
     defineOp({
@@ -42,7 +46,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
       primer:
         'Use catalog to select a seat; --all includes unavailable seats, and catalog NAME expands settings and reasons. Providers require explicit agentFlags configuration. Flags affect new selection, not accepted settings, retry or resume. Start with seat, cwd and prompt; start/retry/resume/cancel return id, state, substatus and settled. List returns paged summaries; show RUN_ID (or base show) expands the full record. Native/output observations are not liveness. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
       input,
-      output: z.json(),
+      output: jsonSchema,
       cli: {
         description: "Tracked agent runs and native registration",
         examples: [
@@ -189,7 +193,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           })
           .exhaustive();
 
-        return z.json().parse(result);
+        return jsonSchema.parse(result);
       },
     }),
   );

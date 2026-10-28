@@ -3,10 +3,14 @@ import { z } from "zod";
 
 import type { ProviderName } from "./providers/contract.ts";
 
-export const systemPromptSchema = z.union([
-  z.string(),
-  z.custom<(context: SessionContext) => string>((value) => typeof value === "function"),
-]);
+export const systemPromptSchema = z.compile(
+  z.union([
+    z.string(),
+    z.custom<(context: SessionContext) => string>((value) => typeof value === "function"),
+  ]),
+);
+
+const text = z.compile(z.string());
 
 export interface SessionContext {
   provider: ProviderName;
@@ -25,5 +29,5 @@ export function resolveSystemPrompt(
   source: SystemPrompt | undefined,
   context: SessionContext,
 ): string {
-  return typeof source === "function" ? z.string().parse(source(context)) : (source ?? "");
+  return typeof source === "function" ? text.parse(source(context)) : (source ?? "");
 }

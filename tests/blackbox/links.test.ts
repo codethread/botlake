@@ -6,15 +6,20 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-const row = z.object({
-  id: z.string(),
-  title: z.string(),
-  attributes: z.record(z.string(), z.json()),
-});
-const view = z.object({
-  card: row,
-  link: z.object({ status: z.string(), snapshot: z.record(z.string(), z.json()).optional() }),
-});
+const row = z.compile(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    attributes: z.record(z.string(), z.json()),
+  }),
+);
+const view = z.compile(
+  z.object({
+    card: row,
+    link: z.object({ status: z.string(), snapshot: z.record(z.string(), z.json()).optional() }),
+  }),
+);
+const linkCard = z.compile(z.object({ card: z.string() }));
 
 test("coordinator links use canonical workspace identity and preserve honest live and unavailable views", async () => {
   const host = await system();
@@ -116,7 +121,7 @@ test("coordinator links use canonical workspace identity and preserve honest liv
       }),
     );
     expect(created.attributes["kanban/link"]).toMatchObject({ workspace: canonical });
-    const createdLink = z.object({ card: z.string() }).parse(created.attributes["kanban/link"]);
+    const createdLink = linkCard.parse(created.attributes["kanban/link"]);
     expect(row.parse(await host.bl("renamed", "show", { id: createdLink.card })).title).toBe(
       "Created downstream",
     );

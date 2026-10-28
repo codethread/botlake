@@ -1,4 +1,5 @@
 import {
+  jsonSchema,
   sql,
   encode,
   Fault,
@@ -10,44 +11,57 @@ import {
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 
-const scheduleSchema = z.union([
-  z.strictObject({ everyMs: z.number().int().positive() }),
-  z.strictObject({ expression: z.string().min(1), timezone: z.string().min(1) }),
-]);
+const wakeSchema = z.compile(z.object({ job: z.string() }));
+const retrySchema = z.compile(z.object({ at: z.number().nullable() }));
 
-const jobSchema = z.strictObject({
-  id: z.string().min(1),
-  action: z.string().min(1),
-  version: z.string().min(1).default("1"),
-  schedule: scheduleSchema,
-  payload: z.json().default({}),
-  overlap: z.enum(["skip", "queue", "allow"]).default("skip"),
-  missed: z.enum(["skip", "once", "catch-up"]).default("once"),
-  retry: z
-    .strictObject({
-      attempts: z.number().int().nonnegative(),
-      delayMs: z.number().int().positive(),
-    })
-    .default({ attempts: 0, delayMs: 1000 }),
-});
+const scheduleSchema = z.compile(
+  z.union([
+    z.strictObject({ everyMs: z.number().int().positive() }),
+    z.strictObject({ expression: z.string().min(1), timezone: z.string().min(1) }),
+  ]),
+);
 
-const persistedJob = z.object({
-  id: z.string(),
-  spec: z.string(),
-  next_at: z.number(),
-  enabled: z.number(),
-});
+const jobSchema = z.compile(
+  z.strictObject({
+    id: z.string().min(1),
+    action: z.string().min(1),
+    version: z.string().min(1).default("1"),
+    schedule: scheduleSchema,
+    payload: jsonSchema.default({}),
+    overlap: z.enum(["skip", "queue", "allow"]).default("skip"),
+    missed: z.enum(["skip", "once", "catch-up"]).default("once"),
+    retry: z
+      .strictObject({
+        attempts: z.number().int().nonnegative(),
+        delayMs: z.number().int().positive(),
+      })
+      .default({ attempts: 0, delayMs: 1000 }),
+  }),
+);
 
-const occurrenceSchema = z.object({
-  id: z.string(),
-  job: z.string(),
-  scheduled_at: z.number(),
-  status: z.enum(["pending", "running", "succeeded", "failed", "skipped"]),
-  attempt: z.number(),
-  retry_at: z.number().nullable(),
-  result: z.string().nullable(),
-  error: z.string().nullable(),
-});
+const persistedJob = z.compile(
+  z.object({
+    id: z.string(),
+    spec: z.string(),
+    next_at: z.number(),
+    enabled: z.number(),
+  }),
+);
+const persistedJobsSchema = z.compile(z.array(persistedJob));
+
+const occurrenceSchema = z.compile(
+  z.object({
+    id: z.string(),
+    job: z.string(),
+    scheduled_at: z.number(),
+    status: z.enum(["pending", "running", "succeeded", "failed", "skipped"]),
+    attempt: z.number(),
+    retry_at: z.number().nullable(),
+    result: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+);
+const occurrencesSchema = z.compile(z.array(occurrenceSchema));
 
 export type Job = z.infer<typeof jobSchema>;
 
@@ -127,7 +141,7 @@ export class Cron {
       this.jobs.set(job.id, job);
     }
     ctx.scheduler.register("cron/fire", (wake) => {
-      const input = z.object({ job: z.string() }).parse(wake.payload);
+      const input = wakeSchema.parse(wake.payload);
       this.fire(input.job);
     });
     ctx.scheduler.register("cron/retry", () => {
@@ -138,7 +152,7 @@ export class Cron {
   start(): void {
     const now = this.ctx.clock.now();
     this.ctx.graph.atomic(() => {
-      for (const old of z.array(persistedJob).parse(
+      for (const old of persistedJobsSchema.parse(
         this.ctx.graph.db
           .query(sql`
             SELECT *
@@ -303,7 +317,7 @@ export class Cron {
   private dispatch(): void {
     if (this.stopping) return;
 
-    const rows = z.array(occurrenceSchema).parse(
+    const rows = occurrencesSchema.parse(
       this.ctx.graph.db
         .query(sql`
           SELECT *
@@ -356,7 +370,7 @@ export class Cron {
       });
       this.active.set(occurrence.id, task);
     }
-    const retry = z.object({ at: z.number().nullable() }).parse(
+    const retry = retrySchema.parse(
       this.ctx.graph.db
         .query(sql`
           SELECT min(retry_at) as at
@@ -415,11 +429,13 @@ export function cron(options: { jobs: Job[]; actions: Record<string, Action> }):
           name: "cron",
           primer:
             "Select a local module exporting cron({jobs, actions}); define inert jobs with defineJob. Inspect status for the next fire and history for occurrence outcomes. Unchanged definitions retain cadence. Crash recovery is at least once: deduplicate external effects using the occurrence id.",
-          input: z.discriminatedUnion("command", [
-            z.strictObject({ command: z.literal("status") }),
-            z.strictObject({ command: z.literal("history"), job: z.string().optional() }),
-          ]),
-          output: z.json(),
+          input: z.compile(
+            z.discriminatedUnion("command", [
+              z.strictObject({ command: z.literal("status") }),
+              z.strictObject({ command: z.literal("history"), job: z.string().optional() }),
+            ]),
+          ),
+          output: jsonSchema,
           cli: {
             description: "Durable schedules and occurrence history",
             examples: ["bl cron status", "bl cron history --job JOB_ID"],
@@ -429,9 +445,9 @@ export function cron(options: { jobs: Job[]; actions: Record<string, Action> }):
             },
           },
           handler: (input) =>
-            z
-              .json()
-              .parse(input.command === "status" ? service.status() : service.history(input.job)),
+            jsonSchema.parse(
+              input.command === "status" ? service.status() : service.history(input.job),
+            ),
         }),
       );
     },

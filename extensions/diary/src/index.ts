@@ -1,4 +1,5 @@
 import {
+  jsonSchema,
   Fault,
   requireValue,
   defineOp,
@@ -12,8 +13,9 @@ import { attribute, callerActor, resolveIdentity } from "@botlake/extension-iden
 import { z } from "zod";
 
 const authority = Symbol("diary");
-const text = z.string().trim().min(1);
-const limit = z.number().int().positive().max(100).default(20);
+const text = z.compile(z.string().trim().min(1));
+const rawText = z.compile(z.string());
+const limit = z.compile(z.number().int().positive().max(100).default(20));
 const entryPredicate = q.eq(q.attr("diary/entry"), true);
 
 export function diary(): Extension {
@@ -49,27 +51,29 @@ export function diary(): Extension {
         }
       });
 
-      const commandSchema = z.discriminatedUnion("command", [
-        z.strictObject({
-          command: z.literal("add"),
-          text: z
-            .string()
-            .refine((value) => value.trim().length > 0, "Entry text must not be blank"),
-          identity: text.optional(),
-        }),
-        z.strictObject({
-          command: z.literal("list"),
-          identity: text.optional(),
-          after: text.optional(),
-          limit,
-        }),
-        z.strictObject({ command: z.literal("show"), id: text }),
-      ]);
+      const commandSchema = z.compile(
+        z.discriminatedUnion("command", [
+          z.strictObject({
+            command: z.literal("add"),
+            text: z
+              .string()
+              .refine((value) => value.trim().length > 0, "Entry text must not be blank"),
+            identity: text.optional(),
+          }),
+          z.strictObject({
+            command: z.literal("list"),
+            identity: text.optional(),
+            after: text.optional(),
+            limit,
+          }),
+          z.strictObject({ command: z.literal("show"), id: text }),
+        ]),
+      );
       ctx.register(
         defineOp({
           name: "diary",
           input: commandSchema,
-          output: z.json(),
+          output: jsonSchema,
           about:
             "Each registered identity has an implicit diary across tasks. Add/list default to caller BL_ACTOR. List returns oldest-first previews; pass next as --after until null, then show an entry for full text. Pages are not a shared snapshot. Entries are immutable; corrections are new entries.",
           primer:
@@ -181,7 +185,7 @@ function listEntries(
     entries: page.map((record) => ({
       id: record.id,
       at: entryAt(record),
-      preview: z.string().parse(record.attributes["note/text"]).slice(0, 120),
+      preview: rawText.parse(record.attributes["note/text"]).slice(0, 120),
     })),
     next: records.length > pageSize ? (page.at(-1)?.id ?? null) : null,
   };
@@ -198,7 +202,7 @@ function presentEntry(record: Node): { id: string; identity: string; at: string;
     id: record.id,
     identity: text.parse(record.attributes["identity/by-identity"]),
     at: entryAt(record),
-    text: z.string().parse(record.attributes["note/text"]),
+    text: rawText.parse(record.attributes["note/text"]),
   };
 }
 

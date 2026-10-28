@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import type { Outcome, ProviderName } from "./contract.ts";
 
+const jsonEvent = z.compile(z.record(z.string(), z.unknown()));
+
 export function jsonLines(stdout: string): {
   events: Record<string, unknown>[];
   error: string | null;
@@ -10,7 +12,7 @@ export function jsonLines(stdout: string): {
 
   for (const line of stdout.split("\n").filter((value) => value.trim().length > 0)) {
     try {
-      events.push(z.record(z.string(), z.unknown()).parse(JSON.parse(line)));
+      events.push(jsonEvent.parse(JSON.parse(line)));
     } catch (error) {
       return { events, error: `Truncated or malformed JSONL: ${String(error)}` };
     }

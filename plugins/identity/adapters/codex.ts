@@ -1,7 +1,5 @@
-import { z } from "zod";
-
 import { contextOutput, type HookAdapter } from "./contract.ts";
-import { events, hookEventSchema } from "./events.ts";
+import { agentIdSchema, events, hookEventSchema } from "./events.ts";
 
 export const codex: HookAdapter = {
   provider: "codex",
@@ -19,7 +17,7 @@ export const codex: HookAdapter = {
       observation: {
         provider: "codex",
         // Codex's agent_id is the child's actual native thread id.
-        nativeSessionId: child ? z.string().min(1).parse(event.agent_id) : event.session_id,
+        nativeSessionId: child ? agentIdSchema.parse(event.agent_id) : event.session_id,
         cwd: event.cwd,
         event: events[event.hook_event_name],
         nativeEvent: event.hook_event_name,

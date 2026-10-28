@@ -81,8 +81,8 @@ import { z } from "zod";
 
 const length = defineOp({
   name: "length",
-  input: z.object({ text: z.string() }),
-  output: z.number(),
+  input: z.compile(z.object({ text: z.string() })),
+  output: z.compile(z.number()),
   cli: {
     description: "Count characters",
     positionals: [{ name: "text", type: "string", required: true }],
@@ -96,6 +96,8 @@ export default {
   },
 } satisfies Extension;
 ```
+
+[Compile final Zod schemas](https://zod.dev/compile) after refinements or extensions; derived schemas need compiling again. Unsupported features such as recursion retain Zod's runtime parser.
 
 ### Zsh completion
 

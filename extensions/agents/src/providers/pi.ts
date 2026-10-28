@@ -3,6 +3,15 @@ import { z } from "zod";
 import type { Provider } from "./contract.ts";
 import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 
+const roleSchema = z.compile(z.object({ role: z.string() }));
+const messageSchema = z.compile(
+  z.object({
+    content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
+    stopReason: z.string().optional(),
+    errorMessage: z.unknown().optional(),
+  }),
+);
+
 export const pi: Provider = {
   name: "pi",
   doc: "Pi CLI. Model names may include a provider prefix, such as openai-codex/.",
@@ -38,21 +47,13 @@ export const pi: Provider = {
       sessionId = observed;
 
       const messages = events.flatMap((event) => {
-        const role = z.object({ role: z.string() }).safeParse(event["message"]);
+        const role = roleSchema.safeParse(event["message"]);
         if (!role.success || role.data.role !== "assistant") return [];
 
         return [
           {
             type: event["type"],
-            message: z
-              .object({
-                content: z
-                  .array(z.object({ type: z.string(), text: z.string().optional() }))
-                  .optional(),
-                stopReason: z.string().optional(),
-                errorMessage: z.unknown().optional(),
-              })
-              .parse(event["message"]),
+            message: messageSchema.parse(event["message"]),
           },
         ];
       });

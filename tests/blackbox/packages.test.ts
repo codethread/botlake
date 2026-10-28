@@ -6,7 +6,8 @@ import { z } from "zod";
 
 import { install, system } from "./fixtures/system.ts";
 
-const catalog = z.array(z.object({ name: z.string() }));
+const catalog = z.compile(z.array(z.object({ name: z.string() })));
+const providers = z.compile(z.object({ providers: z.array(z.string()) }));
 
 test("packed core runs alone; installed extensions require explicit selection and own their configuration", async () => {
   const host = await system();
@@ -34,7 +35,7 @@ test("packed core runs alone; installed extensions require explicit selection an
     await Bun.write(
       manifest,
       JSON.stringify({
-        ...z.record(z.string(), z.unknown()).parse(await manifest.json()),
+        ...z.compile(z.record(z.string(), z.unknown())).parse(await manifest.json()),
         botlake: { extensions: ["@botlake/extension-batteries"] },
       }),
     );
@@ -68,7 +69,7 @@ test("packed core runs alone; installed extensions require explicit selection an
     ).toEqual(["bins", "identity", "kanban", "kanban-export"]);
     expect(
       z
-        .object({ title: z.string() })
+        .compile(z.object({ title: z.string() }))
         .parse(await host.bl("board", "kanban", { command: "add", title: "No Batteries" })).title,
     ).toBe("No Batteries");
 
@@ -90,9 +91,7 @@ export default agents(agentConfigSchema.parse(config));`,
     );
     await host.botlake(["lake", "start", "--workspace", agents]);
     expect(
-      z
-        .object({ providers: z.array(z.string()) })
-        .parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
+      providers.parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
     ).toEqual([]);
     await Bun.write(
       join(agents, "flags.ts"),
@@ -117,13 +116,11 @@ export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], 
     await host.botlake(["lake", "restart", "--workspace", agents]);
     expect(
       z
-        .object({ aliases: z.record(z.string(), z.unknown()) })
+        .compile(z.object({ aliases: z.record(z.string(), z.unknown()) }))
         .parse(await host.bl("configured", "agent", { command: "catalog" })).aliases,
     ).toHaveProperty("worker");
     expect(
-      z
-        .object({ providers: z.array(z.string()) })
-        .parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
+      providers.parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
     ).toEqual(["codex", "pi", "claude"]);
     expect(await host.bl("configured", "cron", { command: "status" })).toEqual([]);
 

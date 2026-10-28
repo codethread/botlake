@@ -1,43 +1,47 @@
 import { attributesSchema, defineOp, Fault, type Clock, type Context } from "@botlake/core";
 import { z } from "zod";
 
-const inputSchema = z
-  .strictObject({
-    query: z.string().trim().min(1),
-    params: attributesSchema.default({}),
-    minCount: z.number().int().nonnegative().optional(),
-    maxCount: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER - 1)
-      .optional(),
-    timeoutSecs: z.number().int().min(0).max(2_147_483).default(1800),
-  })
-  .refine((input) => input.minCount !== undefined || input.maxCount !== undefined, {
-    message: "await requires --min-count or --max-count",
-  })
-  .refine(
-    (input) =>
-      input.minCount === undefined ||
-      input.maxCount === undefined ||
-      input.minCount <= input.maxCount,
-    { message: "--min-count must not exceed --max-count" },
-  )
-  .refine((input) => input.minCount !== 0 || input.maxCount !== undefined, {
-    message: "--min-count 0 alone is vacuous",
-  });
+const inputSchema = z.compile(
+  z
+    .strictObject({
+      query: z.string().trim().min(1),
+      params: attributesSchema.default({}),
+      minCount: z.number().int().nonnegative().optional(),
+      maxCount: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER - 1)
+        .optional(),
+      timeoutSecs: z.number().int().min(0).max(2_147_483).default(1800),
+    })
+    .refine((input) => input.minCount !== undefined || input.maxCount !== undefined, {
+      message: "await requires --min-count or --max-count",
+    })
+    .refine(
+      (input) =>
+        input.minCount === undefined ||
+        input.maxCount === undefined ||
+        input.minCount <= input.maxCount,
+      { message: "--min-count must not exceed --max-count" },
+    )
+    .refine((input) => input.minCount !== 0 || input.maxCount !== undefined, {
+      message: "--min-count 0 alone is vacuous",
+    }),
+);
 
-const outputSchema = z.strictObject({
-  operation: z.literal("await"),
-  query: z.string(),
-  reason: z.enum(["satisfied", "timeout"]),
-  count: z.number().int().nonnegative(),
-  countLimit: z.number().int().positive(),
-  minCount: z.number().int().nonnegative().nullable(),
-  maxCount: z.number().int().nonnegative().nullable(),
-  elapsedMs: z.number().nonnegative(),
-});
+const outputSchema = z.compile(
+  z.strictObject({
+    operation: z.literal("await"),
+    query: z.string(),
+    reason: z.enum(["satisfied", "timeout"]),
+    count: z.number().int().nonnegative(),
+    countLimit: z.number().int().positive(),
+    minCount: z.number().int().nonnegative().nullable(),
+    maxCount: z.number().int().nonnegative().nullable(),
+    elapsedMs: z.number().nonnegative(),
+  }),
+);
 
 export function registerAwait(ctx: Context): void {
   ctx.register(

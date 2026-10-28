@@ -1,11 +1,10 @@
 import { appendFile } from "node:fs/promises";
 
 import { identityInstruction } from "@botlake/native-session";
-import { z } from "zod";
 
 import { sessionEnvironment } from "../session.ts";
 import { contextOutput, type HookAdapter } from "./contract.ts";
-import { events, hookEventSchema } from "./events.ts";
+import { agentIdSchema, events, hookEventSchema } from "./events.ts";
 
 export const claude: HookAdapter = {
   provider: "claude",
@@ -16,7 +15,7 @@ export const claude: HookAdapter = {
       event.hook_event_name === "SubagentStart" ||
       event.hook_event_name === "SubagentStop";
     const nativeSessionId = child
-      ? `claude-child:${Buffer.from(JSON.stringify([event.session_id, z.string().min(1).parse(event.agent_id)])).toString("base64url")}`
+      ? `claude-child:${Buffer.from(JSON.stringify([event.session_id, agentIdSchema.parse(event.agent_id)])).toString("base64url")}`
       : event.session_id;
     return {
       nativeEvent: event.hook_event_name,

@@ -13,6 +13,10 @@ import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } f
 // oxlint-disable-next-line import/max-dependencies -- Runtime composes core services and invocation scope.
 import { Scheduler } from "./scheduler.ts";
 
+const operationNameSchema = z.compile(z.string().trim().min(1));
+const queryNameSchema = z.compile(z.string().min(1));
+const argvSchema = z.compile(z.array(z.string()));
+
 const unavailable: Processes = {
   launch: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
   get: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
@@ -81,7 +85,7 @@ export class Runtime {
       },
       register: (op) => {
         this.collecting();
-        z.string().trim().min(1).parse(op.name);
+        operationNameSchema.parse(op.name);
         if (this.ops.has(op.name) || metaOps.has(op.name))
           throw new Fault("collision", `Duplicate op: ${op.name}`);
 
@@ -89,7 +93,7 @@ export class Runtime {
       },
       registerQuery: (name, query) => {
         this.collecting();
-        z.string().min(1).parse(name);
+        queryNameSchema.parse(name);
         if (this.queries.has(name)) throw new Fault("collision", `Duplicate query: ${name}`);
 
         this.queries.set(name, namedQuerySchema.parse(query));
@@ -219,7 +223,7 @@ export class Runtime {
 
     if (metaOps.has(name)) {
       const path = Array.isArray(input)
-        ? z.array(z.string()).parse(input)
+        ? argvSchema.parse(input)
         : typeof input === "string"
           ? [input]
           : [];
@@ -391,7 +395,7 @@ export class Runtime {
 // -- Private helpers --
 
 function zStringArray(input: unknown): string[] {
-  const parsed = z.array(z.string()).safeParse(input);
+  const parsed = argvSchema.safeParse(input);
   if (!parsed.success) throw new Fault("argv", "Expected string argv");
   return parsed.data;
 }

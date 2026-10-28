@@ -6,16 +6,18 @@ import { z } from "zod";
 import { encode, Fault, isFault, requireValue } from "../core/json.ts";
 import { loadWorkspace } from "./config.ts";
 import { botlakeServices } from "./custody.ts";
-import { workerMessageSchema } from "./protocol.ts";
+import { environmentSchema, workerMessageSchema } from "./protocol.ts";
 import { Runtime, isStream } from "./runtime.ts";
 
-const data = z
-  .object({
+const workerDataSchema = z.compile(
+  z.object({
     workspace: z.string(),
     botlakeSocket: z.string(),
-    env: z.record(z.string(), z.string()),
-  })
-  .parse(workerData);
+    env: environmentSchema,
+  }),
+);
+
+const data = workerDataSchema.parse(workerData);
 
 const port = requireValue(parentPort, "Workspace entry must run in a Worker");
 

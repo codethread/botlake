@@ -6,7 +6,10 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-const runSchema = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+const runSchema = z.compile(
+  z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) }),
+);
+const idRun = z.compile(runSchema.pick({ id: true }));
 
 test("native providers preserve complete evidence on interrupted output and require observed headless sessions", async () => {
   const host = await system();
@@ -75,7 +78,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
     }
     for (const name of ["codex", "pi", "claude"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {
-        const started = runSchema.pick({ id: true }).parse(
+        const started = idRun.parse(
           await host.bl("providers", "agent", {
             command: "start",
             seat: `${name}-seat`,
@@ -102,7 +105,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
             name === "codex" ? "no thread id" : "no session id",
           );
         if (scenario === "complete") {
-          const resumed = runSchema.pick({ id: true }).parse(
+          const resumed = idRun.parse(
             await host.bl("providers", "agent", {
               command: "resume",
               id: run.id,

@@ -12,7 +12,10 @@ import { z } from "zod";
 
 import { rejected } from "./assert.ts";
 
-const node = z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) });
+const node = z.compile(z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) }));
+const text = z.compile(z.string());
+const nextAtHistory = z.compile(z.array(z.object({ next_at: z.number() })));
+const statusHistory = z.compile(z.array(z.object({ status: z.string() })));
 
 test("Kanban preserves ownership evidence and fences generic writes, batch burns, links and stale references", async () => {
   await world([batteries(), identity(), kanban()], new ManualClock(1000), async (runtime) => {
@@ -22,20 +25,20 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
 
     expect(
       z
-        .array(node)
+        .compile(z.array(node))
         .parse(await runtime.invoke("ready", { query: "kanban-pending" }))
         .map((row) => row.id),
     ).toEqual([feature.id]);
 
     const task = node.parse(await invoke({ command: "task", feature: feature.id, title: "Task" }));
     const claim = z
-      .object({ result: z.string(), claim: node })
+      .compile(z.object({ result: z.string(), claim: node }))
       .parse(
         await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
       );
     expect(
       z
-        .object({ result: z.string() })
+        .compile(z.object({ result: z.string() }))
         .parse(
           await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
         ).result,
@@ -55,7 +58,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     await invoke({ command: "claim", id: feature.id, owner: "second", branch: "next" });
     await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" });
     const history = z
-      .object({ history: z.array(node) })
+      .compile(z.object({ history: z.array(node) }))
       .parse(await invoke({ command: "card", id: feature.id, history: true })).history;
     expect(history.map((entry) => entry.attributes["kanban/owner"])).toEqual([
       "unresolved",
@@ -64,14 +67,16 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     ]);
 
     const times = history.map((entry) =>
-      Date.parse(z.string().parse(entry.attributes["kanban/claimed-at"])),
+      Date.parse(text.parse(entry.attributes["kanban/claimed-at"])),
     );
     expect(times[0]).toBeLessThan(times[1] ?? 0);
     expect(times[1]).toBeLessThan(times[2] ?? 0);
     const view = z
-      .object({
-        tasks: z.array(z.object({ status: z.string(), owner: z.object({ source: z.string() }) })),
-      })
+      .compile(
+        z.object({
+          tasks: z.array(z.object({ status: z.string(), owner: z.object({ source: z.string() }) })),
+        }),
+      )
       .parse(await invoke({ command: "card", id: feature.id }));
     expect(view.tasks[0]?.status).toBe("ready");
     expect(view.tasks[0]?.owner.source).toBe("inherited");
@@ -79,7 +84,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
     await invoke({ command: "claim", id: task.id, owner: "worker" });
     expect(
       z
-        .object({ tasks: z.array(z.object({ status: z.string() })) })
+        .compile(z.object({ tasks: z.array(z.object({ status: z.string() })) }))
         .parse(await invoke({ command: "card", id: feature.id })).tasks[0]?.status,
     ).toBe("doing");
 
@@ -126,7 +131,7 @@ test("Kanban preserves ownership evidence and fences generic writes, batch burns
       }),
     ).toEqual({
       ...z
-        .object({ identity: z.string(), nodeId: z.string(), instruction: z.string() })
+        .compile(z.object({ identity: z.string(), nodeId: z.string(), instruction: z.string() }))
         .parse(native),
       result: "recovered",
     });
@@ -183,14 +188,12 @@ test("calendar parser handles spring and fall DST and interval jobs retain caden
     await runtime.drain();
     await cron?.drain();
     expect(ids).toEqual(["tick/1000", "tick/2000", "tick/3000"]);
-    expect(z.array(z.object({ next_at: z.number() })).parse(cron?.status())[0]?.next_at).toBe(4000);
+    expect(nextAtHistory.parse(cron?.status())[0]?.next_at).toBe(4000);
     await runtime.stop();
     const second = new Runtime({ database: path, clock });
     try {
       await second.start([extension]);
-      expect(z.array(z.object({ next_at: z.number() })).parse(cron?.status())[0]?.next_at).toBe(
-        4000,
-      );
+      expect(nextAtHistory.parse(cron?.status())[0]?.next_at).toBe(4000);
       clock.advance(4000);
       await second.drain();
       await cron?.drain();
@@ -243,12 +246,10 @@ test("cron overlap and retry outcomes retain occurrence IDs and attempt evidence
     await runtime.drain();
     clock.advance(2000);
     await runtime.drain();
-    expect(
-      z
-        .array(z.object({ status: z.string() }))
-        .parse(service?.history("blocked"))
-        .map((row) => row.status),
-    ).toEqual(["running", "skipped"]);
+    expect(statusHistory.parse(service?.history("blocked")).map((row) => row.status)).toEqual([
+      "running",
+      "skipped",
+    ]);
     gate.resolve();
     await service?.drain();
     clock.advance(10000);
@@ -258,7 +259,7 @@ test("cron overlap and retry outcomes retain occurrence IDs and attempt evidence
     await runtime.drain();
     await service?.drain();
     const history = z
-      .array(z.object({ id: z.string(), attempt: z.number(), status: z.string() }))
+      .compile(z.array(z.object({ id: z.string(), attempt: z.number(), status: z.string() })))
       .parse(service?.history("retry"));
     expect(history).toEqual([{ id: "retry/10000", attempt: 2, status: "succeeded" }]);
   });
@@ -292,20 +293,14 @@ test("missed-run policies tolerate timer jitter and namespaced jobs do not overl
   await world([extension], clock, async (runtime) => {
     clock.advance(1001);
     await runtime.drain();
-    expect(
-      z.array(z.object({ status: z.string() })).parse(service?.history("skip"))[0]?.status,
-    ).toBe("succeeded");
+    expect(statusHistory.parse(service?.history("skip"))[0]?.status).toBe("succeeded");
     clock.advance(3500);
     await runtime.drain();
-    expect(
-      z.array(z.object({ status: z.string() })).parse(service?.history("foo"))[0]?.status,
-    ).toBe("succeeded");
-    expect(
-      z.array(z.object({ status: z.string() })).parse(service?.history("skip"))[1]?.status,
-    ).toBe("skipped");
+    expect(statusHistory.parse(service?.history("foo"))[0]?.status).toBe("succeeded");
+    expect(statusHistory.parse(service?.history("skip"))[1]?.status).toBe("skipped");
     expect(
       z
-        .array(z.object({ scheduled_at: z.number() }))
+        .compile(z.array(z.object({ scheduled_at: z.number() })))
         .parse(service?.history("once"))
         .map((row) => row.scheduled_at),
     ).toEqual([1000, 3000]);
@@ -349,7 +344,7 @@ test("Cron recovers an interrupted occurrence with its stable ID and preserved a
       expect(seen).toEqual(["recover/0"]);
       expect(
         z
-          .array(z.object({ attempt: z.number(), status: z.string() }))
+          .compile(z.array(z.object({ attempt: z.number(), status: z.string() })))
           .parse(service?.history("recover")),
       ).toEqual([{ attempt: 2, status: "succeeded" }]);
     } finally {
@@ -394,13 +389,15 @@ test("Cron allows explicitly concurrent occurrences and persists exhausted failu
       await runtime.drain();
       clock.advance(2000);
       await runtime.drain();
-      const outcomes = z.array(
-        z.object({
-          id: z.string(),
-          status: z.string(),
-          attempt: z.number(),
-          error: z.string().nullable(),
-        }),
+      const outcomes = z.compile(
+        z.array(
+          z.object({
+            id: z.string(),
+            status: z.string(),
+            attempt: z.number(),
+            error: z.string().nullable(),
+          }),
+        ),
       );
       expect(outcomes.parse(service?.history("parallel")).map((entry) => entry.status)).toEqual([
         "running",
@@ -414,12 +411,10 @@ test("Cron allows explicitly concurrent occurrences and persists exhausted failu
       gate.resolve();
       await service?.drain();
     }
-    expect(
-      z
-        .array(z.object({ status: z.string() }))
-        .parse(service?.history("parallel"))
-        .map((entry) => entry.status),
-    ).toEqual(["succeeded", "succeeded"]);
+    expect(statusHistory.parse(service?.history("parallel")).map((entry) => entry.status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ]);
   });
 });
 

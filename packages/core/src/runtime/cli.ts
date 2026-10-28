@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-import { Fault, type Json } from "../core/json.ts";
+import { jsonSchema, Fault, type Json } from "../core/json.ts";
+
+const numberSchema = z.compile(z.number());
 
 const argumentShape = {
   key: z.string().min(1).exactOptional(),
@@ -10,7 +12,7 @@ const argumentShape = {
   description: z.string().exactOptional(),
 };
 
-const commandSchema: z.ZodType<Command> = z.lazy(() =>
+const commandDefinition: z.ZodType<Command> = z.lazy(() =>
   z.strictObject({
     description: z.string(),
     examples: z.array(z.string().min(1)).exactOptional(),
@@ -20,9 +22,11 @@ const commandSchema: z.ZodType<Command> = z.lazy(() =>
     positionals: z
       .array(z.strictObject({ name: z.string().min(1), ...argumentShape }))
       .exactOptional(),
-    commands: z.record(z.string().min(1), commandSchema).exactOptional(),
+    commands: z.record(z.string().min(1), commandDefinition).exactOptional(),
   }),
 );
+// Initialize the recursive definition before eager compilation resolves its lazy getter.
+const commandSchema = z.compile(commandDefinition);
 
 export interface Argument {
   name: string;
@@ -192,12 +196,12 @@ function parseValue(text: string, type: Argument["type"]): Json {
       return text;
     case "number":
       if (text.trim().length === 0) throw new Fault("argv", "Expected a number");
-      return z.number().parse(Number(text));
+      return numberSchema.parse(Number(text));
     case "boolean":
       if (text !== "true" && text !== "false")
         throw new Fault("argv", `Expected boolean, received ${text}`);
       return text === "true";
     case "json":
-      return z.json().parse(JSON.parse(text));
+      return jsonSchema.parse(JSON.parse(text));
   }
 }

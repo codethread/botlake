@@ -1,4 +1,5 @@
 import {
+  jsonSchema,
   Fault,
   sql,
   defineOp,
@@ -9,31 +10,38 @@ import {
 } from "@botlake/core";
 import { z } from "zod";
 
-const nameSchema = z.string().trim().min(1);
+const nameSchema = z.compile(z.string().trim().min(1));
 
-const flagSchema = z.strictObject({ description: z.string().trim().min(1), value: z.boolean() });
+const flagSchema = z.compile(
+  z.strictObject({ description: z.string().trim().min(1), value: z.boolean() }),
+);
 
-const flagUpdateSchema = flagSchema.partial({ description: true });
+const flagUpdateSchema = z.compile(flagSchema.partial({ description: true }));
 
-const storedFlagSchema = flagSchema.readonly();
+const storedFlagSchema = z.compile(flagSchema.readonly());
 
-const definitionSchema = z
-  .strictObject({
+const definitionSchema = z.compile(
+  z
+    .strictObject({
+      name: nameSchema,
+      description: z.string().trim().min(1),
+      default: z.boolean(),
+    })
+    .readonly(),
+);
+
+export const flagsConfigSchema = z.compile(z.array(z.tuple([definitionSchema, z.boolean()])));
+
+const overrideSchema = z.compile(
+  z.object({
     name: nameSchema,
-    description: z.string().trim().min(1),
-    default: z.boolean(),
-  })
-  .readonly();
-
-export const flagsConfigSchema = z.array(z.tuple([definitionSchema, z.boolean()]));
-
-const overrideSchema = z.object({
-  name: nameSchema,
-  flag: z
-    .string()
-    .transform((text) => storedFlagSchema.parse(JSON.parse(text)))
-    .nullable(),
-});
+    flag: z
+      .string()
+      .transform((text) => storedFlagSchema.parse(JSON.parse(text)))
+      .nullable(),
+  }),
+);
+const overridesSchema = z.compile(z.array(overrideSchema));
 
 const defaultsByContext = new WeakMap<Context, Map<string, Flag>>();
 
@@ -94,7 +102,7 @@ export function listFlags(ctx: Context): Record<string, FlagState> {
   const initial = defaultsFor(ctx);
   const entries = new Map([...initial].map(([name, flag]) => [name, flagState(flag)]));
 
-  for (const row of z.array(overrideSchema).parse(
+  for (const row of overridesSchema.parse(
     ctx.graph.db
       .query(sql`
         SELECT name, flag
@@ -221,22 +229,24 @@ export function configureFlags(settings: readonly FlagSetting[]): Extension {
           name: "flag",
           primer:
             "Flags are workspace-local described booleans shared by selected extensions. List and get show current and configured default records (null when absent), plus overridden to identify database overrides, including persistent unsets. Set preserves an existing description; new or unset flags require --description. Set and unset persist across restarts. Reset NAME deletes one override; reset --all deletes all overrides, restoring configured defaults and removing database-only flags. Configuration changes affect flags without overrides. Flag meanings and effects belong to consumers, not Flags.",
-          input: z.discriminatedUnion("command", [
-            z.strictObject({ command: z.literal("list") }),
-            z.strictObject({ command: z.literal("get"), name: nameSchema }),
-            flagUpdateSchema.extend({ command: z.literal("set"), name: nameSchema }),
-            z.strictObject({ command: z.literal("unset"), name: nameSchema }),
-            z
-              .strictObject({
-                command: z.literal("reset"),
-                name: nameSchema.optional(),
-                all: z.literal(true).optional(),
-              })
-              .refine(({ name, all }) => (name !== undefined) !== (all === true), {
-                message: "Provide a flag name or --all, not both",
-              }),
-          ]),
-          output: z.json(),
+          input: z.compile(
+            z.discriminatedUnion("command", [
+              z.strictObject({ command: z.literal("list") }),
+              z.strictObject({ command: z.literal("get"), name: nameSchema }),
+              flagUpdateSchema.extend({ command: z.literal("set"), name: nameSchema }),
+              z.strictObject({ command: z.literal("unset"), name: nameSchema }),
+              z
+                .strictObject({
+                  command: z.literal("reset"),
+                  name: nameSchema.optional(),
+                  all: z.literal(true).optional(),
+                })
+                .refine(({ name, all }) => (name !== undefined) !== (all === true), {
+                  message: "Provide a flag name or --all, not both",
+                }),
+            ]),
+          ),
+          output: jsonSchema,
           cli: {
             description: "Persistent workspace-local flags and configured defaults",
             examples: [

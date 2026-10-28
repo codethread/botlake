@@ -6,17 +6,23 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-const status = z.strictObject({
-  id: z.string(),
-  state: z.string(),
-  substatus: z.string(),
-  settled: z.boolean(),
-});
-const row = z.object({
-  id: z.string(),
-  state: z.string(),
-  attributes: z.record(z.string(), z.json()),
-});
+const status = z.compile(
+  z.strictObject({
+    id: z.string(),
+    state: z.string(),
+    substatus: z.string(),
+    settled: z.boolean(),
+  }),
+);
+const row = z.compile(
+  z.object({
+    id: z.string(),
+    state: z.string(),
+    attributes: z.record(z.string(), z.json()),
+  }),
+);
+const performed = z.compile(z.array(z.object({ relation: z.string() })));
+const nativeRun = z.compile(z.object({ runId: z.string() }));
 test("Agents publishes, binds actual native sessions, fences writes, reconciles custody and resumes without Workflow", async () => {
   const host = await system();
   try {
@@ -225,7 +231,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     let bound = false;
     for (let checks = 0; checks < 100 && !bound; checks++)
       bound =
-        z.array(z.object({ relation: z.string() })).parse(
+        performed.parse(
           await host.bl("agents", "edge", {
             command: "list",
             id: cancellable.id,
@@ -246,7 +252,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     expect(cancelled.substatus).toBe("requested");
     expect(cancelled.settled).toBe(true);
-    const external = z.object({ runId: z.string() }).parse(
+    const external = nativeRun.parse(
       await host.bl("agents", "agent", {
         command: "native",
         provider: "pi",

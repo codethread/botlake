@@ -3,20 +3,24 @@ import type { SQLQueryBindings } from "bun:sqlite";
 import { match, P } from "ts-pattern";
 import { z } from "zod";
 
-import { Fault, type Json } from "./json.ts";
+import { jsonSchema, Fault, type Json } from "./json.ts";
 import { sql } from "./sql.ts";
 
-const fieldSchema = z.union([
-  z.enum(["id", "title", "state", "created_at", "updated_at", "revision"]),
-  z.strictObject({ attr: z.string().min(1), path: z.array(z.string().min(1)).default([]) }),
-]);
+const parameterNameSchema = z.compile(z.string());
 
-const valueSchema = z.union([z.json(), z.strictObject({ param: z.string().min(1) })]);
-
-export const predicateSchema: z.ZodType<Predicate> = z.lazy(() =>
+const fieldSchema = z.compile(
   z.union([
-    z.strictObject({ op: z.enum(["and", "or"]), args: z.array(predicateSchema).min(1) }),
-    z.strictObject({ op: z.literal("not"), arg: predicateSchema }),
+    z.enum(["id", "title", "state", "created_at", "updated_at", "revision"]),
+    z.strictObject({ attr: z.string().min(1), path: z.array(z.string().min(1)).default([]) }),
+  ]),
+);
+
+const valueSchema = z.compile(z.union([jsonSchema, z.strictObject({ param: z.string().min(1) })]));
+
+const predicateDefinition: z.ZodType<Predicate> = z.lazy(() =>
+  z.union([
+    z.strictObject({ op: z.enum(["and", "or"]), args: z.array(predicateDefinition).min(1) }),
+    z.strictObject({ op: z.literal("not"), arg: predicateDefinition }),
     z.strictObject({ op: z.enum(["exists", "missing"]), field: fieldSchema }),
     z.strictObject({
       op: z.enum(["=", "!=", "<", "<=", ">", ">=", "in"]),
@@ -27,16 +31,20 @@ export const predicateSchema: z.ZodType<Predicate> = z.lazy(() =>
       op: z.literal("edge"),
       direction: z.enum(["in", "out"]),
       relation: z.string().min(1),
-      where: predicateSchema.optional(),
+      where: predicateDefinition.optional(),
     }),
   ]),
 );
+// Initialize the recursive definition before eager compilation resolves its lazy getter.
+export const predicateSchema = z.compile(predicateDefinition);
 
-export const namedQuerySchema = z.strictObject({
-  where: predicateSchema,
-  params: z.array(z.string().min(1)).optional(),
-  description: z.string().min(1),
-});
+export const namedQuerySchema = z.compile(
+  z.strictObject({
+    where: predicateSchema,
+    params: z.array(z.string().min(1)).optional(),
+    description: z.string().min(1),
+  }),
+);
 
 export const q = {
   attr(attr: string, ...path: string[]): Field {
@@ -211,7 +219,7 @@ export function compileQuery(
           !Array.isArray(value) &&
           "param" in value
         ) {
-          const name = z.string().parse(value.param);
+          const name = parameterNameSchema.parse(value.param);
           const resolved = params[name];
           if (resolved === undefined) throw new Fault("query", `Missing query parameter: ${name}`);
           value = resolved;

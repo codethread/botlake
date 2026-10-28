@@ -1,3 +1,4 @@
+import { providerSchema } from "@botlake/native-session";
 import { z } from "zod";
 
 import { claude } from "./adapters/claude.ts";
@@ -5,7 +6,8 @@ import { codex } from "./adapters/codex.ts";
 import { reportNative } from "./session.ts";
 
 const adapters = { codex, claude };
-const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
+const hookProviderSchema = z.compile(providerSchema.extract(["codex", "claude"]));
+const provider = hookProviderSchema.parse(Bun.argv[2]);
 try {
   const adapter = adapters[provider];
   const event = adapter.decode(await Bun.stdin.json());
