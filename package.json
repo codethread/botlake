@@ -18,7 +18,7 @@
     "lint-staged": "lint-staged",
     "prepare": "husky",
     "build:cli": "mkdir -p out && cd cli && go build -o ../out/botlake ./cmd/botlake && go build -o ../out/bl ./cmd/bl",
-    "test": "bun test tests/blackbox",
+    "test": "bun test tests/blackbox --parallel --randomize",
     "check:go": "cd cli && go vet ./..."
   },
   "devDependencies": {
