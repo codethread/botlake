@@ -10,7 +10,11 @@ description: Use when authoring or reviewing TypeScript code.
 - Use clear discriminated unions for domain models, with a focused doc string on every field of no more than 3–5 lines.
 - Avoid optionals when a union models the domain better: an explicit variant beats `field?:` when the missing case has its own meaning.
 - All IO lives at the application boundary, managed by dependency injection and services. Keep domain code pure.
-- Prefer pure functions operating on data. Use classes only to extend `Error` (or an existing error class) or a third-party library class required by an integration.
+- Prefer pure functions operating on data, grouped with namespace.
+- Use classes only for:
+  - extending `Error` (or an existing error class)
+  - a third-party library class required by an integration.
+  - tightly owned mutation where the module’s job is inherently stateful.
 
 ```ts
 // Prefer
