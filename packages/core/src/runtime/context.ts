@@ -12,7 +12,8 @@ import type { Scheduler } from "./scheduler.ts";
 export interface Invocation {
   signal: AbortSignal;
   requestId: string;
-  deadline: number;
+  /** Absolute clock time, or null when only caller cancellation applies. */
+  deadline: number | null;
   cwd: string;
   worktreeRoot?: string | undefined;
   gitCommonDir?: string | undefined;
@@ -26,6 +27,8 @@ export interface Op {
   primer?: string | undefined;
   dependencies: string[];
   stream: boolean;
+  /** Standard operations default to 30s; unbounded operations own their wait budget. */
+  deadline: "standard" | "unbounded";
   invoke(input: unknown, ctx: Context, request: Invocation): Promise<unknown>;
   jsonSchema?: (() => unknown) | undefined;
 }

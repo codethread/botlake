@@ -30,7 +30,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
     defineOp({
       name: "agent",
       primer:
-        "Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set agent/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. Inspect show or reconcile before continuing. Process completion does not complete tasks; external sessions carry no stop authority.",
+        'Inspect catalog for seat docs, effective models and availability; catalog NAME shows candidates and full settings. Flags control new seat selection: flag set agent/PROVIDER false disables a provider; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
       input,
       output: z.json(),
       cli: {
@@ -40,6 +40,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           "bl agent catalog reviewer",
           "bl agent list",
           "bl agent show RUN_ID",
+          'bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1',
         ],
         commands: {
           list: { description: "Runs" },

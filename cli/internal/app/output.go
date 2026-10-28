@@ -218,10 +218,10 @@ type helpCommand struct {
 }
 
 type helpOperation struct {
-	Name, About, Primer string
-	Stream              bool
-	CLI                 helpCommand
-	JSONSchema          json.RawMessage
+	Name, About, Primer, Deadline string
+	Stream                        bool
+	CLI                           helpCommand
+	JSONSchema                    json.RawMessage
 }
 
 type helpPrinter struct {
@@ -400,6 +400,11 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 			fmt.Fprintln(os.Stdout)
 			p.heading("Runbook")
 			p.body(op.Primer, "")
+		}
+
+		if op.Deadline == "unbounded" {
+			fmt.Fprintln(os.Stdout)
+			p.body("No default request deadline. Use --timeout before the operation to impose one.", "")
 		}
 
 		if op.Stream {

@@ -35,6 +35,15 @@ export function agents(options: AgentOptions = {}): Extension {
           where: q.and(q.eq(q.attr("agent/run"), true), q.eq(q.attr("agent/state"), state)),
           description: `Agent runs in ${state} state`,
         });
+      ctx.registerQuery("agent-run-settled", {
+        description: "Managed run with settled custody, regardless of execution success",
+        params: ["runId"],
+        where: q.and(
+          q.eq("id", q.param("runId")),
+          q.eq(q.attr("agent/run"), true),
+          q.eq(q.attr("agent/settled"), true),
+        ),
+      });
       ctx.resource({ start: () => service.startResource(), stop: () => service.stop() });
       registerAgent(ctx, service);
     },

@@ -4,6 +4,7 @@ import {
   predicateSchema,
   batchSchema,
   defineOp,
+  q,
   type NamedQuery,
   type Command,
   type Context,
@@ -11,6 +12,31 @@ import {
 } from "@botlake/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
+
+import { registerAwait } from "./await.ts";
+
+const coordinationQueries: Record<string, NamedQuery> = {
+  "node-closed": {
+    description: "Closed node with the supplied id",
+    params: ["id"],
+    where: q.and(q.eq("id", q.param("id")), q.eq("state", "closed")),
+  },
+  "node-active": {
+    description: "Active node with the supplied id",
+    params: ["id"],
+    where: q.and(q.eq("id", q.param("id")), q.eq("state", "active")),
+  },
+  "children-active": {
+    description: "Active children of the supplied parent",
+    params: ["parent"],
+    where: q.and(q.eq("state", "active"), q.edgeIn("parent-of", q.eq("id", q.param("parent")))),
+  },
+  "blockers-active": {
+    description: "Active prerequisites of the supplied node",
+    params: ["id"],
+    where: q.and(q.eq("state", "active"), q.edgeIn("depends-on", q.eq("id", q.param("id")))),
+  },
+};
 
 const id = z.string().min(1);
 
@@ -113,7 +139,12 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
   return {
     name: "batteries",
     activate(ctx) {
-      for (const [name, query] of Object.entries(queries)) ctx.registerQuery(name, query);
+      for (const [name, query] of [
+        ...Object.entries(coordinationQueries),
+        ...Object.entries(queries),
+      ])
+        ctx.registerQuery(name, query);
+      registerAwait(ctx);
       function register<I extends z.ZodType>(
         name: keyof typeof guidance,
         input: I,

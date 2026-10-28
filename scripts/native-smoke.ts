@@ -20,6 +20,7 @@ const prompt = `Do not use tools or edit files. Reply with ${marker} followed by
 
 try {
   const workspace = await host.workspace("native-smoke", [
+    "@botlake/extension-batteries",
     "@botlake/extension-identity",
     "@botlake/extension-flags",
     "./agents.ts",
@@ -83,15 +84,16 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
   );
   await host.botlake(["lake", "start", "--workspace", workspace]);
   async function settled(id: string): Promise<z.infer<typeof runSchema>> {
-    const deadline = Date.now() + 120_000;
-    while (Date.now() < deadline) {
-      await host.bl("native-smoke", "agent", { command: "reconcile" });
-      const run = runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
-      if (run.attributes["agent/settled"] === true) return run;
-      await Bun.sleep(200);
-    }
-
-    throw new Error(`Native run timed out: ${id}`);
+    const waited = z.object({ reason: z.enum(["satisfied", "timeout"]) }).parse(
+      await host.bl("native-smoke", "await", {
+        query: "agent-run-settled",
+        params: { runId: id },
+        minCount: 1,
+        timeoutSecs: 120,
+      }),
+    );
+    check(waited.reason === "satisfied", `Native run timed out: ${id}`);
+    return runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
   }
   function lifecycle(run: z.infer<typeof runSchema>): void {
     const observed = z

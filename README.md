@@ -47,7 +47,8 @@ bl agent catalog
 bl agent catalog reviewer
 bl flag set seat/allow-china false # grunt now selects Luna.
 bl agent start --seat oracle --cwd "$PWD" --prompt "Review the architecture; do not edit files."
-bl agent show RUN_ID
+bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
+bl agent show RUN_ID # After reason=satisfied; inspect execution outcome, not just settlement.
 ```
 
 Flags are lake-local; database overrides survive restarts. Use `bl flag reset NAME` (or `--all`) to restore configured defaults. They affect new seat selection, not accepted runs. See [catalog authoring](extensions/agents/README.md#catalog-and-routing) and [runtime limits](docs/LIMITS.md).
@@ -100,7 +101,7 @@ export default {
 
 `bl help|about|prime|primer OP [SUBCOMMAND...]` discovers commands. Terminal help shows usage, arguments, flags and examples; pipes retain JSON/NDJSON. `--json` forces machine output and `NO_COLOR` disables color. `bl --help` lists global flags without a running workspace.
 
-Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` sets a deadline; `--dry-run` prints the request. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the extension; `--` ends its flag parsing.
+Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` overrides the operation deadline (normally 30s); `--dry-run` prints the request. Batteries `await` owns its wait budget instead: `--timeout-secs` defaults to 1800 and returns `reason: "timeout"` on expiry, while an explicit global `--timeout` remains a hard error deadline. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the extension; `--` ends its flag parsing.
 
 `botlake init [--workspace DIR] [--name NAME]` adds an empty `botlake` field to `.botlake/package.json`, creating a private module package if missing, without installing or selecting extensions. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing package fields and selected configuration are preserved. `botlake --version` reports the CLI/build/protocol versions.
 

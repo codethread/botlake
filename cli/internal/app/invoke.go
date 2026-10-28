@@ -43,9 +43,9 @@ func (p *payloadFlags) Set(value string) error {
 }
 
 type invocationFlags struct {
-	workspace, cwd, worktree, common, timeout, input string
-	stdin, dryRun, version, help, json, inputSet     bool
-	payloads                                         payloadFlags
+	workspace, cwd, worktree, common, timeout, input         string
+	stdin, dryRun, version, help, json, inputSet, timeoutSet bool
+	payloads                                                 payloadFlags
 }
 
 func BL(args []string) int {
@@ -56,7 +56,7 @@ func BL(args []string) int {
 	flags.StringVar(&p.cwd, "cwd", "", "invocation working directory")
 	flags.StringVar(&p.worktree, "worktree-root", "", "explicit Git worktree root")
 	flags.StringVar(&p.common, "git-common-dir", "", "explicit Git common directory")
-	flags.StringVar(&p.timeout, "timeout", "30s", "invocation deadline")
+	flags.StringVar(&p.timeout, "timeout", "", "override operation deadline")
 	flags.StringVar(&p.input, "input", "", "JSON input, @file, or - for stdin")
 	flags.Var(&p.payloads, "payload", "named text payload: name=path (repeatable)")
 	flags.BoolVar(&p.stdin, "stdin", false, "read stdin into the stdin payload")
@@ -73,6 +73,9 @@ func BL(args []string) int {
 	flags.Visit(func(f *flag.Flag) {
 		if f.Name == "input" {
 			p.inputSet = true
+		}
+		if f.Name == "timeout" {
+			p.timeoutSet = true
 		}
 	})
 
@@ -118,9 +121,13 @@ func BL(args []string) int {
 		return cliFailure(errors.New("--input cannot be combined with operation arguments or named payloads"), view.json)
 	}
 
-	duration, err := time.ParseDuration(p.timeout)
-	if err != nil || duration.Milliseconds() <= 0 {
-		return cliFailure(fmt.Errorf("invalid --timeout %q: expected a duration of at least 1ms", p.timeout), view.json)
+	var duration time.Duration
+	var err error
+	if p.timeoutSet {
+		duration, err = time.ParseDuration(p.timeout)
+		if err != nil || duration.Milliseconds() <= 0 {
+			return cliFailure(fmt.Errorf("invalid --timeout %q: expected a duration of at least 1ms", p.timeout), view.json)
+		}
 	}
 
 	cwd := p.cwd
@@ -189,9 +196,12 @@ func BL(args []string) int {
 	}
 
 	payload := map[string]any{
-		"name": name, "argv": argv, "payloads": payloads, "timeout_ms": duration.Milliseconds(),
+		"name": name, "argv": argv, "payloads": payloads,
 		"cwd": cwd, "is_tty": isTTY, "tty_col": columns,
 		"env": environment(),
+	}
+	if p.timeoutSet {
+		payload["timeout_ms"] = duration.Milliseconds()
 	}
 	if p.worktree != "" {
 		payload["worktree_root"] = p.worktree
@@ -293,7 +303,7 @@ Global flags (before the operation):
   --stdin                 Attach stdin as text; refer to it with :stdin
   --payload NAME=PATH     Attach a named text file (repeatable); use :payload/NAME
   --input JSON|@FILE|-     Supply the entire JSON operation input; - reads stdin
-  --timeout DURATION      Set the deadline (default 30s; e.g. 5s or 1500ms)
+  --timeout DURATION      Override the operation deadline (normally 30s; e.g. 5s)
   --json                  Force JSON output, including help and errors
   --dry-run               Print the request without invoking it
   --version               Print CLI/build/protocol versions

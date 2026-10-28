@@ -53,11 +53,14 @@ bl agent catalog                  # Docs, effective settings and availability, i
 bl agent catalog reviewer         # Full candidates, settings and unavailability reasons.
 bl flag set model/openai false    # reviewer now selects opus, if Claude/Anthropic are enabled.
 bl agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
+bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
 bl agent show RUN_ID
 bl flag set agent/claude false  # Keep Claude registered, but unavailable for new selection.
 ```
 
 `agent list` lists runs. All managed launches are headless, regardless of the seat's name.
+
+Waiting requires explicitly selected [Batteries](../batteries/README.md); Agents owns the `agent-run-settled` query, not the wait operation. Check `reason: "satisfied"`, then inspect `agent/substatus`, `agent/result` and `agent/error` with `agent show`. Settlement includes failure and cancellation; `completed` indicates successful execution. Closed/stopped alone does not establish settled custody. Timeout or interruption stops only the wait, not the agent. External sessions have no settlement guarantee, and run success does not close the served task.
 
 `agentConfigSchema` validates aliases and unmanaged configuration, including callbacks. `agentConfigJsonSchema()` describes JSON configuration (string prompts only). Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 

@@ -39,6 +39,7 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
   primer?: string;
   dependencies?: string[];
   stream?: boolean;
+  deadline?: Op["deadline"];
   jsonSchema?: { input: StandardJSONSchemaV1; output: StandardJSONSchemaV1 };
   handler(
     input: StandardSchemaV1.InferOutput<I>,
@@ -56,6 +57,7 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
     primer: descriptor.primer,
     dependencies: descriptor.dependencies ?? [],
     stream: descriptor.stream ?? false,
+    deadline: descriptor.deadline ?? "standard",
     jsonSchema:
       descriptor.jsonSchema === undefined
         ? undefined

@@ -324,6 +324,24 @@ export class Graph {
     return this.select(options);
   }
 
+  count(options: Selection & { limit?: number | undefined } = {}): number {
+    const limit =
+      options.limit === undefined ? undefined : z.number().int().positive().parse(options.limit);
+    const selection = this.compileSelection(options);
+    const row = this.db
+      .query(sql`
+        SELECT COUNT(*) AS count
+        FROM (
+          SELECT 1
+          FROM nodes s
+          WHERE ${selection.sql}
+          ${limit === undefined ? "" : sql`LIMIT ?`}
+        )
+      `)
+      .get(...selection.bindings, ...(limit === undefined ? [] : [limit]));
+    return z.object({ count: z.number().int().nonnegative() }).parse(row).count;
+  }
+
   add(input: {
     title: string;
     state?: "active" | "closed" | undefined;
@@ -753,6 +771,22 @@ export class Graph {
   }
 
   private select(options: Selection, limit?: number): Node[] {
+    const selection = this.compileSelection(options);
+    const ids = z.array(z.object({ id: z.string() })).parse(
+      this.db
+        .query(sql`
+          SELECT s.id
+          FROM nodes s
+          WHERE ${selection.sql}
+          ORDER BY s.created_at, s.id
+          ${limit === undefined ? "" : sql`LIMIT ?`}
+        `)
+        .all(...selection.bindings, ...(limit === undefined ? [] : [limit])),
+    );
+    return ids.map(({ id }) => this.show(id, options.lean ?? true));
+  }
+
+  private compileSelection(options: Selection): ReturnType<typeof compileQuery> {
     const query =
       options.where === undefined
         ? { sql: sql`1`, bindings: [] }
@@ -771,18 +805,7 @@ export class Graph {
           )
         `
         : "";
-    const ids = z.array(z.object({ id: z.string() })).parse(
-      this.db
-        .query(sql`
-          SELECT s.id
-          FROM nodes s
-          WHERE ${query.sql} ${ready}
-          ORDER BY s.created_at, s.id
-          ${limit === undefined ? "" : sql`LIMIT ?`}
-        `)
-        .all(...query.bindings, ...(limit === undefined ? [] : [limit])),
-    );
-    return ids.map(({ id }) => this.show(id, options.lean ?? true));
+    return { ...query, sql: sql`${query.sql} ${ready}` };
   }
 
   private writeAttributes(id: string, patch: Attributes): void {

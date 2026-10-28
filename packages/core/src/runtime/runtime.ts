@@ -186,6 +186,7 @@ export class Runtime {
         name: op.name,
         cli: command,
         stream: op.stream,
+        deadline: op.deadline,
         ...(tier === "about" || tier === "prime" || tier === "primer"
           ? { about: op.about ?? "", jsonSchema: op.jsonSchema?.() ?? null }
           : {}),
@@ -240,8 +241,8 @@ export class Runtime {
 
     const op = requireValue(this.ops.get(name), `Unknown op: ${name}`);
     const env = { lake: this.context.env.lake, bl: { ...options.env } };
-    const timeout = options.timeoutMs ?? 30000;
-    if (!Number.isFinite(timeout) || timeout <= 0)
+    const timeout = options.timeoutMs ?? (op.deadline === "unbounded" ? null : 30000);
+    if (timeout !== null && (!Number.isFinite(timeout) || timeout <= 0))
       throw new Fault("deadline", "Deadline must be positive");
 
     const controller = new AbortController();
@@ -249,7 +250,7 @@ export class Runtime {
       options.signal === undefined
         ? controller.signal
         : AbortSignal.any([controller.signal, options.signal]);
-    const deadline = began + timeout;
+    const deadline = timeout === null ? null : began + timeout;
 
     let rejectAbort: (() => void) | undefined;
     const expired = new Promise<never>((_, reject) => {
@@ -264,18 +265,22 @@ export class Runtime {
       if (signal.aborted) rejectAbort();
     });
 
-    const cancelTimer = this.context.clock.arm(deadline, () => {
-      controller.abort(new Fault("deadline", `Op deadline exceeded: ${name}`));
-    });
-    if (this.context.clock.now() >= deadline)
+    const cancelTimer =
+      deadline === null
+        ? undefined
+        : this.context.clock.arm(deadline, () => {
+            controller.abort(new Fault("deadline", `Op deadline exceeded: ${name}`));
+          });
+    if (deadline !== null && this.context.clock.now() >= deadline)
       controller.abort(new Fault("deadline", `Op deadline exceeded: ${name}`));
 
     const clock = this.context.clock;
     function withinDeadline(): void {
-      if (clock.now() >= deadline) throw new Fault("deadline", `Op deadline exceeded: ${name}`);
+      if (deadline !== null && clock.now() >= deadline)
+        throw new Fault("deadline", `Op deadline exceeded: ${name}`);
     }
     const cancel = (): void => {
-      cancelTimer();
+      cancelTimer?.();
       if (rejectAbort !== undefined) signal.removeEventListener("abort", rejectAbort);
     };
 

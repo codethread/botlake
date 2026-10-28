@@ -19,7 +19,7 @@ Extensions default-export `{ name, requires?, activate(ctx) }`. `activate` regis
 
 Use `isFault(error)` to recognize core faults across separately installed package copies.
 
-`defineOp` accepts Standard Schema v1 input/output validators. CLI metadata and optional JSON Schema export remain independent. `Context` provides graph, clock, scheduler, processes and peers; Botlake supplies custody/routing when running workers. `peers.resolve(pathOrName)` returns the published canonical path/name; `peers.call` invokes a single-result operation without transport replay and rejects streams.
+`defineOp` accepts Standard Schema v1 input/output validators. CLI metadata and optional JSON Schema export remain independent. Operations default to a 30s deadline. `deadline: "unbounded"` lets a long-running operation own its wait budget; an explicit caller timeout still overrides it. Handlers must observe `request.signal` and clean up pending I/O or timers on abort. `request.deadline` is an absolute clock time, or `null` without a request deadline. `Context` provides graph, clock, scheduler, processes and peers; Botlake supplies custody/routing when running workers. `peers.resolve(pathOrName)` returns the published canonical path/name; `peers.call` invokes a single-result operation without transport replay and rejects streams.
 
 Read `ctx.env.lake` for the environment captured by `botlake lake start|restart`, and `ctx.env.bl` inside an operation for the invoking `bl` or lake eval caller's environment. The namespaces stay separate, including overlapping calls and streams; missing keys are `undefined`. Activation has an empty `env.bl`. Host recovery retains each lake's environment; an explicit lake restart captures it again. Embedded runtimes accept `env` in both the `Runtime` constructor and `invoke` options.
 
@@ -46,5 +46,7 @@ ctx.registerQuery("open-by-owner", byOwner);
 ```
 
 Builders: `and`, `or`, `not`; `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `inArray`; `exists`, `missing`; `edgeOut`, `edgeIn`. String fields name node columns; `q.attr(key, ...path)` selects an attribute or nested JSON value. `q.param(name)` binds through `params`; `inArray` accepts a nonempty array or parameter. Edge predicates test the opposite endpoint and cannot contain another edge predicate.
+
+`graph.count({ where, params, ready, limit })` counts matching nodes without hydrating attributes. With a positive safe-integer `limit`, it returns at most that many matches; reaching the limit is a lower bound, not an exact total. Without a limit it counts all matches.
 
 Selection ignores archived attributes. Attribute comparisons—including negation—require present, non-null values; `missing` includes absent, archived and null paths. Builders produce data, not JavaScript callbacks executed by the lake.
