@@ -81,7 +81,9 @@ bl agent show RUN_ID
 bl flag set agent/claude false  # Keep Claude registered, but unavailable for new selection.
 ```
 
-`agent list` lists runs. All managed launches are headless, regardless of the seat's name.
+`agent start/retry/resume/cancel` return `{ id, state, substatus, settled }`, using agent state rather than node state. `agent acknowledge` returns `{ id, acknowledged }`; `agent reconcile` returns `{ reconciled: true }` after a pass, not a settlement guarantee. Prompts, settings, results and custody stay in `agent show ID` (or base `show ID`).
+
+`agent list` returns `{ runs, total, nextOffset }`: status summaries with seat, provider and identity. Filter with `--state ready|running|stopped|failed|external`; page with `--limit` (default 20, maximum 100) and `--offset nextOffset` until `nextOffset` is null. Ordering is creation time then ID; pages are not snapshots. External runs have null substatus/settled, not a custody claim. Native registration retains the identity/instruction payload consumed by adapters. All managed launches are headless, regardless of the seat's name.
 
 Waiting requires explicitly selected [Batteries](../batteries/README.md); Agents owns the `agent-run-settled` query, not the wait operation. Check `reason: "satisfied"`, then inspect `agent/substatus`, `agent/result` and `agent/error` with `agent show`. Settlement includes failure and cancellation; `completed` indicates successful execution. Closed/stopped alone does not establish settled custody. Timeout or interruption stops only the wait, not the agent. External sessions have no settlement guarantee, and run success does not close the served task.
 

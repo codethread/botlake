@@ -6,6 +6,12 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
+const status = z.strictObject({
+  id: z.string(),
+  state: z.string(),
+  substatus: z.string(),
+  settled: z.boolean(),
+});
 const row = z.object({
   id: z.string(),
   state: z.string(),
@@ -41,7 +47,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));
-    const first = row.parse(
+    const first = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
         seat: "worker",
@@ -51,7 +57,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         target: target.id,
       }),
     );
-    expect(first.attributes["agent/state"]).toBe("running");
+    expect(first.state).toBe("running");
     expect(
       await host.bl(
         "agents",
@@ -67,7 +73,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         false,
       ),
     ).toContain("Stale");
-    const replay = row.parse(
+    const replay = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
         seat: "worker",
@@ -97,7 +103,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       "Agents API",
     );
     // Public reconciliation is the synchronization boundary; it observes Botlake's terminal fact.
-    let settled = first;
+    let settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     for (
       let attempts = 0;
       attempts < 100 && settled.attributes["agent/settled"] !== true;
@@ -108,7 +114,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     }
     expect(settled.attributes["agent/substatus"]).toBe("completed");
     expect(row.parse(await host.bl("agents", "show", { id: target.id })).state).toBe("active");
-    const resumed = row.parse(
+    const resumed = status.parse(
       await host.bl("agents", "agent", {
         command: "resume",
         id: first.id,
@@ -116,8 +122,11 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         requestId: "two",
       }),
     );
-    expect(resumed.attributes["agent/identity"]).toBe(settled.attributes["agent/identity"]);
-    expect(resumed.attributes["agent/session-id"]).toBe(settled.attributes["agent/session-id"]);
+    const resumedRun = row.parse(
+      await host.bl("agents", "agent", { command: "show", id: resumed.id }),
+    );
+    expect(resumedRun.attributes["agent/identity"]).toBe(settled.attributes["agent/identity"]);
+    expect(resumedRun.attributes["agent/session-id"]).toBe(settled.attributes["agent/session-id"]);
     expect(
       await host.bl(
         "agents",
@@ -135,7 +144,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     ).toContain("Stale");
     const other = join(host.dir, "other-cwd");
     await mkdir(other);
-    let retry = row.parse(
+    const retryStart = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
         seat: "worker",
@@ -155,7 +164,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       }
       return run;
     }
-    retry = await settle(retry.id);
+    let retry = await settle(retryStart.id);
     expect(retry.attributes["agent/substatus"]).toBe("execution");
     await host.bl("agents", "agent", { command: "retry", id: retry.id });
     retry = await settle(retry.id);
@@ -163,7 +172,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(retry.attributes["agent/integration"]).toBe("output");
     expect(retry.attributes["agent/session-confirmed"]).toBe(true);
     const parentA = await settle(
-      row.parse(
+      status.parse(
         await host.bl("agents", "agent", {
           command: "start",
           seat: "worker",
@@ -174,7 +183,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       ).id,
     );
     const parentB = await settle(
-      row.parse(
+      status.parse(
         await host.bl("agents", "agent", {
           command: "start",
           seat: "worker",
@@ -184,7 +193,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         }),
       ).id,
     );
-    const childA = row.parse(
+    const childA = status.parse(
       await host.bl("agents", "agent", {
         command: "resume",
         id: parentA.id,
@@ -205,7 +214,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         "agent/identity"
       ],
     ).toBe(parentA.attributes["agent/identity"]);
-    const cancellable = row.parse(
+    const cancellable = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
         seat: "worker",
@@ -224,16 +233,19 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
           }),
         ).length > 0;
     expect(bound).toBe(true);
+    const beforeRestart = row.parse(
+      await host.bl("agents", "agent", { command: "show", id: cancellable.id }),
+    );
     await host.botlake(["restart-host"]);
     expect(
       row.parse(await host.bl("agents", "agent", { command: "show", id: cancellable.id }))
         .attributes["agent/handle"],
-    ).toBe(cancellable.attributes["agent/handle"]);
-    const cancelled = row.parse(
+    ).toBe(beforeRestart.attributes["agent/handle"]);
+    const cancelled = status.parse(
       await host.bl("agents", "agent", { command: "cancel", id: cancellable.id }),
     );
-    expect(cancelled.attributes["agent/substatus"]).toBe("requested");
-    expect(cancelled.attributes["agent/settled"]).toBe(true);
+    expect(cancelled.substatus).toBe("requested");
+    expect(cancelled.settled).toBe(true);
     const external = z.object({ runId: z.string() }).parse(
       await host.bl("agents", "agent", {
         command: "native",

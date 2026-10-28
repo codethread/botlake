@@ -1,4 +1,4 @@
-import { defineOp, type Context } from "@botlake/core";
+import { defineOp, q, type Context, type Node } from "@botlake/core";
 import { agentMetadata, registrationSchema, sessionAudience } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
@@ -6,11 +6,17 @@ import { z } from "zod";
 import { startSchema, type Agents } from "./runs.ts";
 
 const text = z.string().min(1);
+const listSchema = z.strictObject({
+  command: z.literal("list"),
+  state: z.enum(["ready", "running", "stopped", "failed", "external"]).optional(),
+  limit: z.number().int().min(1).max(100).default(20),
+  offset: z.number().int().min(0).default(0),
+});
 
 export function registerAgent(ctx: Context, service: Agents): void {
   const input = z.discriminatedUnion("command", [
     startSchema.extend({ command: z.literal("start") }),
-    z.strictObject({ command: z.literal("list") }),
+    listSchema,
     z.strictObject({ command: z.literal("show"), id: text }),
     z.strictObject({
       command: z.literal("catalog"),
@@ -34,7 +40,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
     defineOp({
       name: "agent",
       primer:
-        'Catalog lists available seats; catalog --all includes unavailable seats, and catalog NAME shows candidates, full settings and unavailability reasons. Provider flags default off; select providers with explicit agentFlags configuration. Flags affect new seat selection; alias conditions use generic workspace flags. Start a tracked run with a seat, working directory and prompt. Native plugins report session identity, activity and metadata. Without plugins, managed runs can link output-only session evidence; observation is not liveness. Accepted settings are frozen across flag changes, retry and resume. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
+        'Use catalog to select a seat; --all includes unavailable seats, and catalog NAME expands settings and reasons. Providers require explicit agentFlags configuration. Flags affect new selection, not accepted settings, retry or resume. Start with seat, cwd and prompt; start/retry/resume/cancel return id, state, substatus and settled. List returns paged summaries; show RUN_ID (or base show) expands the full record. Native/output observations are not liveness. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
       input,
       output: z.json(),
       cli: {
@@ -48,7 +54,20 @@ export function registerAgent(ctx: Context, service: Agents): void {
           'bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1',
         ],
         commands: {
-          list: { description: "Runs" },
+          list: {
+            description: "Paged run summaries; use show ID for full details",
+            flags: {
+              state: {
+                type: "string",
+                description: "Agent state: ready, running, stopped, failed or external",
+              },
+              limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+              offset: {
+                type: "number",
+                description: "Continue at nextOffset; pages are not a snapshot",
+              },
+            },
+          },
           catalog: {
             description:
               "Available seats; name expands candidates, settings and unavailability reasons",
@@ -57,25 +76,25 @@ export function registerAgent(ctx: Context, service: Agents): void {
               all: { type: "boolean", description: "Include unavailable seats" },
             },
           },
-          reconcile: { description: "Reconcile custody" },
+          reconcile: { description: "Reconcile custody; acknowledge the pass, not run settlement" },
           show: {
-            description: "Run",
+            description: "Full run record, including prompts, settings, result and custody",
             positionals: [{ name: "id", type: "string", required: true }],
           },
           cancel: {
-            description: "Cancel owned process",
+            description: "Cancel owned process; return run status",
             positionals: [{ name: "id", type: "string", required: true }],
           },
           retry: {
-            description: "Retry settled failure",
+            description: "Retry settled failure; return current run status",
             positionals: [{ name: "id", type: "string", required: true }],
           },
           acknowledge: {
-            description: "Release retained process evidence",
+            description: "Release retained process evidence; return id and acknowledged",
             positionals: [{ name: "id", type: "string", required: true }],
           },
           resume: {
-            description: "Resume verified session",
+            description: "Resume verified session; return new run status",
             positionals: [
               { name: "id", type: "string", required: true },
               { name: "prompt", type: "string", required: true },
@@ -113,7 +132,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
             },
           },
           start: {
-            description: "Create run",
+            description: "Create run; return id, state, substatus and settled",
             flags: {
               seat: { type: "string", required: true },
               cwd: { type: "string", required: true },
@@ -131,30 +150,34 @@ export function registerAgent(ctx: Context, service: Agents): void {
             const run = service.start(request);
             await service.reconcile();
 
-            return ctx.graph.show(run.id);
+            return runStatus(ctx.graph.show(run.id));
           })
-          .with({ command: "list" }, () => service.runs())
+          .with({ command: "list" }, (request) => listRuns(ctx, request))
           .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
           .with({ command: "catalog" }, ({ name, all }) => service.catalog(name, all))
           .with({ command: "reconcile" }, async () => {
             await service.reconcile();
 
-            return service.runs();
+            return { reconciled: true };
           })
-          .with({ command: "cancel" }, ({ id }) => service.cancel(id))
+          .with({ command: "cancel" }, async ({ id }) => runStatus(await service.cancel(id)))
           .with({ command: "retry" }, async ({ id }) => {
             const run = service.retry(id);
             await service.reconcile();
 
-            return run;
+            return runStatus(ctx.graph.show(run.id));
           })
           .with({ command: "resume" }, async ({ id, prompt, requestId }) => {
             const run = service.resume(id, prompt, requestId);
             await service.reconcile();
 
-            return run;
+            return runStatus(ctx.graph.show(run.id));
           })
-          .with({ command: "acknowledge" }, ({ id }) => service.acknowledge(id))
+          .with({ command: "acknowledge" }, async ({ id }) => {
+            const run = await service.acknowledge(id);
+
+            return { id: run.id, acknowledged: run.attributes["agent/acknowledged"] };
+          })
           .with({ command: "native" }, (commandInput) => {
             const { command: _, ...request } = commandInput;
 
@@ -170,4 +193,36 @@ export function registerAgent(ctx: Context, service: Agents): void {
       },
     }),
   );
+}
+
+// -- Private helpers --
+
+function runStatus(run: Node) {
+  return {
+    id: run.id,
+    state: run.attributes["agent/state"],
+    substatus: run.attributes["agent/substatus"] ?? null,
+    // External sessions have no custody settlement observation.
+    settled: run.attributes["agent/settled"] ?? null,
+  };
+}
+
+function listRuns(ctx: Context, { state, limit, offset }: z.infer<typeof listSchema>) {
+  const tracked = q.eq(q.attr("agent/run"), true);
+  const runs = ctx.graph.all({
+    where: state === undefined ? tracked : q.and(tracked, q.eq(q.attr("agent/state"), state)),
+    lean: false,
+  });
+  const page = runs.slice(offset, offset + limit);
+
+  return {
+    runs: page.map((run) => ({
+      ...runStatus(run),
+      seat: run.attributes["agent/seat"] ?? null,
+      provider: run.attributes["agent/provider"],
+      identity: run.attributes["agent/identity"] ?? null,
+    })),
+    total: runs.length,
+    nextOffset: offset + page.length < runs.length ? offset + page.length : null,
+  };
 }

@@ -75,7 +75,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
     }
     for (const name of ["codex", "pi", "claude"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {
-        const started = runSchema.parse(
+        const started = runSchema.pick({ id: true }).parse(
           await host.bl("providers", "agent", {
             command: "start",
             seat: `${name}-seat`,
@@ -102,7 +102,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
             name === "codex" ? "no thread id" : "no session id",
           );
         if (scenario === "complete") {
-          const resumed = runSchema.parse(
+          const resumed = runSchema.pick({ id: true }).parse(
             await host.bl("providers", "agent", {
               command: "resume",
               id: run.id,

@@ -3,6 +3,7 @@ import { copyFile, cp, mkdir, symlink, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { q } from "@botlake/core";
 import { provider } from "@botlake/extension-agents";
 import { z } from "zod";
 
@@ -128,7 +129,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
   }
   for (const name of names) {
     process.stderr.write(`Testing ${name} Luna: managed start, resume, direct native session\n`);
-    const started = runSchema.parse(
+    const started = runSchema.pick({ id: true }).parse(
       await host.bl("native-smoke", "agent", {
         command: "start",
         seat: `${name}-luna`,
@@ -140,9 +141,9 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     owned.push(started.id);
     const first = await settled(started.id);
     verify(first);
-    const resumed = runSchema.parse(
-      await host.bl("native-smoke", "agent", { command: "resume", id: first.id, prompt }),
-    );
+    const resumed = runSchema
+      .pick({ id: true })
+      .parse(await host.bl("native-smoke", "agent", { command: "resume", id: first.id, prompt }));
     owned.push(resumed.id);
     const continuation = await settled(resumed.id);
     verify(continuation);
@@ -192,13 +193,15 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     );
     const outcome = provider(name).finish(definition, 0, stdout, "");
     check(outcome.success, JSON.stringify(outcome));
-    const runs = z
-      .array(runSchema)
-      .parse(await host.bl("native-smoke", "agent", { command: "list" }));
-    const external = runs.find(
-      (run) =>
-        run.attributes["agent/session-id"] === outcome.sessionId &&
-        run.attributes["agent/external"] === true,
+    const [external] = z.array(runSchema).parse(
+      await host.bl("native-smoke", "list", {
+        where: q.and(
+          q.eq(q.attr("agent/external"), true),
+          q.eq(q.attr("agent/provider"), name),
+          q.eq(q.attr("agent/session-id"), outcome.sessionId),
+        ),
+        lean: false,
+      }),
     );
     check(external !== undefined, "Direct native session was not registered");
     lifecycle(external);
