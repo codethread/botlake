@@ -2,6 +2,8 @@
 
 Bun-native lake engine: graph/attributes, atomic mutations and guards, typed Standard Schema operations, activation, events, durable wakes and pooled workspace workers. No extension dependencies or default domain commands.
 
+Node IDs are opaque, immutable and lake-local. New nodes use three digits and two words, such as `042-apple-cloud`; allocation retries collisions and never reuses burned IDs. `Runtime` supplies secure randomness; standalone `Graph` instances take a `nextId` function, such as `() => nodeId(randomInt)` with Node's `crypto.randomInt`. Lake routing remains separate. The fixed word list is attributed in [NOTICE](NOTICE).
+
 ```ts
 import { Runtime, type Extension } from "@botlake/core";
 

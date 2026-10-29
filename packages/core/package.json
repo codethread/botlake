@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "type": "module",
   "exports": {

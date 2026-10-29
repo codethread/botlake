@@ -1,4 +1,5 @@
 export { Graph, batchSchema, nodeSchema } from "./core/store.ts";
+export { nodeId } from "./core/node-id.ts";
 
 export type { Node, Edge, Mutation, Patch, Guard, GraphEvent, Selection } from "./core/store.ts";
 export {

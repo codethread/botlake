@@ -1,16 +1,18 @@
+// oxlint-disable import/max-dependencies -- Runtime composes core services and invocation scope.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomInt } from "node:crypto";
 
 import { DepGraph, DepGraphCycleError } from "dependency-graph";
 import { z } from "zod";
 
 import { Fault, requireValue } from "../core/json.ts";
+import { nodeId } from "../core/node-id.ts";
 import { namedQuerySchema, type NamedQuery } from "../core/query.ts";
 import { Graph, type GraphEvent } from "../core/store.ts";
 import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
-// oxlint-disable-next-line import/max-dependencies -- Runtime composes core services and invocation scope.
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
@@ -60,6 +62,7 @@ export class Runtime {
 
     this.graph = new Graph(
       options.database,
+      () => nodeId(randomInt),
       () => clock.now(),
       (event) => {
         this.publish(event);

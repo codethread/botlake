@@ -215,6 +215,7 @@ export class Graph {
 
   constructor(
     path: string,
+    private readonly nextId: () => string,
     private readonly now: () => number = Date.now,
     private readonly publish: (event: GraphEvent) => void = () => {},
   ) {
@@ -241,6 +242,9 @@ export class Graph {
         this.db.transaction(() => this.db.run(ddl)).immediate();
       } else if (version !== 1)
         throw new Fault("schema", `Unsupported database generation: ${version}`);
+      this.db.run(sql`
+        CREATE INDEX IF NOT EXISTS burns_node_id ON burns(node_id)
+      `);
     } catch (error) {
       this.db.close();
       throw error;
@@ -367,14 +371,8 @@ export class Graph {
     const parsed = createSchema.parse(input);
 
     return this.atomic(() => {
-      const id = crypto.randomUUID();
       const at = new Date(this.now()).toISOString();
-      this.db
-        .query(sql`
-          INSERT INTO nodes
-          VALUES (?, ?, ?, ?, ?, 1)
-        `)
-        .run(id, parsed.title, parsed.state ?? "active", at, at);
+      const id = this.insertNode(parsed.title, parsed.state ?? "active", at);
       for (const [key, value] of Object.entries(parsed.attributes ?? {}))
         this.db
           .query(sql`
@@ -779,6 +777,26 @@ export class Graph {
   }
 
   // -- Private helpers --
+
+  private insertNode(title: string, state: "active" | "closed", at: string): string {
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const id = this.nextId();
+      const result = this.db
+        .query(sql`
+          INSERT INTO nodes (id, title, state, created_at, updated_at, revision)
+          SELECT ?, ?, ?, ?, ?, 1
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM burns
+            WHERE node_id = ?
+          )
+          ON CONFLICT (id) DO NOTHING
+        `)
+        .run(id, title, state, at, at, id);
+      if (result.changes === 1) return id;
+    }
+    throw new Fault("id-exhausted", "Unable to allocate a node ID after 32 attempts");
+  }
 
   private record(change: Mutation): void {
     if (this.currentAuthority !== undefined) this.permissions.set(change, this.currentAuthority);
