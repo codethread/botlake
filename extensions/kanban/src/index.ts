@@ -16,10 +16,20 @@ import { attribute, attribution, callerActor } from "@botlake/extension-identity
 import { match } from "ts-pattern";
 import { z } from "zod";
 
+import { KanbanBlockages, blockageCommands } from "./blockages.ts";
+import {
+  policyApplies,
+  progressionSchema,
+  protectProgression,
+  unresolvedDescendants,
+} from "./progression.ts";
+
 const text = z.compile(z.string().trim().min(1));
 const stringArray = z.compile(z.array(z.string()));
 
-const lane = z.compile(z.enum(["refinement", "pending", "claimed", "in_review", "in_production"]));
+const lane = z.compile(
+  z.enum(["refinement", "pending", "claimed", "blocked", "in_review", "in_production"]),
+);
 
 const priority = z.compile(z.enum(["p1", "p2", "p3", "p4"]));
 
@@ -72,7 +82,8 @@ const updateInput = z.compile(
     id: text,
     title: text.optional(),
     ...workFields,
-    lane: lane.exclude(["claimed"]).optional(),
+    lane: lane.exclude(["claimed", "blocked"]).optional(),
+    progression: progressionSchema.optional(),
     expectedRevision: z.number().int().positive().optional(),
   }),
 );
@@ -85,6 +96,7 @@ const addInput = z.compile(
     priority: priority.default("p3"),
     ...workFields,
     epic: text.optional(),
+    progression: progressionSchema.optional(),
     byIdentity: text.optional(),
     reportedBy: text.optional(),
     labels: z.array(text).optional(),
@@ -119,7 +131,10 @@ const mirrorResponse = z.compile(
 export class Kanban {
   private readonly authority = Symbol("kanban");
 
-  constructor(private readonly ctx: Context) {
+  constructor(
+    private readonly ctx: Context,
+    private readonly blockages: KanbanBlockages = new KanbanBlockages(ctx),
+  ) {
     ctx.graph.protect((changes, token) => {
       for (const change of changes) {
         if (change.kind === "node") {
@@ -148,6 +163,8 @@ export class Kanban {
             this.unfinished(before.id).length > 0
           )
             throw new Fault("finish", "Finish child work first; use Kanban for abandonment");
+          if (after?.attributes["kanban/progression"] !== undefined)
+            progressionSchema.parse(after.attributes["kanban/progression"]);
           if (after?.attributes["kanban/card"] === true) {
             const refs = after.attributes["kanban/external-refs"];
             if (refs !== undefined) refsSchema.parse(refs);
@@ -172,11 +189,21 @@ export class Kanban {
             throw new Fault("linked-card", "Linked card state requires refresh");
         } else {
           const edge = change.before ?? change.after;
-          if (edge?.relation === "claims" && (change.before !== null || token !== this.authority))
-            throw new Fault("ownership", "Ownership claim relations are immutable");
+          if (edge?.relation === "claims") {
+            const source = ctx.graph.all({ where: q.eq("id", edge.from_id), lean: false })[0];
+            const target = ctx.graph.all({ where: q.eq("id", edge.to_id), lean: false })[0];
+            if (
+              (source?.attributes["kanban/ownership-claim"] === true ||
+                target?.attributes["kanban/card"] === true ||
+                target?.attributes["kanban/task"] === true) &&
+              (change.before !== null || token !== this.authority)
+            )
+              throw new Fault("ownership", "Ownership claim relations are immutable");
+          }
         }
       }
     });
+    protectProgression(ctx);
   }
 
   history(id: string): Node[] {
@@ -184,6 +211,7 @@ export class Kanban {
       .edges(id, "claims")
       .filter((edge) => edge.to_id === id)
       .map((edge) => this.ctx.graph.show(edge.from_id))
+      .filter((record) => record.attributes["kanban/ownership-claim"] === true)
       .toSorted((a, b) =>
         compare(
           text.parse(a.attributes["kanban/claimed-at"]),
@@ -235,6 +263,7 @@ export class Kanban {
         "kanban/priority": input.priority,
         "kanban/labels": input.labels ?? [],
       };
+      if (input.progression !== undefined) attrs["kanban/progression"] = input.progression;
       for (const key of ["body", "acceptance", "summary"] as const)
         if (input[key] !== undefined) attrs[`kanban/${key}`] = input[key];
       if (input.byIdentity !== undefined) attrs["identity/by-identity"] = input.byIdentity;
@@ -256,13 +285,13 @@ export class Kanban {
     const input = updateInput.parse(raw);
     return this.ctx.graph.atomic(() => {
       const card = this.writable(input.id);
-      if (
-        input.lane !== undefined &&
-        (card.attributes["kanban/card"] !== true || card.state !== "active")
-      )
-        throw new Fault("kanban", "Only active cards have lanes");
+      if (input.lane !== undefined) {
+        if (card.attributes["kanban/card"] !== true || card.state !== "active")
+          throw new Fault("kanban", "Only active cards have lanes");
+        this.blockages.assertLaneChange(card.id);
+      }
       const attributes: Attributes = {};
-      for (const key of ["body", "acceptance", "summary", "lane"] as const)
+      for (const key of ["body", "acceptance", "summary", "lane", "progression"] as const)
         if (input[key] !== undefined) attributes[`kanban/${key}`] = input[key];
       if (input.title === undefined && Object.keys(attributes).length === 0)
         throw new Fault("kanban", "Supply a work field or lane to update");
@@ -280,8 +309,14 @@ export class Kanban {
     const input = taskInput.parse({ ...raw, byIdentity: raw.byIdentity ?? callerActor(this.ctx) });
     return this.ctx.graph.atomic(() => {
       const parent = this.writable(input.feature);
-      if (parent.attributes["kanban/type"] !== "feature" || parent.state !== "active")
-        throw new Fault("kanban", "Tasks require an active feature");
+      if (
+        parent.state !== "active" ||
+        !(
+          parent.attributes["kanban/type"] === "feature" ||
+          parent.attributes["kanban/task"] === true
+        )
+      )
+        throw new Fault("kanban", "Tasks require an active feature or task");
 
       const attributes: Attributes = { "kanban/task": true };
       for (const key of ["body", "acceptance", "summary"] as const)
@@ -313,6 +348,12 @@ export class Kanban {
         throw new Fault("claim", "Feature claim requires a branch");
       if (target.attributes["kanban/lane"] === "refinement")
         throw new Fault("claim", "Move refined work to pending before claiming");
+      const blockages = this.blockages.compact(target.id);
+      if (blockages.length > 0)
+        throw new Fault("blocked", "Resolve effective blockages before claiming work", {
+          id: target.id,
+          blockages,
+        });
       if (this.ctx.graph.all({ ready: true, where: q.eq("id", target.id) }).length === 0)
         throw new Fault("claim", "Resolve dependencies before claiming");
       const attrs: Attributes = {
@@ -354,8 +395,7 @@ export class Kanban {
       attribute(this.ctx, claim.id, owner, "claimed");
       if (input.byIdentity !== undefined)
         attribute(this.ctx, claim.id, input.byIdentity, "attributed");
-      if (target.attributes["kanban/card"] === true)
-        this.ctx.graph.update(input.id, { attributes: { "kanban/lane": "claimed" } });
+      if (target.attributes["kanban/card"] === true) this.blockages.claimLane(input.id);
 
       return { result: "claimed", claim };
     }, this.authority);
@@ -366,29 +406,57 @@ export class Kanban {
       const card = this.writable(id);
       if (card.state !== "active") throw new Fault("finish", "Card is not active");
 
-      if (
-        card.attributes["kanban/type"] === "epic" &&
-        !["pending", "refinement"].includes(lane.parse(card.attributes["kanban/lane"]))
-      )
-        throw new Fault("finish", "Epic must be pending or refinement");
-
-      const descendants = this.unfinished(id);
-      if (outcome !== "abandoned" && descendants.length > 0)
-        throw new Fault("finish", "Finish child work before completing the parent", {
-          unfinished: descendants.map(({ id: childId, title }) => ({ id: childId, title })),
-        });
-      for (const child of descendants) this.writable(child.id);
-      for (const child of descendants)
-        this.ctx.graph.update(child.id, {
-          state: "closed",
-          attributes: {
-            "kanban/lane": null,
-            "kanban/previous-lane": child.attributes["kanban/lane"] ?? null,
-            "kanban/outcome": "unactioned",
-            "kanban/closed-by": "parent-cascade",
-            "kanban/cascade-root": id,
-          },
-        });
+      if (policyApplies(this.ctx.graph, id)) {
+        const unresolved = unresolvedDescendants(this.ctx.graph, id);
+        if (unresolved.length > 0) {
+          const unfinished = unresolved.map(({ id: childId, title }) => ({
+            id: childId,
+            title,
+          }));
+          if (outcome === "abandoned")
+            throw new Fault("progression", "Children progression cannot abandon unfinished work", {
+              unfinished,
+            });
+          throw new Fault("progression", "Finish contained work before completing the parent", {
+            unfinished,
+          });
+        }
+      } else {
+        const descendants = this.unfinished(id);
+        if (outcome !== "abandoned" && descendants.length > 0)
+          throw new Fault("finish", "Finish child work before completing the parent", {
+            unfinished: descendants.map(({ id: childId, title }) => ({ id: childId, title })),
+          });
+        // Free cards cascade explicitly, but never abandon an opted child's unfinished work.
+        if (outcome === "abandoned")
+          for (const child of descendants) {
+            if (!policyApplies(this.ctx.graph, child.id)) continue;
+            const unresolved = unresolvedDescendants(this.ctx.graph, child.id);
+            if (unresolved.length > 0)
+              throw new Fault(
+                "progression",
+                "Children progression cannot abandon unfinished work",
+                {
+                  unfinished: unresolved.map(({ id: childId, title }) => ({
+                    id: childId,
+                    title,
+                  })),
+                },
+              );
+          }
+        for (const child of descendants) this.writable(child.id);
+        for (const child of descendants)
+          this.ctx.graph.update(child.id, {
+            state: "closed",
+            attributes: {
+              "kanban/lane": null,
+              "kanban/previous-lane": child.attributes["kanban/lane"] ?? null,
+              "kanban/outcome": "unactioned",
+              "kanban/closed-by": "parent-cascade",
+              "kanban/cascade-root": id,
+            },
+          });
+      }
 
       return this.ctx.graph.update(id, {
         state: "closed",
@@ -406,11 +474,6 @@ export class Kanban {
       const card = this.writable(id);
       if (card.state !== "closed") throw new Fault("reopen", "Card must be closed");
 
-      if (
-        card.attributes["kanban/type"] === "epic" &&
-        card.attributes["kanban/outcome"] !== "abandoned"
-      )
-        throw new Fault("reopen", "Completed epic cannot be reopened");
       if (card.attributes["kanban/outcome"] === "abandoned")
         for (const child of this.ctx.graph.subgraph(id).nodes)
           if (
@@ -570,11 +633,13 @@ export class Kanban {
       .filter((row) => row.attributes["kanban/task"] === true)
       .map((task) => ({
         ...summary(task),
+        blockages: this.blockages.presentationCompact(task.id),
         owner: this.owner(task.id),
         status:
           task.state !== "active"
             ? "closed"
-            : this.ctx.graph.all({ ready: true, where: q.eq("id", task.id) }).length === 0
+            : this.blockages.effective(task.id).length > 0 ||
+                this.ctx.graph.all({ ready: true, where: q.eq("id", task.id) }).length === 0
               ? "blocked"
               : this.history(task.id).length > 0
                 ? "doing"
@@ -583,6 +648,7 @@ export class Kanban {
 
     return {
       ...view,
+      blockages: this.blockages.details(id),
       parent: parent === undefined ? null : summary(parent),
       reporter:
         typeof card.attributes["kanban/reported-by"] === "string"
@@ -605,7 +671,11 @@ export class Kanban {
     const views = await Promise.all(
       cards.map(async (card) => {
         const view = await this.view(card.id);
-        return { ...view, card: summary(view.card) };
+        return {
+          ...view,
+          card: summary(view.card),
+          blockages: this.blockages.presentationCompact(card.id),
+        };
       }),
     );
 
@@ -634,7 +704,10 @@ export class Kanban {
           compare(a.created_at, b.created_at, a.id.localeCompare(b.id)),
         ),
       );
-    const cards = ready.slice(offset, offset + limit).map((card) => summary(card));
+    const cards = ready.slice(offset, offset + limit).map((card) => ({
+      ...summary(card),
+      blockages: this.blockages.presentationCompact(card.id),
+    }));
     return {
       cards,
       total: ready.length,
@@ -775,7 +848,8 @@ export function kanban(): Extension {
     name: "kanban",
     requires: ["identity"],
     activate(ctx) {
-      const board = new Kanban(ctx);
+      const blockages = new KanbanBlockages(ctx);
+      const board = new Kanban(ctx, blockages);
       ctx.registerQuery("kanban-cards", {
         where: q.eq(q.attr("kanban/card"), true),
         description: "Kanban cards",
@@ -791,6 +865,7 @@ export function kanban(): Extension {
       const input = z.compile(
         z.discriminatedUnion("command", [
           addInput.extend({ command: z.literal("add") }),
+          ...blockageCommands,
           updateInput.extend({ command: z.literal("update") }),
           claimInput.extend({ command: z.literal("claim") }),
           z.strictObject({
@@ -851,11 +926,12 @@ export function kanban(): Extension {
           input,
           output: jsonSchema,
           about:
-            "Body: problem, outcome, scope and pointers. Acceptance: verifiable criteria. Summary: one current account of decisions, verification and next action; replace it while preserving useful conclusions. Notes: selective supporting evidence. Parent-of groups work; depends-on orders prerequisites. Linked cards mirror their source.",
+            "Body: problem, outcome, scope and pointers. Acceptance: verifiable criteria. Summary: one current account of decisions, verification and next action; replace it while preserving useful conclusions. Notes: selective supporting evidence. Parent-of groups work; depends-on orders prerequisites. Linked cards mirror their source. Progression is free by default; --progression children gates review, production and successful close on all nested parent-of work.",
           primer:
-            "Select with board/next, then read card and parent. Keep unfinished briefs in refinement; update --lane pending when scope and criteria are clear. Give each child its own brief and criteria. Claim authorized available work (features require a branch; owner defaults to caller BL_ACTOR). If Diary is selected, use bl prime diary for identity-owned working history; promote conclusions into summary at handoff/completion. Verify acceptance and finish children before the parent. Only --outcome abandoned cascades unfinished work. Process exit, review and merge are not task completion. Change linked work at its source.",
+            "Select with board/next, then read card and parent. Keep draft briefs in refinement and move scoped work to pending. Give each child its own brief and criteria. Claim available work (features require a branch; owner defaults to BL_ACTOR). Record operational impediments with block --reason and optional --needed-from; effective unresolved blockages on a card or any ancestor prevent claims and completion and project cards into blocked until resolved with unblock --resolution. Verify acceptance and finish children before the parent. --progression children gates nested work before review, production or successful close. Process exit, review and merge are not completion. Change linked work at its source.",
           cli: {
-            description: "Boards, ownership, tasks and linked cards",
+            description:
+              "Boards and work ownership; --progression children gates review on child completion",
             examples: [
               "bl kanban board",
               'bl kanban add "Investigate issue"',
@@ -864,11 +940,16 @@ export function kanban(): Extension {
             ],
             commands: {
               add: {
-                description: "Add card",
+                description:
+                  "Add card; use --progression children to gate review on contained work",
                 positionals: [{ name: "title", type: "string", required: true }],
                 flags: {
                   type: { type: "string" },
-                  lane: { type: "string" },
+                  lane: {
+                    type: "string",
+                    description:
+                      "Default pending. Use refinement for drafts; move to pending before claiming",
+                  },
                   priority: { type: "string" },
                   body: { type: "string", description: "Problem, outcome, scope and pointers" },
                   acceptance: { type: "string", description: "Verifiable acceptance criteria" },
@@ -877,13 +958,47 @@ export function kanban(): Extension {
                     description: "Current decisions, verification and next action",
                   },
                   epic: { type: "string" },
+                  progression: {
+                    type: "string",
+                    description:
+                      "Allowed values: children | free (default). children gates review, production and close on contained work",
+                  },
                   "by-identity": {
                     key: "byIdentity",
                     type: "string",
                     description: "Author (defaults to BL_ACTOR)",
                   },
                   "reported-by": { key: "reportedBy", type: "string" },
-                  labels: { type: "string", multiple: true },
+                  labels: {
+                    type: "string",
+                    multiple: true,
+                    description: "Repeat per label: --labels one --labels two",
+                  },
+                },
+              },
+              block: {
+                description: "Record an explicit operational blockage",
+                positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  reason: { type: "string", required: true },
+                  "needed-from": { key: "neededFrom", type: "string" },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Author (defaults to BL_ACTOR)",
+                  },
+                },
+              },
+              unblock: {
+                description: "Resolve a Kanban blockage",
+                positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  resolution: { type: "string", required: true },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Resolver (defaults to BL_ACTOR)",
+                  },
                 },
               },
               update: {
@@ -900,7 +1015,12 @@ export function kanban(): Extension {
                   lane: {
                     type: "string",
                     description:
-                      "refinement, pending, in_review or in_production; use claim for ownership",
+                      "refinement, pending, in_review or in_production; use block for operational holds",
+                  },
+                  progression: {
+                    type: "string",
+                    description:
+                      "Allowed values: children | free (default). children gates review, production and close on contained work",
                   },
                   "expected-revision": { key: "expectedRevision", type: "number" },
                 },
@@ -908,7 +1028,11 @@ export function kanban(): Extension {
               board: {
                 description: "Paged board summaries, without briefs or history",
                 flags: {
-                  labels: { type: "string", multiple: true },
+                  labels: {
+                    type: "string",
+                    multiple: true,
+                    description: "Repeat per label: --labels one --labels two",
+                  },
                   limit: { type: "number", description: "Page size (default 20, maximum 100)" },
                   offset: {
                     type: "number",
@@ -937,11 +1061,16 @@ export function kanban(): Extension {
                 },
               },
               claim: {
-                description: "Claim or hand off",
+                description:
+                  "Claim pending work; features require --branch. Move refinement to pending first",
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
                   owner: { type: "string", description: "Owner (defaults to BL_ACTOR)" },
-                  branch: { type: "string" },
+                  branch: {
+                    type: "string",
+                    description:
+                      "Required for features: records a branch name; does not create a Git branch",
+                  },
                   worktree: { type: "string" },
                   "by-identity": {
                     key: "byIdentity",
@@ -961,7 +1090,7 @@ export function kanban(): Extension {
                 positionals: [{ name: "id", type: "string", required: true }],
               },
               task: {
-                description: "Add task",
+                description: "Add a child task to an active feature or task",
                 positionals: [
                   { name: "feature", type: "string", required: true },
                   { name: "title", type: "string", required: true },
@@ -1065,6 +1194,14 @@ export function kanban(): Extension {
 
                 return board.add(request);
               })
+              .with({ command: "block" }, (value) => {
+                const { command: _, ...request } = value;
+                return blockages.block(request);
+              })
+              .with({ command: "unblock" }, (value) => {
+                const { command: _, ...request } = value;
+                return blockages.unblock(request);
+              })
               .with({ command: "claim" }, (value) => {
                 const { command: _, ...request } = value;
 
@@ -1152,6 +1289,7 @@ function summary(node: Node): Node {
           "kanban/task",
           "kanban/type",
           "kanban/lane",
+          "kanban/progression",
           "kanban/priority",
           "kanban/labels",
           "kanban/outcome",

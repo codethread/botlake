@@ -1,0 +1,26 @@
+{
+  "name": "@botlake/extension-workflow",
+  "version": "0.1.0",
+  "files": [
+    "src",
+    "examples",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./examples/parallel": "./examples/parallel.ts",
+    "./examples/nested-machines": "./examples/nested-machines.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "xstate": "5.33.3",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-identity": "workspace:^"
+  }
+}

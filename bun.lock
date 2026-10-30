@@ -13,6 +13,8 @@
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-kanban": "workspace:*",
+        "@botlake/extension-workflow": "workspace:*",
+        "@botlake/extension-workflow-kanban": "workspace:*",
         "@botlake/native-session": "workspace:*",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
@@ -118,6 +120,30 @@
         "@botlake/extension-identity": "workspace:^",
       },
     },
+    "extensions/workflow": {
+      "name": "@botlake/extension-workflow",
+      "version": "0.1.0",
+      "dependencies": {
+        "xstate": "5.33.3",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-identity": "workspace:^",
+      },
+    },
+    "extensions/workflow-kanban": {
+      "name": "@botlake/extension-workflow-kanban",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-kanban": "workspace:^",
+        "@botlake/extension-workflow": "workspace:^",
+      },
+    },
     "packages/core": {
       "name": "@botlake/core",
       "version": "0.1.0",
@@ -146,6 +172,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "xstate@5.33.3": "patches/xstate@5.33.3.patch",
+  },
   "packages": {
     "@botlake/core": ["@botlake/core@workspace:packages/core"],
 
@@ -164,6 +193,10 @@
     "@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
 
     "@botlake/extension-kanban": ["@botlake/extension-kanban@workspace:extensions/kanban"],
+
+    "@botlake/extension-workflow": ["@botlake/extension-workflow@workspace:extensions/workflow"],
+
+    "@botlake/extension-workflow-kanban": ["@botlake/extension-workflow-kanban@workspace:extensions/workflow-kanban"],
 
     "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
 
@@ -340,6 +373,8 @@
     "unique-names-generator": ["unique-names-generator@4.7.1", "", {}, "sha512-lMx9dX+KRmG8sq6gulYYpKWZc9RlGsgBR6aoO8Qsm3qvkSJ+3rAymr+TnV8EDMrIrwuFJ4kruzMWM/OpYzPoow=="],
 
     "valibot": ["valibot@1.5.0", "", { "peerDependencies": { "typescript": ">=5" }, "optionalPeers": ["typescript"] }, "sha512-nil6AkP2TChWL43Z5uJ6GTxX01CUA+g8LWUM+N/rB9NBbkUMaUsi9PUNzlUPgoKASgmx9f7eGOYpJ04/fSa6FQ=="],
+
+    "xstate": ["xstate@5.33.3", "", {}, "sha512-AnDRjS/GyKHmbA1PyhVCYBqYsA7EGe3KGgeD0ht3NFsXzoz7leX/HQDFX9QlHFJ/ltLHPsgChJYwPzRvB/0b4g=="],
 
     "yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 

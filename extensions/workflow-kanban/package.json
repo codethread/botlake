@@ -1,0 +1,23 @@
+{
+  "name": "@botlake/extension-workflow-kanban",
+  "version": "0.1.0",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-kanban": "workspace:^",
+    "@botlake/extension-workflow": "workspace:^"
+  }
+}
