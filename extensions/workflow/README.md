@@ -1,6 +1,21 @@
 # @botlake/extension-workflow
 
-Explicitly select Identity and Workflow. There are no built-in workflows and no Kanban dependency. `bl prime workflow` explains the working pattern; help owns command syntax.
+Explicitly select Identity, Work and Workflow. Imports are inert; `workflows()` is the configured extension. There are no built-in workflows and no automatic agent launches.
+
+## Model
+
+A run records execution and is not a Work item. It points at one Work context group and publishes visits as Work tasks or context groups. `workflow-member` retains every published visit; `workflow-active` marks only the current frontier. Context nesting follows Work's `parent-of` tree independently of execution membership; `start --parent` nests only the context group.
+
+```mermaid
+classDiagram
+  class Run["Workflow run"]
+  class Context["Context group"]
+  class Visit["Visit: task or group"]
+
+  Run "1" ..> "1" Context : stored context-group reference
+  Run "1" --> "*" Visit : member
+  Run "1" --> "0..*" Visit : active
+```
 
 ## Author
 
@@ -12,24 +27,35 @@ description = "What this process accomplishes"
 run = "workflow.ts"
 ```
 
-The module retains Busybee's contract: export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `describe`, `validateCommand` and `inputConstraints`. A titled XState state is work. `meta.task` renders its instructions; `meta.commands` maps choices to events. Commandless titled ancestors become groups. Metadata contains no separate task inventory.
+Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
 
-The [parallel](examples/parallel.ts) and [nested-machine](examples/nested-machines.ts) examples preserve Busybee's authored semantics. Install their imports (`xstate`, `zod`) in the workspace. Execution metadata is inert; no agents launch.
+The [parallel](examples/parallel.ts) and [nested-machine](examples/nested-machines.ts) examples show branch-scoped events, joins and child actors. Install authored imports (`xstate`, `zod`) in the workspace. Internal worker nesting never makes a task a contextual parent: work attaches to the nearest context group. Execution membership is private and independent of the context tree.
 
 ## Work
 
-1. `catalog NAME` reveals initial input; `start NAME --input '{...}'` starts the run. Both also accept `--source FILE` instead of a name.
-2. `show RUN_ID` returns current task summaries, assignees, blockages and compact decision history. Lists are unpaginated; historical entries contain only ID, title, choice and completion-time assignee.
-3. `show TASK_ID` reveals one task's frozen instructions, context and choice schemas. Historical tasks retain original results, assignment history and completion attribution.
-4. `claim TASK_ID` records responsibility, defaulting to `BL_ACTOR`; `--owner` hands off explicitly. Assignment is not process custody.
-5. `complete TASK_ID CHOICE --data '{...}'` closes work, delivers the parsed outcome, publishes subsequent visits and checkpoints in one transaction. Failure rolls the entire operation back. Matching original-result retries are idempotent.
+```sh
+bl prime workflow
+bl workflow catalog NAME
+bl workflow start NAME --input '{}'
+bl workflow show RUN_ID
+bl work show TASK_ID
+bl work claim TASK_ID
+bl workflow show TASK_ID
+bl workflow complete TASK_ID CHOICE --data '{}'
+```
 
-Groups close automatically. Parallel branches advance independently. Revision loops create fresh visits; completed visits cannot reopen. The run closes only when the machine and all contained work finish. Ordinary graph children and prerequisites remain ordinary graph work; their completion is not another workflow event.
+Catalog and start also accept `--source FILE` instead of a name. `start --parent GROUP` puts the new context group under an existing open group; the execution record itself is not a task or context member.
 
-`block RUN_ID|TASK_ID --reason TEXT [--needed-from IDENTITY]` records an operational impediment, independent of graph readiness. `unblock BLOCK_ID --resolution TEXT` resolves exactly one record, preserving attribution and history. Task holds leave siblings available; ancestor holds apply to contained work. Ownership and snapshots remain intact. See the [blockage protocol](../../docs/work-blockages.md).
+Run inspection returns pending authored actions and decision summaries, including closed-but-unconsumed tasks. `actionPending` describes execution, not task lifecycle. Tasks and decision history default to 20 entries, maximum 100. Continue using `taskPage.nextOffset` with `--offset`, or `historyPage.nextOffset` with `--history-offset`. Pages are not snapshots. Task inspection expands frozen instructions, choice schemas, original result and the shared Work detail/history.
+
+`complete` explicitly submits an authored outcome. It validates the action schema and direct prerequisites, closes the task subject to its criteria, advances/checkpoints execution and publishes subsequent work in one transaction. Failure rolls back every persistence effect, including assignment release. Repeating the original choice and raw payload is idempotent; a conflicting retry fails. Attribution uses the caller's `BL_ACTOR`.
+
+Ordinary `work close` **never advances execution**; an explicit action may be submitted afterward. Closing an agent run likewise neither completes Work nor submits an action. Reviews can close with unfavourable findings: branching uses the explicit authored choice, not the generic closed state. Revision loops publish fresh tasks and retain earlier findings; consumed visits cannot reopen.
+
+Parallel branches advance independently. Departed generated groups close only when all contained tasks are closed. Execution can finish while ordinary follow-up tasks keep its context group open; an enclosing business group never closes automatically. Impediments are ordinary Work prerequisites, not a separate Workflow blockage or ownership ledger.
 
 ## Persistence
 
-Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState actor snapshots are stored as JSON strings to replace checkpoints verbatim. No compatibility preflight, migration, cancellation or durable external-effect execution is supplied.
+Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
 
-An optional `start --parent NODE` attaches a run as contained work. The separate Workflow-Kanban extension links existing roots; Kanban independently owns its progression policy and blockage presentation.
+Verify packed packages, real CLIs, nested/revision workflows and transaction rollback in disposable SQLite lakes with `bun scripts/workflow-smoke.ts`.

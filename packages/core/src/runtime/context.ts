@@ -7,6 +7,7 @@ import type { Bin } from "./bins.ts";
 import type { Command } from "./cli.ts";
 import type { Clock } from "./clock.ts";
 import type { factSchema } from "./custody.ts";
+import type { EventDefinition, EventHandler, EventPhase } from "./events.ts";
 import type { Scheduler } from "./scheduler.ts";
 
 export interface Invocation {
@@ -85,5 +86,14 @@ export interface Context {
   queryCatalog(): Record<string, NamedQuery>;
   resource(resource: Resource): void;
   subscribe(handler: (event: GraphEvent) => Promise<void> | void): void;
+  registerEvent<S extends z.ZodType, P extends EventPhase>(event: EventDefinition<S, P>): void;
+  on<S extends z.ZodType, P extends EventPhase>(
+    event: EventDefinition<S, P>,
+    handler: EventHandler<z.output<S>, P>,
+  ): () => void;
+  emit<S extends z.ZodType, P extends EventPhase>(
+    event: EventDefinition<S, P>,
+    data: z.input<S>,
+  ): void;
   bin(name: string, bin: Bin): void;
 }

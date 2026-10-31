@@ -1,10 +1,10 @@
 # Work coordination PRD
 
-Status: draft for user review. Date: 30 October 2026.
+Status: approved for implementation, including decisions D1–D5 below. Date: 30 October 2026.
 
 Replace the work-coordination model previously expressed through Kanban with a small set of tasks, context groups, and dependencies. Let agents organize and execute work autonomously while making current work, human requests, and upcoming work visible. Optional workflows add repeatable control flow through explicit action outcomes.
 
-This is a fresh product specification derived from the workshop dialogue. Existing commands, schemas, behaviour, and feature parity are not requirements. Implementation starts only after user review. Proposed defaults and unresolved decisions are identified separately from the requirements supported by the dialogue.
+This is a fresh product specification derived from the workshop dialogue. Existing commands, schemas, behaviour, and feature parity are not requirements. User review approved implementation and the decision contracts below. Historical review notes describe the earlier draft, not compatibility requirements.
 
 ## Product principles
 
@@ -31,12 +31,12 @@ The following names describe the proposed logical API. They do not prescribe phy
 | acceptanceCriteria | How completion is judged | Optional collection; see criterion contract |
 | assignee | Current responsible participant | One identity or none |
 | audience | Whether work can proceed unattended | AFK or HITL; defaults to AFK |
-| origin | Expected work or an unexpected interruption | planned or unplanned |
-| priority | Independent urgency for ordering and notifications | P0 through P4 proposed; P0 is immediate attention |
+| origin | Expected work or an unexpected interruption | planned or unplanned; defaults to planned |
+| priority | Independent urgency for ordering and notifications | P0 through P4; defaults to P2; P0 is immediate attention |
 
 Audience is participation mode, not an approval verdict. Origin describes how the work arose, not how early it was created: a review created at the last minute can still be planned. Priority must not be inferred solely from origin, audience, or nesting depth.
 
-The dialogue did not select defaults for origin or priority. Recommendation for user approval: planned and P2 respectively. Other priority levels initially express decreasing urgency, without introducing an SLA or a new lifecycle.
+D3 selects planned origin and P2 priority by default. P1 through P4 express decreasing urgency after P0, without introducing an SLA or a new lifecycle. Notification delivery is deferred.
 
 ### Lifecycle and closure
 
@@ -48,13 +48,13 @@ R3. Record who closed a task and when automatically. Do not require a second fre
 
 R4. Closing a prerequisite can affect readiness; it must not automatically close dependent tasks or resolve their criteria. Agents inspect the actual findings and determine what to do next.
 
-Ordinary reopening is a recovery option discussed in the workshop. Its exact contract, including what happens to prior criterion resolutions, requires decision D4. New scope after completed work normally becomes a new task, preserving the original result.
+D4 permits explicit reopening for recovery, with actor, time and reason retained. Prior criterion resolutions remain intact until explicitly corrected or reopened; corrections append assessments rather than erasing earlier ones. New scope after completed work normally becomes a new task, preserving the original result.
 
 ```mermaid
 stateDiagram-v2
   [*] --> Open
   Open --> Closed: All existing criteria resolved
-  Closed --> Open: Recovery proposal D4
+  Closed --> Open: Explicit recovery
   note right of Open
     Readiness and assignment are separate facts.
     Audience, origin and priority are independent.
@@ -65,7 +65,7 @@ stateDiagram-v2
   end note
 ```
 
-The universal closure requirement is the criterion rule. Readiness governs pickup; it is not an additional universal closure guard. Contextual placement, open siblings, or an unfinished group do not prevent a leaf task from closing. Workflow-owned completion can impose its explicit action contract.
+For tasks, the universal closure requirement is the criterion rule. Readiness governs pickup; it is not an additional universal closure guard. Contextual placement, open siblings, or an unfinished group do not prevent a leaf task from closing. Workflow-owned completion can impose its explicit action contract.
 
 ### Acceptance criteria
 
@@ -75,11 +75,11 @@ R6. Once added, preserve the original condition and its history. Normal APIs can
 
 R7. The authoring agent, another agent, or a person may assess criteria. The starting product does not impose an independent-verifier role. Attribution and history provide visibility, not proof that every judgement was correct.
 
-The API must hide whether criteria are embedded data or separate graph records. Exact resolution correction and storage mechanics remain D4. Notes are not required to be append-only merely because criteria are.
+The API must hide whether criteria are embedded data or separate graph records. Corrections retain prior assessments and may annotate closed work without changing its lifecycle. Explicitly reopening a criterion requires an open task and restores its closure constraint. Storage remains an implementation choice. Notes are not required to be append-only merely because criteria are.
 
 ## Groups and relationships
 
-R8. A group is a non-actionable context and organization record with a title and optional description. A group cannot be claimed or assigned as executable work.
+R8. A group is a non-actionable context and organization record with a title and optional description. A group cannot be claimed or assigned as executable work. It starts open and may explicitly close only after all contained tasks, including those in nested groups, are closed. Nested groups need not themselves be closed. Group closure does not cascade or assert success. Reopen closed containing groups before adding or reopening an open task beneath them. Retrospective placement of already-closed work is allowed.
 
 R9. Only groups can be contextual parents. A group may contain groups and tasks. Tasks are leaves and contain neither tasks nor groups. Each group or task has at most one contextual parent; roots have none. Contextual containment is acyclic.
 
@@ -87,14 +87,14 @@ R10. Other references may be numerous and do not add inherited instructions. Fin
 
 R11. Inspecting a task must expose its local brief and ancestor context without requiring copied instructions in every task. Context groups may be introduced retrospectively. Keep normal reads compact; deeper context and full findings can be expanded when needed. Do not invent a fixed depth limit before real examples require one.
 
-R12. Dependencies connect tasks independently of the context tree and may cross groups. They express prerequisites, not parenthood. A task may be a prerequisite for many tasks while retaining one contextual parent. Dependency cycles are invalid.
+R12. Dependencies connect tasks or groups independently of the context tree and may cross groups. They express prerequisites, not parenthood. A task or group may be a prerequisite for many tasks or groups while retaining one contextual parent. Dependency cycles are invalid. Dependencies are direct: a group dependency does not silently create dependencies on its members.
 
-Contextual containment alone does not gate leaf-task closure. Group closure itself remains D1.
+Contextual containment alone does not gate leaf-task closure. Group closure requires all descendant tasks to be closed, under D1.
 
 | Relationship | Direction and cardinality | Effect |
 | --- | --- | --- |
 | parent-of | Group to group/task; at most one incoming contextual parent per item | Shared context; acyclic |
-| depends-on | Task to prerequisite task; many incoming and outgoing links | Readiness; acyclic |
+| depends-on | Task/group to prerequisite task/group; many incoming and outgoing links | Readiness; acyclic |
 | references | Task/group to related task/group; many incoming and outgoing links | Useful connection; no inherited instructions or readiness effect |
 
 References is a proposed API spelling for the arbitrary non-contextual links discussed by the user. Reference cycles do not create context or dependency cycles.
@@ -105,6 +105,7 @@ classDiagram
     String id
     String title
     String description
+    String state
   }
   class Task {
     String id
@@ -160,7 +161,7 @@ flowchart LR
 
 Both trials can run in parallel after the initial investigation closes. The delivery task becomes ready when both trials close, then interprets their findings. Neither a closed trial nor readiness guarantees that a candidate was suitable.
 
-Groups may summarize member progress. What it means to close or complete a group, and whether that blocks a parent or a checkpoint, is explicitly unresolved in D1.
+Groups may summarize member progress. A task or group can depend on explicit group closure; closing every task does not automatically close the group.
 
 ### Scope changes and delegation
 
@@ -174,29 +175,31 @@ R15. A task is an obligation; an agent run is an attempt to work on it. Run comp
 
 ## Readiness, assignment and blockers
 
-R16. Readiness is derived. A task is ready when it is open and all its directly linked prerequisite tasks are closed. It does not recursively prove the outcomes or original prerequisites of already closed work. Readiness means prerequisite work has been settled so an agent can evaluate the next action, not that every prerequisite succeeded.
+R16. Readiness is derived. A task or group is ready when it is open and all its directly linked prerequisite tasks or groups are closed. It does not recursively prove the outcomes or original prerequisites of already closed work. Readiness means prerequisite work has been settled so an agent can evaluate the next action, not that every prerequisite succeeded.
 
 R17. Use ordinary prerequisite tasks for impediments first. For example, Build the engine can depend on Enable VPN access. The prerequisite has its own brief, assignee, notes, audience, origin, and priority. Several tasks can wait on the same prerequisite. No second blocker type or independently maintained blocked Boolean is needed for this model.
 
 R18. If a prerequisite was incorrectly closed or had an unfavourable result, downstream agents read the findings and readjust: continue differently, reopen appropriate work, create follow-on work, or stop with an explanation. Do not add success-sensitive dependency states to solve this hypothetical failure before observed cases justify them.
 
-R19. Keep at most one current assignee and enforce claims programmatically. Agent-liveness plugins release an agent assignment after a configured heartbeat expiry or when the agent is known to be gone. Retain assignment history. Expiry does not close work, resolve criteria, or remove dependencies. Human assignment release/expiry has not been selected; see D2.
+R19. Keep at most one current assignee and enforce claims programmatically. Agents owns run/custody evidence; Work owns assignments; Work Agents uses that evidence to release the matching assignment. Managed custody settlement or a reported external native session end permits release. Elapsed silence triggers rechecking, never release by itself. Retain assignment history. Release does not close work, resolve criteria, or remove dependencies. Human assignments use explicit release and are not subject to automatic agent expiry.
 
-Implementation consideration: concurrent claims and delayed liveness events should not overwrite a newer current assignment. Exact identity/run association, expiry thresholds, and historical storage still need design, not more task statuses. Assignment records responsibility or reservation and is not proof of execution.
+The 31 October follow-up replaces the draft's silence-based heartbeat expiry. Stalled/zombie-agent policy remains deferred. Explicit assignment-to-run binding remains the current integration contract.
+
+Implementation consideration: concurrent claims and delayed liveness events must not overwrite a newer current assignment. Assignment-token and managed-invocation checks fence release. Native recheck cadence and any future stalled-work policy remain configuration/design decisions, not more task statuses. Assignment records responsibility or reservation and is not proof of execution.
 
 ### Derived views
 
-| View                            | Predicate or interpretation                              |
-| ------------------------------- | -------------------------------------------------------- |
-| Ready                           | Open with all direct prerequisite tasks closed           |
-| Available for unattended pickup | Ready, unassigned, audience AFK                          |
-| Assigned work                   | Open with a current assignee; may also be waiting        |
-| Waiting or blocked              | Open with an unresolved direct prerequisite              |
-| Human action queue              | Open, ready, HITL, routed to the viewing person under D2 |
-| Planned human work              | Human action queue with origin planned                   |
-| Unexpected attention            | Human action queue with origin unplanned                 |
+| View                            | Predicate or interpretation                       |
+| ------------------------------- | ------------------------------------------------- |
+| Ready                           | Open with all direct prerequisites closed         |
+| Available for unattended pickup | Ready, unassigned, audience AFK                   |
+| Assigned work                   | Open with a current assignee; may also be waiting |
+| Waiting or blocked              | Open with an unresolved direct prerequisite       |
+| Human action queue              | Open, ready, HITL, assigned to the viewing person |
+| Planned human work              | Human action queue with origin planned            |
+| Unexpected attention            | Human action queue with origin unplanned          |
 
-These are overlapping projections, not stored lifecycle stages. Audience controls unattended dispatch eligibility, not graph readiness. HITL routing with an assisting agent remains D2.
+These are overlapping projections, not stored lifecycle stages. Audience controls unattended dispatch eligibility, not graph readiness. D2 routes HITL work using the human assignee; an assisting agent does not occupy that field.
 
 The awareness view shows outstanding assigned work, its assignee, and whether it is ready or waiting. Owned-but-waiting work remains visible. Stronger live-activity observations, when available, are separate from assignment; do not label a reservation as proof of current execution. Upcoming-work views expose ready work and context, ordered using priority.
 
@@ -205,7 +208,7 @@ flowchart TD
   OpenWork["Open task facts"] --> ReadinessView["Ready or waiting<br/>from direct prerequisites"]
   OpenWork --> AssignedView["Assignment awareness<br/>when a current assignee exists"]
   OpenWork --> PickupView["AFK pickup<br/>when ready and unassigned"]
-  OpenWork --> HumanView["Human action queue<br/>when ready, HITL and routed under D2"]
+  OpenWork --> HumanView["Human action queue<br/>when ready, HITL and assigned to the person"]
   HumanView -- planned --> PlannedView["Planned human work"]
   HumanView -- unplanned --> AttentionView["Unexpected attention"]
 ```
@@ -218,7 +221,7 @@ Priority is available to order views and inform notification policy independentl
 
 R20. A planned design conversation or code review is an ordinary HITL task. An unexpected request such as Enable VPN access is an ordinary HITL task with unplanned origin. Keep the delivery task AFK when only a focused prerequisite requires the human.
 
-R21. A ready review should surface under the chosen D2 human-routing contract. The examples use one human identified by the assignee; they do not settle multi-human or assisting-agent routing. The human should not have to infer readiness from a board lane or an agent's chat transcript.
+R21. A ready HITL review surfaces in its human assignee’s queue. D2 selects this simple routing contract without a second actor field; multi-human routing is deferred. The human should not have to infer readiness from a board lane or an agent's chat transcript.
 
 R22. Review completion means the review was performed, not that the code was approved. Findings belong in notes; criteria describe the evaluation to perform. An agent review can be AFK; human participation is HITL.
 
@@ -226,7 +229,7 @@ Recording findings is the expected deliverable, not a hidden global note-presenc
 
 R23. Constrain the relevant action at the relevant boundary. A requirement for human approval before merge must not prevent implementation, preparation of a pull request, or completion of an honest review. Approval/merge policy belongs in an explicit checkpoint or workflow operation, not an ambiguous global prose stop instruction.
 
-The product must support checkpoints across groups and further fan-out afterward. Before D1 is settled, explicit task prerequisites can express the required scope without assuming a group-completion predicate.
+The product supports checkpoints across groups and further fan-out afterward. A checkpoint can depend on explicit delivery tasks or on explicit closure of the required groups.
 
 For example, a planned HITL review depends on the required terminal delivery tasks of the front-end and back-end groups. Later tasks can depend on the review or be created from its workflow outcome. This expresses known required scope; it does not define completion of every present or future group member.
 
@@ -234,13 +237,13 @@ For example, a planned HITL review depends on the required terminal delivery tas
 
 R24. Workflows operate on the same task/group model. Generated workers are actionable leaf tasks; meaningful context uses groups. Avoid a duplicate public task or ownership ledger.
 
-R25. Workflow-generated work respects the same containment rules. Internal flow nesting does not authorize task-to-task contextual containment. How execution membership associates with context groups remains D5.
+R25. Workflow-generated work respects the same containment rules. Internal flow nesting does not authorize task-to-task contextual containment. Execution membership uses private workflow links, separately from contextual containment. Each run publishes a context group under an optional existing group; internal worker nesting is flattened to the nearest context group.
 
 R26. Workflows use their authored action choices and payloads for branching, joins, and revision. Those outcomes are separate from generic task lifecycle. Closed or a criterion resolution cannot silently stand in for approval.
 
 R27. The user described a review/revision process creating new follow-up tasks while retaining earlier findings. Completion of an agent run does not itself complete a task or submit a workflow action.
 
-Integration proposal for later design: report coherent workflow completion effects without falsely claiming an action advanced. Atomic persistence, retry semantics, actor routing, checkpoint layout, and revision-bound approval are options to evaluate under D5, not contracts to preserve from current code.
+D5 selects an explicit authored action that atomically records its result, closes its worker task, checkpoints execution and publishes subsequent work. Ordinary task closure never submits an action or advances execution. Matching original-payload retries are idempotent; conflicting retries fail. Revision creates fresh tasks and retains earlier findings. Workflow-generated audience and assignment are authored task metadata, with ordinary Work defaults when omitted.
 
 ```mermaid
 sequenceDiagram
@@ -255,11 +258,11 @@ sequenceDiagram
   WorkAPI-->>Human: Completed review and next work
 ```
 
-This sequence illustrates a logical interaction, not a selected component or transaction architecture. Business-task/run completion, cancellation/replanning, and groups that outlive execution remain D5.
+The run is a private execution record, not another business task. Run completion does not close an enclosing business group or task. Context groups may outlive execution when ordinary contained tasks remain open. Generic closure does not cancel or replan execution; cancellation and replanning commands are deferred. Consumed workflow visits remain closed; revisions publish fresh visits.
 
 ## Illustrative JSON contracts
 
-The examples are logical API shapes for review, not a physical storage specification. Context and dependency links have one graph source of truth. Identities and times are illustrative. Planned/P2 are explicit sample values, not user-selected defaults; AFK is the selected audience default.
+The examples are logical API shapes for review, not a physical storage specification. Context and dependency links have one graph source of truth. Identities and times are illustrative. AFK/planned/P2 are the selected defaults.
 
 ### Context group
 
@@ -267,12 +270,13 @@ The examples are logical API shapes for review, not a physical storage specifica
 {
   "id": "group-workflows",
   "kind": "group",
+  "state": "open",
   "title": "Workflow engine",
   "description": "Build a reusable engine for runnable, user-owned workflows in Botlake."
 }
 ```
 
-There is no executable assignee or task criterion list on this group. Group lifecycle is absent from the example pending D1.
+There is no executable assignee or task criterion list on this group. Its explicit closure requires all descendant tasks to be closed.
 
 ### Delivery task
 
@@ -334,7 +338,7 @@ There is no executable assignee or task criterion list on this group. Group life
 }
 ```
 
-The delivery task remains open and becomes unready. Its owner can release the assignment, changing assignee to null; it still cannot be picked up while the prerequisite is open. The human-assignee example assumes D2's simple routing option.
+The delivery task remains open and becomes unready. Its owner can release the assignment, changing assignee to null; it still cannot be picked up while the prerequisite is open. The human-assignee example uses the selected D2 routing contract.
 
 ### Context and reference projection
 
@@ -474,14 +478,17 @@ Terse guidance is sufficient: description says what the work is about; criteria 
 | Scope removes a criterion | Retain the condition and its explicit resolution, appending a replacement if needed |
 | A group is claimed or a task is made a contextual parent | Reject the invalid operation |
 | A leaf closes while other members remain open | Permit closure when its own criteria are resolved; no implicit sibling/group gate |
+| A group is closed while a nested task remains open | Reject closure until every descendant task is closed |
+| A task or group depends on a group | Remain unready until that prerequisite group explicitly closes |
 | Work is found through a reference | Reveal its same contextual home without inheriting another brief |
 | Context is added retrospectively | Member inspection reveals the common brief without copying it into every task |
 | Parallel trials precede a join | Trials proceed independently; the join waits for both to close and interprets their findings |
 | A prerequisite closes unfavourably | Recalculate readiness without closing dependents or resolving their criteria |
-| Assigned work gains a prerequisite | Show it in both assignment awareness and waiting views; expiry removes only the assignment |
-| An agent is known gone or its heartbeat expires | Release its current assignment, retain history, and preserve task state, criteria and dependencies |
+| Assigned work gains a prerequisite | Show it in both assignment awareness and waiting views; later assignment release preserves prerequisites |
+| Managed custody settles or an external native session reports ending | Release only its matching current assignment, retain history, and preserve task state, criteria and dependencies |
+| An agent remains quiet beyond the recheck interval | Preserve assignment; inspect current Agents evidence without inferring exit from silence |
 | Human-only VPN action is needed | Create an unplanned HITL prerequisite; exclude the human task and its unready dependents from unattended pickup |
-| A planned human review becomes ready | Surface it under the chosen D2 routing contract, with context and priority |
+| A planned human review becomes ready | Surface it in its human assignee’s queue, with context and priority |
 | A review finds defects | Review can complete with findings; authored outcomes can create corrections or further review |
 | Findings must be enforced | Use an explicit criterion or workflow output requirement; no hidden global notes guard |
 | Work in two groups needs a checkpoint | A HITL review depends on the explicitly required delivery tasks, then its result informs subsequent work |
@@ -493,19 +500,19 @@ Terse guidance is sufficient: description says what the work is about; criteria 
 
 Success-sensitive dependency guarantees, mandatory review types, and additional lifecycle stages are deliberately not inferred from these examples.
 
-## Decisions for user review
+## Approved implementation decisions
 
-These are not filled by old behaviour or an assistant recommendation.
+User review selected D1 and D2 explicitly and approved the discussed recommendations for D3–D5. These replace the draft’s open questions; old behaviour is not a compatibility contract.
 
-| Decision | What remains open | Recommendation to evaluate |
-| --- | --- | --- |
-| D1 Group lifecycle and checkpoints | Can groups close/archive, what makes one complete, and can work depend on that completion? | Keep task closure independent of contextual siblings; use explicit required task scope until group completion is chosen |
-| D2 Intended human | Is assignee sufficient for HITL routing with an assisting agent? What human release/expiry policy is wanted? | Use a human assignee for single-human examples; choose routing before adding another actor field |
-| D3 Defaults and notifications | Origin default, normal priority, exact P0-P4 meanings, and notification policy | Consider planned/P2 defaults; keep P0 immediate and urgency independent of origin |
-| D4 Correction and recovery | Criterion resolution corrections and ordinary reopening | Preserve conditions and useful history; no full event log or append-only notes requirement |
-| D5 Workflow execution contract | Business-task/run completion, cancellation/replanning, context placement, and completion effects | Keep authored outcomes separate from lifecycle; evaluate technical consistency/retry choices during workflow design |
+| Decision | Selected contract |
+| --- | --- |
+| D1 Group lifecycle and checkpoints | Groups may close after all descendant tasks close, and may block tasks or groups through explicit dependencies. No automatic cascade. |
+| D2 Intended human | HITL routes through the human assignee. Human release is explicit; agent liveness does not expire human assignments. |
+| D3 Defaults and notifications | AFK/planned/P2 defaults. P0 immediate, P1–P4 decreasing urgency. Notification delivery deferred. |
+| D4 Correction and recovery | Explicit recovery reopening retains conditions, resolutions and closure history. Criterion corrections append assessments; criterion reopening is explicit. Notes remain replaceable. |
+| D5 Workflow execution contract | Explicit action atomically closes its task, checkpoints and publishes next work. Generic closure never advances a flow. Matching retries are idempotent; revisions create fresh visits. Execution membership is private, separate from context. Context groups may outlive runs; cancellation/replanning deferred. |
 
-The current dependency contract is task-to-task. Depending on group completion would require a later decision under D1; it is not an implicit exception.
+The dependency contract permits task/group endpoints in both directions. Only tasks are actionable, regardless of dependency readiness.
 
 Criteria/assignment storage and an exact API inventory are implementation design behind the small public model, not reasons to add more types or statuses.
 
@@ -522,7 +529,7 @@ The review packet preserves the full spoken and written dialogue with source-seg
 | Shared context without repetition | V065-V071, V193, V195 |
 | Search and reuse of prior findings | V181 |
 | Parallel work, dependencies and delegation | V206, V208, V224-V229 |
-| Group completion explicitly unresolved | V240, alongside checkpoint use case V285 |
+| Group completion | V240 originally deferred; subsequent D1 approval selects closure and group dependencies |
 | Programmatic assignee release and history | V248-V262 |
 | Ordinary blocker tasks and deferred success gates | V271, V274, V276 |
 | AFK/HITL and planned/unplanned origin | V037, V039, V280, V285 |
@@ -532,4 +539,4 @@ The review packet preserves the full spoken and written dialogue with source-seg
 
 Independent Sol, Astra, and DeepSeek reviews compared this PRD against the dialogue for omitted intent, unsupported assumptions, unnecessary abstractions, and inconsistent JSON/diagrams. The [review ledger](work-coordination-reviews.md) records findings, dispositions, and verification. Prior code/history investigations may inform questions but do not impose compatibility requirements or establish that historical agents would have performed better.
 
-Implementation, migration, feature parity with old Kanban, new task-type taxonomies, success-aware dependency types, mandatory tasks for every helper run, and universal notification integrations are outside this drafting/review phase.
+Implementation is approved. Migration, feature parity with old Kanban, new task-type taxonomies, success-aware dependency types, mandatory tasks for every helper run, and universal notification integrations remain outside scope.

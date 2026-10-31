@@ -18,7 +18,6 @@ const extensionSchema = z.compile(
     }),
   }),
 );
-const idResult = z.compile(z.object({ id: z.string() }));
 const jsonValue = z.compile(z.json());
 
 test("external Bun package imports stay inert; worker deps, cleanup, wire streams, deadlines and peer links work", async () => {
@@ -69,7 +68,6 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       const workspace = await host.workspace(name, [
         "@botlake/extension-batteries",
         "@botlake/extension-identity",
-        "@botlake/extension-kanban",
         "outside-extension",
         "./deps.ts",
       ]);
@@ -142,28 +140,6 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await host.cli(["--workspace", "alpha", "--timeout", "1ms", "wait"], false)).toContain(
       "deadline",
     );
-    const card = idResult.parse(
-      await host.bl("beta", "kanban", { command: "add", title: "Downstream" }),
-    );
-    const mirror = idResult.parse(
-      await host.bl("alpha", "kanban", {
-        command: "link",
-        operation: "attach",
-        workspace: "beta",
-        id: card.id,
-      }),
-    );
-    expect(await host.bl("alpha", "update", { id: mirror.id, title: "forged" }, false)).toContain(
-      "requires refresh",
-    );
-    await host.bl("beta", "kanban", { command: "finish", id: card.id });
-    await host.bl("alpha", "kanban", { command: "link", operation: "refresh", id: mirror.id });
-    expect(
-      z
-        .compile(z.object({ state: z.string() }))
-        .parse(await host.bl("alpha", "show", { id: mirror.id })).state,
-    ).toBe("closed");
-    expect(await host.cli(["--workspace", "alpha", "help", "kanban", "ref", "add"])).toBeArray();
     const bad = await host.workspace("bad", ["./bad.ts"]);
     const disposed = join(bad, "disposed");
     await Bun.write(
@@ -180,12 +156,6 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
         .parse(await host.botlake(["status"]))
         .members.map((member) => member.name),
     ).not.toContain("bad");
-    await host.botlake(["lake", "stop", "--workspace", "beta"]);
-    expect(
-      z
-        .compile(z.object({ link: z.object({ status: z.string() }) }))
-        .parse(await host.bl("alpha", "kanban", { command: "card", id: mirror.id })).link.status,
-    ).toBe("unavailable");
     const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
     await Bun.write(

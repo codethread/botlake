@@ -13,13 +13,15 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
 | [`@botlake/extension-diary`](extensions/diary/README.md) | Identity-owned working history | Identity |
 | [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
-| [`@botlake/extension-agents`](extensions/agents/README.md) | Providers, tracked runs, assignment, reconciliation | Identity, Flags |
-| [`@botlake/extension-kanban`](extensions/kanban/README.md) | Boards, cards/tasks, ownership, peer links | Identity |
+| [`@botlake/extension-agents`](extensions/agents/README.md) | Providers, tracked runs, native observations, custody reconciliation | Identity, Flags |
+| [`@botlake/extension-work`](extensions/work/README.md) | Tasks, groups, prerequisites, assignment, closure | Identity |
+| [`@botlake/extension-work-agents`](extensions/work-agents/README.md) | Explicitly bound agent-assignment liveness | Work, Agents, Identity |
+| [`@botlake/extension-workflow`](extensions/workflow/README.md) | Authored XState workflows projected into Work | Identity, Work |
 | [`@botlake/extension-cron`](extensions/cron/README.md) | Calendar/interval jobs, policies and occurrence history | None |
 
-Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Agents, Diary and Kanban; Flags is a peer of Agents. Installation does not imply activation.
+Core does not import or install extensions. Extensions import core and sibling public APIs through declared package dependencies, never relative source paths; Oxlint enforces the boundary. Core is a peer dependency of each extension; Identity is also a peer of Agents, Diary, Work and Workflow; Flags is a peer of Agents; Work is a peer of Work Agents and Workflow. Installation does not imply activation.
 
-Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for core, Identity and Flags to their tarball paths as well as listing them in `dependencies`.
+Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for every `@botlake/*` peer to its tarball path as well as listing it in `dependencies`.
 
 ## Run from this checkout
 
@@ -34,11 +36,14 @@ botlake start # Foreground supervisor; leave running in its own terminal.
 botlake lake start
 bl add 'My first node' --attributes '{"stuff":"data"}'
 bl list
+bl work create 'My first task' --description 'What done means'
+bl work list --view available
+bl work show ID
 ```
 
 The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run the Go install command after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
 
-The private `.botlake` dogfood package uses `workspace:*` dependencies and selects all shipped extensions. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, and Cron has no jobs until configured.
+The private `.botlake` dogfood package uses `workspace:*` dependencies and selects Work, Workflow, Agents, Diary, Flags and Cron. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, Cron has no jobs until configured, and Work Agents remains an explicit optional configuration.
 
 [Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra. [Flag defaults](.botlake/flags.ts) configure exported `agentFlags` and local DeepSeek/Fable definitions; Claude remains registered but disabled. Managed launches are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 
@@ -64,7 +69,8 @@ In another workspace, install core and the extensions you need using local tarba
     "extensions": [
       "@botlake/extension-batteries",
       "@botlake/extension-identity",
-      "@botlake/extension-kanban",
+      "@botlake/extension-work",
+      "@botlake/extension-workflow",
       "./extensions.ts"
     ]
   }
@@ -97,6 +103,8 @@ export default {
 } satisfies Extension;
 ```
 
+Work Agents is configured this way: export `workAgents({ checkIntervalMs })` from a local module rather than selecting the package directly.
+
 [Compile final Zod schemas](https://zod.dev/compile) after refinements or extensions; derived schemas need compiling again. Unsupported features such as recursion retain Zod's runtime parser.
 
 ### Zsh completion
@@ -114,11 +122,13 @@ Source it from `~/.zshrc` **after** your existing `compinit` setup:
 source "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/botlake.zsh"
 ```
 
-Only zsh is supported. The generated script registers completion for both `botlake` and `bl`; sourcing it runs no CLI commands. Base `botlake` commands and flags complete offline. Dynamic `bl` completion requires `jq` and a running lake, reading `bl help --json` so operations, nested subcommands, flags and boolean values follow the selected lake, including `--workspace` and `--cwd`. `@file` and named payload paths complete local files. The shell script is cached, not the command catalog.
+Only zsh is supported. The generated script registers completion for both `botlake` and `bl`; sourcing it runs no CLI commands. Base `botlake` commands and flags complete offline. Dynamic `bl` completion requires `jq` and a running lake. It reads root help for operation names, then fetches scoped help as each nested command is selected, so subcommands, flags and boolean values follow the selected lake without loading the full command tree. Workspace context from `--workspace` and `--cwd` is preserved. `@file` and named payload paths complete local files. The shell script is cached, not the command catalog.
 
 ## Operate
 
-`bl help|about|prime|primer OP [SUBCOMMAND...]` discovers commands. Terminal help shows usage, arguments, flags and examples; pipes retain JSON/NDJSON. `--json` forces machine output and `NO_COLOR` disables color. `bl --help` lists global flags without a running workspace.
+Use `help` for commands, `prime` for the runbook, and `about` for wider context and configuration that specialists may need beyond day-to-day operation.
+
+Discovery is progressive: `bl help` lists operation names and descriptions, while `bl help OP [SUBCOMMAND...]` shows only that level's syntax and immediate children. Machine-readable `bl help --json OP` also includes the operation's declared input/output schemas, or `null` when none were declared; root and subcommand help omit them. `about` and `prime` require an operation and report unavailable command-scoped guidance explicitly. Redirected output remains machine-readable JSON/NDJSON, `--json` forces it, and `NO_COLOR` disables terminal color. `bl --help` lists global flags without a running workspace.
 
 Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` overrides the operation deadline (normally 30s); `--dry-run` prints the request. Batteries `await` owns its wait budget instead: `--timeout-secs` defaults to 1800 and returns `reason: "timeout"` on expiry, while an explicit global `--timeout` remains a hard error deadline. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the extension; `--` ends its flag parsing.
 
@@ -131,6 +141,10 @@ Put global flags before the operation: `--stdin` attaches text referenced as `:s
 `BL_HOME` isolates a supervisor and retained output (default `~/.botlake`). Botlake uses this checkout's core by default; set `BL_CORE` to an installed `@botlake/core` package directory to run independently of the checkout's TypeScript packages.
 
 Extensions read the environment supplied to `botlake lake start|restart` through `ctx.env.lake`, and each invoking `bl` or lake eval caller's environment through `ctx.env.bl`. Values stay in their own namespaces; caller values apply only to that invocation.
+
+Extensions declare typed handles in `events.ts` with `defineEvent({ name, phase, schema })`, register them during activation with `ctx.registerEvent`, and use `ctx.on` / `ctx.emit`. Transactional handlers are synchronous, return no value and join the current `graph.atomic`; errors roll it back. After-commit observers may be asynchronous; their failures are recorded in `Runtime.errors`. Subscriptions belong to one lake and return an unsubscribe function.
+
+`bl events list` shows registered payload contracts. `bl events stream [--event NAME ...]` emits committed notifications as JSONL. Wait for `ready` before loading snapshots, invalidate reads on changes, and refetch on reconnect. The stream has bounded buffering and no replay; transactional hooks stay in-process. Work publishes changed IDs, while Agents publishes run IDs and liveness evidence.
 
 Agents supports Codex, Pi and Claude. Native agents own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
 
@@ -165,6 +179,9 @@ bun run check:go
 bun test tests/blackbox
 bun scripts/schema.ts workspace
 bun scripts/benchmark.ts 24
+bun scripts/work-smoke.ts
+bun scripts/workflow-smoke.ts
+bun scripts/work-agent-smoke.ts
 ```
 
-Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `agents` or `flags`; each schema is owned by its package. [Runtime limits](docs/LIMITS.md), [pool measurements](docs/pool-benchmark.json).
+Blackbox tests pack and install the packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `agents` or `flags`; each schema is owned by its package. See [Workflow verification](docs/workflow-spike.md), [runtime limits](docs/LIMITS.md) and [pool measurements](docs/pool-benchmark.json).

@@ -44,7 +44,7 @@
         ]
       }
     ],
-    "SubagentStart": [
+    "PreToolUse": [
       {
         "hooks": [
           {
@@ -55,7 +55,18 @@
         ]
       }
     ],
-    "SubagentStop": [
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hook.ts\" claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
       {
         "hooks": [
           {

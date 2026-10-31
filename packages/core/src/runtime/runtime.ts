@@ -1,3 +1,4 @@
+/* oxlint-disable import/max-dependencies -- Runtime composes core services and invocation scope. */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { DepGraph, DepGraphCycleError } from "dependency-graph";
@@ -7,10 +8,10 @@ import { Fault, requireValue } from "../core/json.ts";
 import { namedQuerySchema, type NamedQuery } from "../core/query.ts";
 import { Graph, type GraphEvent } from "../core/store.ts";
 import { Bins } from "./bins.ts";
-import { parseArgs, validateCommand } from "./cli.ts";
+import { parseArgs, validateCommand, type Command } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
-// oxlint-disable-next-line import/max-dependencies -- Runtime composes core services and invocation scope.
+import { Events } from "./events.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
@@ -25,7 +26,7 @@ const unavailable: Processes = {
   acknowledge: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
 };
 
-const metaOps = new Set(["help", "about", "prime", "primer"]);
+const metaOps = new Set(["help", "about", "prime"]);
 
 export function isStream(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
@@ -43,6 +44,7 @@ export class Runtime {
   private readonly started: Resource[] = [];
   private readonly subscribers: ((event: GraphEvent) => Promise<void> | void)[] = [];
   private eventQueue = Promise.resolve();
+  private readonly events: Events;
   private phase: "registering" | "starting" | "ready" | "stopping" | "stopped" = "registering";
 
   constructor(options: {
@@ -69,6 +71,16 @@ export class Runtime {
     this.scheduler = new Scheduler(this.graph, clock, (error) => {
       this.errors.push(error);
     });
+    this.events = new Events(
+      this.graph,
+      clock,
+      (error) => {
+        this.errors.push(error);
+      },
+      (action) => {
+        this.eventQueue = this.eventQueue.then(action);
+      },
+    );
 
     this.context = {
       workspace: options.workspace ?? process.cwd(),
@@ -110,6 +122,14 @@ export class Runtime {
 
         this.subscribers.push(handler);
       },
+      registerEvent: (event) => {
+        this.collecting();
+        this.events.register(event);
+      },
+      on: (event, handler) => this.events.on(event, handler),
+      emit: (event, data) => {
+        this.events.emit(event, data);
+      },
       bin: (name, bin) => {
         this.collecting();
 
@@ -118,6 +138,7 @@ export class Runtime {
     };
 
     this.context.register(bins.operation());
+    this.context.register(this.events.operations());
   }
 
   async start(extensions: Extension[]): Promise<void> {
@@ -178,24 +199,50 @@ export class Runtime {
   }
 
   discovery(name?: string, tier = "help", path: string[] = []): unknown {
+    if (tier !== "help" && name === undefined)
+      throw new Fault("discovery", `${tier} requires an operation: bl ${tier} OP`);
     const ops =
       name === undefined
         ? [...this.ops.values()]
         : [requireValue(this.ops.get(name), `Unknown op: ${name}`)];
+
     return ops.map((op) => {
       let command = op.cli;
       for (const part of path)
         command = requireValue(command.commands?.[part], `Unknown subcommand: ${part}`);
-      return {
-        name: op.name,
-        cli: command,
-        stream: op.stream,
-        deadline: op.deadline,
-        ...(tier === "about" || tier === "prime" || tier === "primer"
-          ? { about: op.about ?? "", jsonSchema: op.jsonSchema?.() ?? null }
-          : {}),
-        ...(tier === "prime" || tier === "primer" ? { primer: op.primer ?? "" } : {}),
-      };
+
+      const scope = { name: op.name, path };
+      switch (tier) {
+        case "help":
+          return {
+            ...scope,
+            cli:
+              name === undefined ? { description: command.description } : discloseCommand(command),
+            stream: op.stream,
+            deadline: op.deadline,
+            ...(name !== undefined && path.length === 0
+              ? { jsonSchema: op.jsonSchema?.() ?? null }
+              : {}),
+          };
+        case "about":
+          return {
+            ...scope,
+            about:
+              path.length === 0
+                ? (op.about ?? null)
+                : `No conceptual guidance is declared for ${[op.name, ...path].join(" ")}.`,
+          };
+        case "prime":
+          return {
+            ...scope,
+            primer:
+              path.length === 0
+                ? (op.primer ?? `No runbook is declared for ${op.name}.`)
+                : `No runbook is declared for ${[op.name, ...path].join(" ")}.`,
+          };
+        default:
+          throw new Fault("discovery", `Unknown discovery tier: ${tier}`);
+      }
     });
   }
   async invoke(
@@ -330,11 +377,11 @@ export class Runtime {
           } finally {
             cancel();
             controller.abort(new Fault("cancelled", "Stream closed"));
-            const closing = invocationEnv.run(env, () => iterator.return?.());
-            if (closing !== undefined)
-              void Promise.resolve(closing).catch((error: unknown) => {
-                errors.push(error);
-              });
+            try {
+              await invocationEnv.run(env, () => iterator.return?.());
+            } catch (error) {
+              errors.push(error);
+            }
           }
         }
         return timed();
@@ -350,7 +397,11 @@ export class Runtime {
 
   async drain(): Promise<void> {
     await this.scheduler.drain();
-    await this.eventQueue;
+    for (;;) {
+      const pending = this.eventQueue;
+      await pending;
+      if (pending === this.eventQueue) return;
+    }
   }
 
   async stop(): Promise<void> {
@@ -367,7 +418,8 @@ export class Runtime {
       }
     }
 
-    await this.eventQueue;
+    await this.drain();
+    this.events.close();
     this.graph.close();
     this.phase = "stopped";
     if (errors.length > 0) throw new AggregateError(errors, "Resource shutdown failed");
@@ -393,6 +445,26 @@ export class Runtime {
 }
 
 // -- Private helpers --
+
+function discloseCommand(command: Command): Command {
+  if (command.commands === undefined) return command;
+
+  return {
+    description: command.description,
+    ...(command.examples === undefined ? {} : { examples: command.examples }),
+    ...(command.selector === undefined ? {} : { selector: command.selector }),
+    ...(command.value === undefined ? {} : { value: command.value }),
+    commands: Object.fromEntries(
+      Object.entries(command.commands).map(([name, child]) => [
+        name,
+        {
+          description: child.description,
+          ...(child.value === undefined ? {} : { value: child.value }),
+        },
+      ]),
+    ),
+  };
+}
 
 function zStringArray(input: unknown): string[] {
   const parsed = argvSchema.safeParse(input);

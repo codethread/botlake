@@ -4,6 +4,9 @@ import { Fault } from "@botlake/core";
 import { z } from "zod";
 
 import { definitionSchema, type Definition } from "./definition.ts";
+import { semanticVersion, workflowLocatorSchema, type Locator } from "./node-model.ts";
+
+export type { Locator } from "./node-model.ts";
 
 const FIRST = 0;
 const NONEMPTY = 1;
@@ -15,9 +18,6 @@ const dependencyFiles = new Set([
   "pnpm-lock.yaml",
   "yarn.lock",
 ]);
-const text = z.string().min(NONEMPTY);
-const semanticVersion =
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const nameSchema = z.compile(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u));
 const manifestSchema = z.compile(
   z.strictObject({
@@ -30,20 +30,7 @@ const manifestSchema = z.compile(
   }),
 );
 
-export const locatorSchema = z.compile(
-  z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("named"),
-      name: text,
-      version: z.string().trim().regex(semanticVersion, "Expected a full semantic version"),
-      hash: text,
-    }),
-    z.strictObject({ kind: z.literal("file"), source: text, hash: text }),
-  ]),
-);
-
 export type Selection = { kind: "named"; name: string } | { kind: "file"; source: string };
-export type Locator = z.infer<typeof locatorSchema>;
 export interface LoadedDefinition {
   definition: Definition;
   locator: Locator;
@@ -109,7 +96,7 @@ export function workflowCatalogue(workspace: string, files: WorkflowFileIO): Cat
     },
 
     async restore(locator) {
-      const parsed = locatorSchema.parse(locator);
+      const parsed = workflowLocatorSchema.parse(locator);
       if (parsed.kind === "named") {
         const selected = await namedSource(root, parsed.name, files);
         if (selected.version !== parsed.version)

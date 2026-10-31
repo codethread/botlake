@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { jsonSchema, q } from "@botlake/core";
-import { provider } from "@botlake/extension-agents";
+import { agentAttributes, provider } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
@@ -37,9 +37,15 @@ const settingSchema = z.compile(
 const runListSchema = z.compile(z.array(runSchema));
 const host = await system();
 const owned: string[] = [];
+const tmuxSockets: string[] = [];
 const evidence: unknown[] = [];
 const marker = "BL_NATIVE_SMOKE";
-const prompt = `Do not use tools or edit files. Reply with ${marker} followed by your exact Botlake identity from your system/developer context.`;
+const prompt = `The fixture contents have changed for this probe. Use tools to freshly read activity-fixture.txt and attempt to read intentionally-missing-fixture.txt (the latter is deliberately absent). Do not edit files, delegate, or create tasks. Reply with ${marker}, the exact current fixture contents, and your exact Botlake identity from your system/developer context.`;
+const activitySchema = z.object({
+  stream: z.object({ id: z.string(), sessionId: z.string(), sessionPath: z.string().nullable() }),
+  recent: z.array(z.object({ kind: z.string(), summary: z.string() })),
+  latestUsage: z.unknown(),
+});
 
 try {
   const workspace = await host.workspace("native-smoke", [
@@ -64,7 +70,7 @@ try {
       await credential(join(original, "models.json"), join(home, "models.json"));
       await Bun.write(join(home, "settings.json"), "{}");
       settings[name] = {
-        model: process.env["BL_SMOKE_PI_MODEL"] ?? "openai-codex/gpt-5.6-luna",
+        model: process.env["BL_SMOKE_PI_MODEL"] ?? "openai-codex/gpt-6-luna",
         extraArgs: [
           "--no-extensions",
           "--extension",
@@ -73,7 +79,8 @@ try {
           "--no-prompt-templates",
           "--no-context-files",
           "--no-themes",
-          "--no-tools",
+          "--tools",
+          "read",
           "--offline",
           "--session-dir",
           join(home, "sessions"),
@@ -92,7 +99,7 @@ try {
         '[features]\nplugins = true\nhooks = true\nremote_plugin = false\n\n[plugins."botlake-identity@botlake"]\nenabled = true\n',
       );
       settings[name] = {
-        model: process.env["BL_SMOKE_CODEX_MODEL"] ?? "gpt-5.6-luna",
+        model: process.env["BL_SMOKE_CODEX_MODEL"] ?? "gpt-6-luna",
         extraArgs: ["--sandbox", "read-only", "--dangerously-bypass-hook-trust", "--ignore-rules"],
         env: { CODEX_HOME: home, CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG: "1" },
       };
@@ -125,25 +132,60 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     return runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
   }
   function lifecycle(run: z.infer<typeof runSchema>): void {
-    const observed = observationSchema.parse(run.attributes["agent/observation"]);
-    if (run.attributes["agent/provider"] === "pi") nonEmptyTextSchema.parse(observed.thinkingLevel);
+    const observed = observationSchema.parse(run.attributes[agentAttributes.observation]);
+    if (run.attributes[agentAttributes.provider] === "pi")
+      nonEmptyTextSchema.parse(observed.thinkingLevel);
   }
-  function verify(run: z.infer<typeof runSchema>): void {
-    check(run.attributes["agent/substatus"] === "completed", JSON.stringify(run));
+  function verify(run: z.infer<typeof runSchema>, fixture: string): void {
+    check(run.attributes[agentAttributes.substatus] === "completed", JSON.stringify(run));
     lifecycle(run);
     check(
-      run.attributes["agent/integration"] === "native",
+      run.attributes[agentAttributes.integration] === "native",
       `Plugin did not bind: ${JSON.stringify(run)}`,
     );
-    const result = textSchema.parse(run.attributes["agent/result"]);
+    const result = textSchema.parse(run.attributes[agentAttributes.result]);
     check(result.includes(marker), `Missing probe answer: ${result}`);
+    check(result.includes(fixture), `Agent did not read the fresh fixture: ${result}`);
     check(
-      result.includes(textSchema.parse(run.attributes["agent/identity"])),
+      result.includes(textSchema.parse(run.attributes[agentAttributes.identity])),
       `Identity context missing: ${result}`,
     );
   }
+  async function runActivity(run: z.infer<typeof runSchema>) {
+    const activity = activitySchema.parse(
+      await host.bl("native-smoke", "agent", {
+        command: "activity",
+        operation: "peek",
+        id: run.id,
+        limit: 100,
+      }),
+    );
+    check(
+      activity.recent.some((event) => event.kind === "tool-started"),
+      `No tool start: ${JSON.stringify(activity)}`,
+    );
+    check(
+      activity.recent.some((event) => event.kind === "tool-ended"),
+      `No tool end: ${JSON.stringify(activity)}`,
+    );
+    check(
+      activity.recent.some((event) => event.kind === "message"),
+      `No visible message: ${JSON.stringify(activity)}`,
+    );
+    check(
+      activity.stream.sessionId === run.attributes[agentAttributes.sessionId],
+      "Activity session mismatch",
+    );
+    check(
+      activity.stream.sessionPath !== null &&
+        (await Bun.file(activity.stream.sessionPath).exists()),
+      `Missing native transcript: ${activity.stream.sessionPath}`,
+    );
+    return activity;
+  }
   for (const name of names) {
     process.stderr.write(`Testing ${name} Luna: managed start, resume, direct native session\n`);
+    const firstFixture = await freshFixture(workspace);
     const started = idSchema.parse(
       await host.bl("native-smoke", "agent", {
         command: "start",
@@ -155,23 +197,29 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
 
     owned.push(started.id);
     const first = await settled(started.id);
-    verify(first);
+    verify(first, firstFixture);
+    const firstActivity = await runActivity(first);
+    const continuationFixture = await freshFixture(workspace);
     const resumed = idSchema.parse(
       await host.bl("native-smoke", "agent", { command: "resume", id: first.id, prompt }),
     );
     owned.push(resumed.id);
     const continuation = await settled(resumed.id);
-    verify(continuation);
+    verify(continuation, continuationFixture);
+    const continuationActivity = await runActivity(continuation);
     check(
-      first.attributes["agent/session-id"] === continuation.attributes["agent/session-id"],
+      first.attributes[agentAttributes.sessionId] ===
+        continuation.attributes[agentAttributes.sessionId],
       "Resume changed native session",
     );
     check(
-      first.attributes["agent/identity"] === continuation.attributes["agent/identity"],
+      first.attributes[agentAttributes.identity] ===
+        continuation.attributes[agentAttributes.identity],
       "Resume changed identity",
     );
     const setting = settingSchema.parse(settings[name]);
 
+    const directFixture = await freshFixture(workspace);
     const definition = {
       provider: name,
       cwd: workspace,
@@ -183,7 +231,8 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     };
     const plan = provider(name).prepare(definition);
 
-    const stdout = await exec(
+    const stdout = await inTmux(
+      name,
       plan.command,
       workspace,
       {
@@ -197,30 +246,37 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
         BL_AGENT_SEAT: undefined,
         BL_MODEL: undefined,
         BL_EFFORT: undefined,
+        PI_SUBAGENT: undefined,
+        PI_SUBAGENT_CHILD: undefined,
       },
       plan.stdin,
     );
     const outcome = provider(name).finish(definition, 0, stdout, "");
     check(outcome.success, JSON.stringify(outcome));
+    check(
+      outcome.result?.includes(directFixture) === true,
+      "Native agent did not read the fresh fixture",
+    );
     const [external] = runListSchema.parse(
       await host.bl("native-smoke", "list", {
         where: q.and(
-          q.eq(q.attr("agent/external"), true),
-          q.eq(q.attr("agent/provider"), name),
-          q.eq(q.attr("agent/session-id"), outcome.sessionId),
+          q.eq(q.attr(agentAttributes.external), true),
+          q.eq(q.attr(agentAttributes.provider), name),
+          q.eq(q.attr(agentAttributes.sessionId), outcome.sessionId),
         ),
         lean: false,
       }),
     );
     check(external !== undefined, "Direct native session was not registered");
     lifecycle(external);
-    const identity = textSchema.parse(external.attributes["agent/identity"]);
+    const externalActivity = await runActivity(external);
+    const identity = textSchema.parse(external.attributes[agentAttributes.identity]);
     check(
-      outcome.result?.includes(identity) === true,
+      outcome.result.includes(identity),
       `Direct native identity context mismatch: expected ${identity}, received ${JSON.stringify(outcome.result)}`,
     );
     check(
-      external.attributes["agent/settled"] === undefined,
+      external.attributes[agentAttributes.settled] === undefined,
       "External observation claimed settlement",
     );
     const stop = await host.bl(
@@ -240,6 +296,11 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       first,
       continuation,
       external,
+      activity: {
+        first: firstActivity,
+        continuation: continuationActivity,
+        external: externalActivity,
+      },
     });
     process.stderr.write(`${name}: passed\n`);
   }
@@ -248,14 +309,27 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     `${JSON.stringify({ at: new Date().toISOString(), evidence }, null, 2)}\n`,
   );
   process.stdout.write(`${JSON.stringify({ result: "passed", output, providers: names })}\n`);
+} catch (error) {
+  await Bun.write(
+    output,
+    `${JSON.stringify({ result: "failed", error: String(error), evidence }, null, 2)}\n`,
+  );
+  throw error;
 } finally {
   try {
     for (const id of owned) {
       const run = runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
-      if (run.attributes["agent/settled"] !== true)
+      if (run.attributes[agentAttributes.settled] !== true)
         await host.bl("native-smoke", "agent", { command: "cancel", id });
     }
   } finally {
+    for (const socket of tmuxSockets) {
+      const cleanup = Bun.spawn(["tmux", "-S", socket, "kill-server"], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      await cleanup.exited;
+    }
     await host.close();
   }
 }
@@ -271,6 +345,108 @@ async function credential(source: string, target: string): Promise<void> {
     await copyFile(source, target);
     await chmod(target, 0o600);
   }
+}
+
+async function freshFixture(cwd: string): Promise<string> {
+  const value = `BL_RUN_ACTIVITY_TOOL_${crypto.randomUUID()}`;
+  await Bun.write(join(cwd, "activity-fixture.txt"), `${value}\n`);
+  return value;
+}
+
+async function inTmux(
+  name: string,
+  command: string[],
+  cwd: string,
+  env: Record<string, string | undefined>,
+  stdin: string,
+): Promise<string> {
+  const socket = join(host.dir, `${name}.tmux.sock`);
+  const session = `agent-run-activity-${name}`;
+  const launcher = join(host.dir, `${name}-launch.ts`);
+  const manifest = join(host.dir, `${name}-launch.json`);
+  const stdout = join(host.dir, `${name}-stdout`);
+  const stderr = join(host.dir, `${name}-stderr`);
+  const status = join(host.dir, `${name}-exit.json`);
+  const environment = Object.fromEntries(
+    [
+      "BL_HOME",
+      "BL_CORE",
+      "BL_BIN",
+      "PATH",
+      "CODEX_HOME",
+      "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG",
+      "PI_CODING_AGENT_DIR",
+      "BL_WORKSPACE",
+      "BL_RUN_REFERENCE",
+      "BL_NATIVE_SESSION_ID",
+      "BL_NATIVE_PROVIDER",
+      "BL_ACTOR",
+      "BL_AGENT_SEAT",
+      "BL_MODEL",
+      "BL_EFFORT",
+      "BL_AUDIENCE",
+      "PI_SUBAGENT",
+      "PI_SUBAGENT_CHILD",
+    ].map((key) => [key, env[key] ?? null]),
+  );
+  await Bun.write(
+    manifest,
+    JSON.stringify({ command, cwd, stdin, stdout, stderr, status, socket, environment }),
+  );
+  await Bun.write(
+    launcher,
+    `const plan=await Bun.file(${JSON.stringify(manifest)}).json();
+process.stdout.write("Starting native activity probe\\n");
+const env={...process.env,...Object.fromEntries(Object.entries(plan.environment).map(([key,value])=>[key,value===null?undefined:value]))};
+const child=Bun.spawn(plan.command,{cwd:plan.cwd,env,stdin:new Blob([plan.stdin]),stdout:Bun.file(plan.stdout),stderr:Bun.file(plan.stderr)});
+const code=await child.exited;await Bun.write(plan.status,JSON.stringify({code}));
+process.stdout.write("Native activity probe exited "+code+"\\n");
+await Bun.spawn(["tmux","-S",plan.socket,"wait-for","-S","finished"]).exited;`,
+  );
+  tmuxSockets.push(socket);
+  await exec(
+    [
+      "tmux",
+      "-S",
+      socket,
+      "new-session",
+      "-d",
+      "-s",
+      session,
+      "-c",
+      cwd,
+      `exec bun '${launcher.replaceAll("'", "'\\''")}'`,
+    ],
+    cwd,
+    env,
+  );
+  await exec(
+    ["tmux", "-S", socket, "set-window-option", "-t", session, "remain-on-exit", "on"],
+    cwd,
+    env,
+  );
+  const started = await exec(
+    ["tmux", "-S", socket, "capture-pane", "-p", "-t", session, "-S", "-30"],
+    cwd,
+    env,
+  );
+  process.stderr.write(`${session}: ${started.trim()}\n`);
+  await exec(["tmux", "-S", socket, "wait-for", "finished"], cwd, env);
+  const stopped = await exec(
+    ["tmux", "-S", socket, "capture-pane", "-p", "-t", session, "-S", "-30"],
+    cwd,
+    env,
+  );
+  process.stderr.write(`${session}: ${stopped.trim()}\n`);
+  const result = z.object({ code: z.number() }).parse(await Bun.file(status).json());
+  const error = await Bun.file(stderr).text();
+  check(
+    result.code === 0 &&
+      !error.includes("Botlake tracking unavailable") &&
+      !error.includes("Botlake native adapter failed"),
+    `Native tmux probe failed: ${error}`,
+  );
+  return Bun.file(stdout).text();
 }
 
 async function exec(command: string[], cwd: string, env = host.env, stdin = ""): Promise<string> {

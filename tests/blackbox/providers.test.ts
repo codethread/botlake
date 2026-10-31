@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { chmod } from "node:fs/promises";
 import { join } from "node:path";
 
+import { agentAttributes } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
@@ -72,7 +73,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
       for (let attempt = 0; attempt < 100; attempt++) {
         await host.bl("providers", "agent", { command: "reconcile" });
         const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
-        if (run.attributes["agent/settled"] === true) return run;
+        if (run.attributes[agentAttributes.settled] === true) return run;
       }
       throw new Error(`Provider did not settle: ${id}`);
     }
@@ -87,21 +88,25 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
           }),
         );
         const run = await settled(started.id);
-        expect(run.attributes["agent/state"]).toBe(scenario === "complete" ? "stopped" : "failed");
-        expect(run.attributes["agent/substatus"]).toBe(
+        expect(run.attributes[agentAttributes.state]).toBe(
+          scenario === "complete" ? "stopped" : "failed",
+        );
+        expect(run.attributes[agentAttributes.substatus]).toBe(
           scenario === "complete" ? "completed" : "execution",
         );
         if (name === "claude" && scenario === "truncated") {
-          expect(run.attributes["agent/result"]).toBeUndefined();
+          expect(run.attributes[agentAttributes.result]).toBeUndefined();
         } else {
-          expect(run.attributes["agent/result"]).toBe(name === "pi" ? "first\n\nsecond" : "answer");
+          expect(run.attributes[agentAttributes.result]).toBe(
+            name === "pi" ? "first\n\nsecond" : "answer",
+          );
         }
         if (scenario === "truncated" && name !== "claude") {
-          expect(run.attributes["agent/session-confirmed"]).toBe(true);
-          expect(run.attributes["agent/error"]).toContain("JSONL");
+          expect(run.attributes[agentAttributes.sessionConfirmed]).toBe(true);
+          expect(run.attributes[agentAttributes.error]).toContain("JSONL");
         }
         if (scenario === "no-session")
-          expect(run.attributes["agent/error"]).toContain(
+          expect(run.attributes[agentAttributes.error]).toContain(
             name === "codex" ? "no thread id" : "no session id",
           );
         if (scenario === "complete") {
@@ -113,9 +118,9 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
             }),
           );
           const continuation = await settled(resumed.id);
-          expect(continuation.attributes["agent/state"]).toBe("stopped");
-          expect(continuation.attributes["agent/session-id"]).toBe(
-            run.attributes["agent/session-id"],
+          expect(continuation.attributes[agentAttributes.state]).toBe("stopped");
+          expect(continuation.attributes[agentAttributes.sessionId]).toBe(
+            run.attributes[agentAttributes.sessionId],
           );
         }
       }

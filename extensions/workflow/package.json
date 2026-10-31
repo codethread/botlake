@@ -21,6 +21,7 @@
   },
   "peerDependencies": {
     "@botlake/core": "workspace:^",
-    "@botlake/extension-identity": "workspace:^"
+    "@botlake/extension-identity": "workspace:^",
+    "@botlake/extension-work": "workspace:^"
   }
 }

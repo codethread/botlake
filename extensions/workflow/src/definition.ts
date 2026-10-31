@@ -12,9 +12,14 @@ const contextSchema = z.compile(z.record(z.string(), z.unknown()));
 export const resolvedTaskSchema = z.compile(
   z
     .object({
-      acceptanceCriteria: z.string().optional(),
+      acceptanceCriteria: z.array(text).optional(),
+      notes: z.string().optional(),
+      assignee: text.optional(),
+      audience: z.enum(["AFK", "HITL"]).optional(),
       commands: commandsSchema.optional(),
       instructions: z.string(),
+      origin: z.enum(["planned", "unplanned"]).optional(),
+      priority: z.enum(["P0", "P1", "P2", "P3", "P4"]).optional(),
       title: text,
     })
     .catchall(jsonSchema),

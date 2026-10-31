@@ -1,5 +1,5 @@
 {
-  "name": "@botlake/extension-workflow-kanban",
+  "name": "@botlake/extension-work",
   "version": "0.1.0",
   "files": [
     "src",
@@ -17,7 +17,6 @@
   },
   "peerDependencies": {
     "@botlake/core": "workspace:^",
-    "@botlake/extension-kanban": "workspace:^",
-    "@botlake/extension-workflow": "workspace:^"
+    "@botlake/extension-identity": "workspace:^"
   }
 }

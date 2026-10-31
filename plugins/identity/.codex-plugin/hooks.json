@@ -45,19 +45,18 @@
         ]
       }
     ],
-    "SubagentStart": [
+    "PreToolUse": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "bun \"${PLUGIN_ROOT}/hook.ts\" codex",
-            "timeout": 10,
-            "additionalContextLimit": 4096
+            "timeout": 10
           }
         ]
       }
     ],
-    "SubagentStop": [
+    "PostToolUse": [
       {
         "hooks": [
           {

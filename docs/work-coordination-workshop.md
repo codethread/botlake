@@ -150,4 +150,4 @@ Search results identify potentially relevant work; an explicit relationship reco
 4. Define criterion resolution/correction contracts, notes and search ergonomics, and readiness, responsibility, and agent-facing views.
 5. Choose criterion storage only after identifying whether independent identity and graph relationships are required. A status or a different assessor alone does not require a separate node.
 
-The existing implementation is described in the [workflow spike](workflow-spike.md) and [work blockage protocol](work-blockages.md). Its Core lifecycle, Kanban lanes, and XState visits are the starting comparison, not constraints on this design.
+The Kanban/blockage spike used during this workshop is retained in Git history. The [approved PRD](prd/work-coordination.md) and [current workflow verification](workflow-spike.md) supersede that implementation.

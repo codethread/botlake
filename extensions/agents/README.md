@@ -124,7 +124,7 @@ export default agents({
 
 `SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`.
 
-Managed Botlake launches always have audience `agent`. Known native subagents are also `agent`, ignoring inherited `BL_AUDIENCE`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
+Managed Botlake launches always have audience `agent`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
 
 For a direct shell launch, keep the override scoped rather than exporting it globally:
 
@@ -133,11 +133,11 @@ human() { BL_AUDIENCE=human "$@"; }
 human pi
 ```
 
-Botlake only scrubs processes it launches. Other provider/tool subprocesses may inherit `BL_AUDIENCE`; adapters ignore it for known native subagents. Audience describes the intended recipient, not whether a session has a UI.
+Botlake only scrubs processes it launches. Other provider/tool subprocesses may inherit `BL_AUDIENCE`. Audience describes the intended recipient, not whether a session has a UI.
 
 Managed runs use only the selected alias candidate's explicit prompt. Omission or `""` adds none, even when the parent has a prompt; string aliases do not inherit prompts either. Callbacks run after model/effort resolution and their text is frozen across replay, retry and resume. Catalog inspection does not evaluate callbacks; detail marks them `{ "dynamic": true }`.
 
-Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed native adapter and a reachable lake. Pi refreshes before each turn; Claude/Codex deliver at session/child startup. Native metadata takes precedence over caller environment defaults. Managed sessions never receive this unmanaged prompt. Identity, task guidance and the host's base prompt remain separate.
+Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed native adapter and a reachable lake. Pi refreshes before each turn; Claude/Codex deliver at session startup. Native metadata takes precedence over caller environment defaults. Managed sessions never receive this unmanaged prompt. Identity, task guidance and the host's base prompt remain separate.
 
 ## Provider strategies
 
@@ -145,7 +145,81 @@ Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed 
 
 Each `Provider` supplies `name`, catalog `doc`, `prepare(run)` and `finish(run, exitCode, stdout, stderr)`. `ProviderRun` carries portable settings (`model`, `effort`, `extraArgs`, resolved `systemPrompt`) plus prompt and cwd. Fresh launches have no session ID; resumes carry a previously observed native ID. The strategy maps these to native flags in a `LaunchPlan` and parses native output into an `Outcome`; the runtime owns custody, persistence and native identity binding.
 
-`SessionContext`, `SystemPrompt`, `Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts are public exports.
+`SessionContext`, `SystemPrompt`, `Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts are public exports. `Agents.readActivity(input: ActivityRead)` exposes activity reads; stream mutation and SQL row decoders stay internal.
+
+## Node model
+
+`node-model.ts` exports `agentAttributes`, `agentRelations` and the lifecycle/run/launch/activity schemas. Consumers use the package's public exports. `agentLiveness(runSnapshot)` interprets current or committed custody and native activity evidence; an unsettled process or a quiet session is not proof of exit. `agentActivityObservationSchema` is the partial activity projection, not the complete stored metadata contract.
+
+```mermaid
+classDiagram
+  class Identity
+  class Run
+  class Task
+  class ActivityHandle
+  Identity --> Run : performed
+  Run --> Run : continues
+  Run --> Task : serves
+  ActivityHandle --> Run : records run
+  ActivityHandle --> Identity : records identity
+```
+
+Identity retains session attribution and last-reported activity across runs. A resumed run continues an earlier run. `serves` records the task a run was launched for; Work owns the current assignment separately. Work Agents binds that assignment's exact token to a run/invocation before applying release policy. Managed custody settlement and external native session-end evidence retain distinct meanings.
+
+## Managed run lifecycle
+
+Agents uses a pure XState machine. `agent/lifecycle` stores its state value; `agent/state`, `agent/substatus`, `agent/settled` and the graph node state are projections written in the same transaction. Process launch, cancellation and output reading remain in Botlake's custody adapter and run reconciler. Restoring the machine executes no effects.
+
+| Lifecycle | Custody | Next action |
+| --- | --- | --- |
+| `pending` | Not launched | Launch when the target is ready, or abandon |
+| `running` | Outstanding | Observe process evidence |
+| `awaitingExit` | Stop uncertain | Reconcile; retain assignment |
+| `reconciling` | Evidence unavailable | Reconcile; retain assignment |
+| `completed`, `cancelled`, `abandoned` | Settled | Resume a verified session as a new run, where available |
+| `preparationFailed`, `launchFailed`, `executionFailed`, `sessionFailed` | Settled | Explicit retry, subject to request/target restrictions |
+
+```mermaid
+flowchart LR
+  Pending["pending"] --> Launched["running / awaitingExit / reconciling"]
+  Pending --> Abandoned["abandoned"]
+  Pending --> Preparation["preparationFailed"]
+  Launched --> Success["completed / cancelled"]
+  Launched --> Failure["launchFailed / executionFailed / sessionFailed"]
+  Preparation -- retry --> Pending
+  Failure -- retry --> Pending
+```
+
+All three launched states accept subsequent custody evidence. An uncertain stop or reconciliation failure cannot enable retry or release an assignment. A retry keeps the run ID and creates a new invocation; native callbacks and Work Agents bindings remain fenced to their invocation and assignment token. External sessions retain their separate native activity observations and have no managed lifecycle. Inactivity is not an event in this machine; stall policy remains separate.
+
+Acknowledgement also succeeds for settled runs that never launched, without querying process custody. Retry clears the previous invocation's acknowledgement.
+
+## Run activity
+
+Native plugins supply small observations for search and liveness inspection. `run_activity` stores a stream header; `run_activity_events` stores received turn boundaries, tool calls, visible message excerpts and reported usage. SQLite FTS5 indexes excerpts. The graph handle has the same ID as its header and links to its run and observed identity. Managed retries create separate handles per invocation. Provider stdout still supplies results and custody evidence; it is not an activity feed.
+
+```sh
+bl agent activity peek RUN_ID
+bl agent activity peek IDENTITY_NAME
+bl agent activity list ACTIVITY_HANDLE --limit 20
+bl agent activity list ACTIVITY_HANDLE --after NEXT_CURSOR
+bl agent activity search "VPN access"
+bl agent activity search "VPN access" --target RUN_ID
+```
+
+A run ID selects its current invocation; an identity selects its latest stream. A handle selects that exact stream, including after expiry. Without a target, search/pages cover all retained events. `nextCursor` is a received sequence, not a time or offset. Peek returns recent events, tool starts without an observed end, elapsed time since the latest recorded activity event and the latest scoped usage report. Results are observations, not proof of useful progress; `completed` means a tool returned, not that its intended outcome succeeded.
+
+Structured requests use `command: "activity"` with `operation: "list"`, `"search"` or `"peek"`. List/search accept `after` and `limit`; search requires `query`. Peek requires `id` and accepts only `limit`.
+
+Messages and tool summaries are capped at 2,048 characters and carry `truncated`; tool output and reasoning are not copied. The header retains native `sessionId` and `sessionPath` for the complete native transcript. A missing hook or transcript reference stays unknown. The adapters translate host payloads without reading transcript content. Native subagents are represented only by their caller's tool events; their sessions are not registered or inspected.
+
+Pi reports message-level token counts and cost when supplied by its harness. Missing values remain null, zero remains zero, and reported cost is retained without recalculating prices. Usage carries `message`, `turn` or `session` scope; peek does not add cumulative and incremental reports together. Codex/Claude hooks currently supply tools and available user/final assistant text, without usage reports. See the [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude hooks](https://code.claude.com/docs/en/hooks) and [Pi extension events](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
+
+```ts
+agents({ activity: { retentionMs: 7 * 24 * 60 * 60 * 1000 } }); // Default: seven days.
+```
+
+TTL starts at managed custody settlement or an external native session end. Quiet live streams do not expire. At expiry, one transaction deletes the entire stream's events and search entries; the existing header becomes its single tombstone, retaining dates, event count and native reference. The graph handle and links remain. Expiry wakes recover on restart; late observations cannot repopulate a tombstone. A new external session start creates a new stream.
 
 ## Native integration
 

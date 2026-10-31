@@ -70,12 +70,12 @@ export async function system(): Promise<System> {
     "batteries",
     "identity",
     "diary",
-    "kanban",
     "cron",
     "flags",
     "agents",
+    "work",
+    "work-agents",
     "workflow",
-    "workflow-kanban",
   ])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
@@ -84,6 +84,7 @@ export async function system(): Promise<System> {
   await install(engine, { "@botlake/core": core });
   const env = {
     ...process.env,
+    BL_ACTOR: "fixture",
     BL_HOME: home,
     BL_CORE: join(engine, "node_modules/@botlake/core"),
     BL_BIN: blBin,

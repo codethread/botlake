@@ -1,19 +1,23 @@
 import { jsonSchema, defineOp, q, type Context, type Node } from "@botlake/core";
-import { agentMetadata, registrationSchema, sessionAudience } from "@botlake/native-session";
+import { registrationSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { runStateSchema, startSchema, type Agents } from "./runs.ts";
+import { activityReadSchema } from "./activity.ts";
+import { agentAttributes, agentRunStateSchema } from "./node-model.ts";
+import { startSchema, type Agents } from "./runs.ts";
 
 const text = z.compile(z.string().min(1));
 const listSchema = z.compile(
   z.strictObject({
     command: z.literal("list"),
-    state: runStateSchema.optional(),
+    state: agentRunStateSchema.optional(),
     limit: z.number().int().min(1).max(100).default(20),
     offset: z.number().int().min(0).default(0),
   }),
 );
+const [listActivity, searchActivity, peekActivity] = activityReadSchema.options;
+const activityCommand = { command: z.literal("activity") };
 
 export function registerAgent(ctx: Context, service: Agents): void {
   const input = z.compile(
@@ -21,6 +25,11 @@ export function registerAgent(ctx: Context, service: Agents): void {
       startSchema.extend({ command: z.literal("start") }),
       listSchema,
       z.strictObject({ command: z.literal("show"), id: text }),
+      z.discriminatedUnion("operation", [
+        listActivity.extend(activityCommand),
+        searchActivity.extend(activityCommand),
+        peekActivity.extend(activityCommand),
+      ]),
       z.strictObject({
         command: z.literal("catalog"),
         name: text.optional(),
@@ -43,10 +52,13 @@ export function registerAgent(ctx: Context, service: Agents): void {
   ctx.register(
     defineOp({
       name: "agent",
+      about:
+        "Managed runs own process custody and an invocation-fenced lifecycle. Settlement includes failure and cancellation, independently of task completion. External native sessions supply observations without stop authority; activity and output observations do not prove process liveness. Retries and resumes retain accepted provider settings.",
       primer:
-        'Use catalog to select a seat; --all includes unavailable seats, and catalog NAME expands settings and reasons. Providers require explicit agentFlags configuration. Flags affect new selection, not accepted settings, retry or resume. Start with seat, cwd and prompt; start/retry/resume/cancel return id, state, substatus and settled. List returns paged summaries; show RUN_ID (or base show) expands the full record. Native/output observations are not liveness. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1. Check reason=satisfied, then agent show RUN_ID for agent/substatus, result and error; settled includes failure and cancellation, while closed/stopped alone does not prove settled custody. Wait timeout or interruption does not stop the agent. Process completion does not complete tasks; external sessions have no settlement guarantee or stop authority.',
+        'Select a seat with bl agent catalog, then bl agent start --seat SEAT --cwd DIR --prompt TEXT. Keep the returned id. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied, then bl agent show RUN_ID for the result or error. Wait timeout does not stop the agent. Use bl agent activity peek RUN_ID for recent observations or bl agent activity search QUERY for retained excerpts; follow the native transcript reference for the complete record. Completing the process does not close its task.',
       input,
       output: jsonSchema,
+      jsonSchema: { input, output: jsonSchema },
       cli: {
         description: "Tracked agent runs and native registration",
         examples: [
@@ -55,6 +67,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           "bl agent catalog reviewer",
           "bl agent list",
           "bl agent show RUN_ID",
+          "bl agent activity peek RUN_ID",
           'bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1',
         ],
         commands: {
@@ -84,6 +97,43 @@ export function registerAgent(ctx: Context, service: Agents): void {
           show: {
             description: "Full run record, including prompts, settings, result and custody",
             positionals: [{ name: "id", type: "string", required: true }],
+          },
+          activity: {
+            description: "List, search or inspect plugin-observed run activity",
+            selector: "operation",
+            commands: {
+              list: {
+                description: "Page retained events for a target, or all streams",
+                positionals: [{ name: "target", key: "id", type: "string" }],
+                flags: {
+                  after: { type: "number", description: "Continue at nextCursor" },
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                },
+              },
+              search: {
+                description: "Search an excerpt phrase across all streams or one target",
+                positionals: [{ name: "query", type: "string", required: true }],
+                flags: {
+                  target: {
+                    key: "id",
+                    type: "string",
+                    description: "Run, identity or activity handle",
+                  },
+                  after: { type: "number", description: "Continue at nextCursor" },
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                },
+              },
+              peek: {
+                description: "Inspect recent events, outstanding tools and latest usage",
+                positionals: [{ name: "target", key: "id", type: "string", required: true }],
+                flags: {
+                  limit: {
+                    type: "number",
+                    description: "Recent events/tools (default 20, maximum 100)",
+                  },
+                },
+              },
+            },
           },
           cancel: {
             description: "Cancel owned process; return run status",
@@ -158,6 +208,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           })
           .with({ command: "list" }, (request) => listRuns(ctx, request))
           .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
+          .with({ command: "activity" }, (request) => service.readActivity(request))
           .with({ command: "catalog" }, ({ name, all }) => service.catalog(name, all))
           .with({ command: "reconcile" }, async () => {
             await service.reconcile();
@@ -180,16 +231,12 @@ export function registerAgent(ctx: Context, service: Agents): void {
           .with({ command: "acknowledge" }, async ({ id }) => {
             const run = await service.acknowledge(id);
 
-            return { id: run.id, acknowledged: run.attributes["agent/acknowledged"] };
+            return { id: run.id, acknowledged: run.attributes[agentAttributes.acknowledged] };
           })
           .with({ command: "native" }, (commandInput) => {
             const { command: _, ...request } = commandInput;
 
-            return service.native({
-              ...request,
-              ...agentMetadata(request, ctx.env.bl),
-              audience: sessionAudience(request, ctx.env.bl),
-            });
+            return service.native(request);
           })
           .exhaustive();
 
@@ -204,17 +251,18 @@ export function registerAgent(ctx: Context, service: Agents): void {
 function runStatus(run: Node) {
   return {
     id: run.id,
-    state: run.attributes["agent/state"],
-    substatus: run.attributes["agent/substatus"] ?? null,
+    state: run.attributes[agentAttributes.state],
+    substatus: run.attributes[agentAttributes.substatus] ?? null,
     // External sessions have no custody settlement observation.
-    settled: run.attributes["agent/settled"] ?? null,
+    settled: run.attributes[agentAttributes.settled] ?? null,
   };
 }
 
 function listRuns(ctx: Context, { state, limit, offset }: z.infer<typeof listSchema>) {
-  const tracked = q.eq(q.attr("agent/run"), true);
+  const tracked = q.eq(q.attr(agentAttributes.run), true);
   const runs = ctx.graph.all({
-    where: state === undefined ? tracked : q.and(tracked, q.eq(q.attr("agent/state"), state)),
+    where:
+      state === undefined ? tracked : q.and(tracked, q.eq(q.attr(agentAttributes.state), state)),
     lean: false,
   });
   const page = runs.slice(offset, offset + limit);
@@ -222,9 +270,9 @@ function listRuns(ctx: Context, { state, limit, offset }: z.infer<typeof listSch
   return {
     runs: page.map((run) => ({
       ...runStatus(run),
-      seat: run.attributes["agent/seat"] ?? null,
-      provider: run.attributes["agent/provider"],
-      identity: run.attributes["agent/identity"] ?? null,
+      seat: run.attributes[agentAttributes.seat] ?? null,
+      provider: run.attributes[agentAttributes.provider],
+      identity: run.attributes[agentAttributes.identity] ?? null,
     })),
     total: runs.length,
     nextOffset: offset + page.length < runs.length ? offset + page.length : null,

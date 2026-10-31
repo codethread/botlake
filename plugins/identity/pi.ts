@@ -1,18 +1,36 @@
-import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
-
 import {
   identityInstruction,
+  activityExcerpt,
   sessionIdentity,
   type NativeEvent,
   type NativeObservation,
+  type RunActivityDetail,
 } from "@botlake/native-session";
 import { z } from "zod";
 
+import { toolExcerpt } from "./adapters/events.ts";
 import { reportNative, sessionEnvironment, type SessionReport } from "./session.ts";
 
-const sessionHeaderSchema = z.compile(
-  z.object({ type: z.literal("session"), id: z.string().min(1) }),
+const messageSchema = z.compile(
+  z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.union([
+      z.string(),
+      z.array(z.object({ type: z.string(), text: z.string().optional() })),
+    ]),
+    usage: z.unknown().optional(),
+  }),
+);
+const tokens = z.number().int().nonnegative().optional();
+const usageSchema = z.compile(
+  z.object({
+    input: tokens,
+    output: tokens,
+    cacheRead: tokens,
+    cacheWrite: tokens,
+    totalTokens: tokens,
+    cost: z.object({ total: z.number().nonnegative() }).optional(),
+  }),
 );
 
 interface PiContext {
@@ -20,7 +38,6 @@ interface PiContext {
   sessionManager: {
     getSessionId(): string;
     getSessionFile?(): string | undefined;
-    getHeader?(): { parentSession?: string } | null;
   };
   model?: { id: string; provider?: string };
   thinkingLevel?: string;
@@ -38,6 +55,9 @@ interface PiEvents {
     systemPrompt: string;
     systemPromptOptions?: { sections: Record<string, string> };
   };
+  tool_execution_start: { toolCallId: string; toolName: string; args: unknown };
+  tool_execution_end: { toolCallId: string; toolName: string; isError: boolean };
+  message_end: { message: unknown };
 }
 interface PiApi {
   on<K extends keyof PiEvents>(
@@ -50,15 +70,15 @@ interface PiApi {
 }
 
 export default function identityExtension(pi: PiApi): void {
+  if (process.env["PI_SUBAGENT"] === "1" || process.env["PI_SUBAGENT_CHILD"] === "1") return;
   let managedSession = process.env["BL_NATIVE_SESSION_ID"];
-  let parentNativeSessionId: string | undefined;
+  let turnId: string | undefined;
   function observation(ctx: PiContext, event: NativeEvent): NativeObservation {
     return {
       provider: "pi",
       nativeSessionId: ctx.sessionManager.getSessionId(),
       cwd: ctx.cwd,
       event,
-      ...(process.env["PI_SUBAGENT"] === "1" ? { audience: "agent" as const } : {}),
       model:
         ctx.model === undefined
           ? null
@@ -67,8 +87,8 @@ export default function identityExtension(pi: PiApi): void {
             : `${ctx.model.provider}/${ctx.model.id}`,
       thinkingLevel: ctx.thinkingLevel ?? null,
       sessionPath: ctx.sessionManager.getSessionFile?.() ?? null,
-      ...(parentNativeSessionId === undefined ? {} : { parentNativeSessionId }),
-      capabilities: ["activity", "model", "effort", "session-end", "parent"],
+      capabilities: ["activity", "tools", "messages", "usage", "model", "effort", "session-end"],
+      ...(turnId === undefined ? {} : { turnId }),
     };
   }
   function local(ctx: PiContext): void {
@@ -84,16 +104,16 @@ export default function identityExtension(pi: PiApi): void {
     ctx: PiContext,
     event: NativeEvent,
     nativeEvent: string,
+    activity: NativeObservation["activity"] = [],
   ): Promise<SessionReport> {
     const input = observation(ctx, event);
-    const child = process.env["PI_SUBAGENT"] === "1";
-    if (managedSession === undefined && process.env["BL_RUN_REFERENCE"] !== undefined && !child)
+    if (managedSession === undefined && process.env["BL_RUN_REFERENCE"] !== undefined)
       managedSession = input.nativeSessionId;
     local(ctx);
     const result = await reportNative(
-      { ...input, nativeEvent },
+      { ...input, nativeEvent, activity },
       process.env,
-      child || (managedSession !== undefined && managedSession !== input.nativeSessionId),
+      managedSession !== undefined && managedSession !== input.nativeSessionId,
     );
     if (ctx.hasUI === true)
       ctx.ui?.setStatus(
@@ -103,25 +123,81 @@ export default function identityExtension(pi: PiApi): void {
     return result;
   }
   pi.on("session_start", async (_, ctx) => {
-    parentNativeSessionId =
-      process.env["PI_SUBAGENT"] === "1" && process.env["BL_NATIVE_PROVIDER"] === "pi"
-        ? managedSession
-        : undefined;
-    const parent = ctx.sessionManager.getHeader?.()?.parentSession;
-    if (parent !== undefined) {
-      try {
-        parentNativeSessionId = await parentSession(parent);
-      } catch (error) {
-        process.stderr.write(`Botlake parent attribution unavailable: ${String(error)}\n`);
-      }
-    }
     await report(ctx, "session-start", "session_start");
   });
   pi.on("agent_start", async (_, ctx) => {
+    turnId = crypto.randomUUID();
     await report(ctx, "agent-start", "agent_start");
   });
   pi.on("agent_end", async (_, ctx) => {
     await report(ctx, "agent-end", "agent_end");
+    turnId = undefined;
+  });
+  pi.on("tool_execution_start", async (event, ctx) => {
+    await report(ctx, "metadata", "tool_execution_start", [
+      {
+        kind: "tool-started",
+        turnId: turnId ?? null,
+        callId: event.toolCallId,
+        tool: event.toolName,
+        ...toolExcerpt(event.args),
+      },
+    ]);
+  });
+  pi.on("tool_execution_end", async (event, ctx) => {
+    await report(ctx, "metadata", "tool_execution_end", [
+      {
+        kind: "tool-ended",
+        turnId: turnId ?? null,
+        callId: event.toolCallId,
+        tool: event.toolName,
+        summary: "",
+        truncated: false,
+        outcome: event.isError ? "failed" : "completed",
+      },
+    ]);
+  });
+  pi.on("message_end", async (event, ctx) => {
+    const message = messageSchema.safeParse(event.message);
+    if (!message.success) return;
+    const content = message.data.content;
+    const text =
+      typeof content === "string"
+        ? content
+        : content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text ?? "")
+            .join("\n");
+    const details: RunActivityDetail[] =
+      text.length === 0
+        ? []
+        : [
+            {
+              kind: "message",
+              role: message.data.role,
+              turnId: turnId ?? null,
+              ...activityExcerpt(text),
+            },
+          ];
+    const usage = usageSchema.safeParse(message.data.usage);
+    if (message.data.role === "assistant" && usage.success)
+      details.push({
+        kind: "usage",
+        turnId: turnId ?? null,
+        usage: {
+          scope: "message",
+          inputTokens: usage.data.input ?? null,
+          outputTokens: usage.data.output ?? null,
+          cacheReadTokens: usage.data.cacheRead ?? null,
+          cacheWriteTokens: usage.data.cacheWrite ?? null,
+          totalTokens: usage.data.totalTokens ?? null,
+          cost:
+            usage.data.cost === undefined
+              ? null
+              : { amount: usage.data.cost.total, currency: "USD" },
+        },
+      });
+    if (details.length > 0) await report(ctx, "metadata", "message_end", details);
   });
   pi.on("model_select", async (_, ctx) => {
     await report(ctx, "metadata", "model_select");
@@ -147,20 +223,4 @@ export default function identityExtension(pi: PiApi): void {
     }
     return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
   });
-}
-
-// -- Private helpers --
-
-async function parentSession(path: string): Promise<string> {
-  const stream = createReadStream(path, { encoding: "utf8" });
-  const lines = createInterface({ input: stream });
-  try {
-    for await (const line of lines) {
-      return sessionHeaderSchema.parse(JSON.parse(line)).id;
-    }
-    throw new Error("Native parent session has no header");
-  } finally {
-    lines.close();
-    stream.destroy();
-  }
 }

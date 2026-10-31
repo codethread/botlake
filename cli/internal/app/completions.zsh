@@ -20,7 +20,8 @@ _bl_value() {
 
 _bl_command() {
   local node=$1 discovery=$2 curcontext="$curcontext" state child specs
-  local -a line candidates args
+  shift 2
+  local -a path=( "$@" ) line candidates args
   local -A opt_args
 
   if [[ $(command jq -r 'has("commands")' <<< "$node") == true ]]; then
@@ -36,8 +37,9 @@ _bl_command() {
         _describe command candidates
         ;;
       arguments)
-        child=$(command jq -ec --arg name "${(Q)words[1]}" '.commands[$name] // empty' <<< "$node") || return 1
-        _bl_command "$child" "$discovery"
+        path+=( "${(Q)words[1]}" )
+        child=$(command bl "${context_flags[@]}" help --json "${path[@]}" | command jq -ec '.[0].cli') || return 1
+        _bl_command "$child" "$discovery" "${path[@]}"
         ;;
     esac
     return
@@ -105,23 +107,24 @@ _bl() {
         def escape: gsub("\\\\"; "\\\\") | gsub(":"; "\\:") | gsub("[\\r\\n\\t]"; " ");
         .[] | (.name | escape) + ":" + (.cli.description | escape)
       ' <<< "$catalog")}" )
-      candidates+=( 'help:Discover commands' 'about:Read explanations and schemas' 'prime:Read runbooks' 'primer:Read runbooks' )
+      candidates+=( 'help:Discover commands' 'about:Read explanations' 'prime:Read runbooks' )
       _describe operation candidates
       ;;
     arguments)
       name=${(Q)words[1]}
-      if [[ $name == (help|about|prime|primer) ]]; then
+      if [[ $name == (help|about|prime) ]]; then
         # --json is recognized only immediately after the discovery operation.
         _arguments -C -A '-*' '--json[Force JSON output]' '1:operation:->operation' '*::arguments:->arguments'
         if [[ $state == operation ]]; then
           _bl_command "$node" yes
         elif [[ $state == arguments ]]; then
-          node=$(command jq -ec --arg name "${(Q)words[1]}" '.commands[$name] // empty' <<< "$node") || return 1
-          _bl_command "$node" yes
+          name=${(Q)words[1]}
+          node=$(command bl "${context_flags[@]}" help --json "$name" | command jq -ec '.[0].cli') || return 1
+          _bl_command "$node" yes "$name"
         fi
       else
-        node=$(command jq -ec --arg name "$name" '.commands[$name] // empty' <<< "$node") || return 1
-        _bl_command "$node" no
+        node=$(command bl "${context_flags[@]}" help --json "$name" | command jq -ec '.[0].cli') || return 1
+        _bl_command "$node" no "$name"
       fi
       ;;
   esac
