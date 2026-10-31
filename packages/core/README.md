@@ -57,4 +57,6 @@ Builders: `and`, `or`, `not`; `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `inArray`; `
 
 `graph.count({ where, params, ready, limit })` counts matching nodes without hydrating attributes. With a positive safe-integer `limit`, it returns at most that many matches; reaching the limit is a lower bound, not an exact total. Without a limit it counts all matches.
 
-Selection ignores archived attributes. Attribute comparisons—including negation—require present, non-null values; `missing` includes absent, archived and null paths. Builders produce data, not JavaScript callbacks executed by the lake.
+`graph.list/all` omit archived attributes from results unless `includeArchived: true` is supplied. `graph.show(id, { includeArchived })` and `graph.subgraph(id, relation, { includeArchived })` default to full reads, including archived attributes.
+
+Selection ignores archived attributes even with `includeArchived: true`. Attribute comparisons—including negation—require present, non-null values; `missing` includes absent, archived and null paths. Builders produce data, not JavaScript callbacks executed by the lake.

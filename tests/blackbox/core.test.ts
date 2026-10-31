@@ -99,7 +99,7 @@ test("archival preserves immutable evidence and burn records each deletion exact
           )
         ).message,
       ).toContain("Unknown attribute");
-      expect(graph.show(note.id, true)).toEqual(note);
+      expect(graph.show(note.id, { includeArchived: false })).toEqual(note);
       expect(
         (await rejected(runtime.invoke("node", { command: "burn", ids: [target.id, target.id] })))
           .message,
@@ -120,7 +120,9 @@ test("archival preserves immutable evidence and burn records each deletion exact
       await runtime.drain();
       expect(events).toEqual([]);
       await runtime.invoke("node", { command: "archive", id: note.id, keys: ["scratch"] });
-      expect(graph.show(note.id, true).attributes).not.toHaveProperty("scratch");
+      expect(graph.show(note.id, { includeArchived: false }).attributes).not.toHaveProperty(
+        "scratch",
+      );
       expect(graph.show(note.id).attributes["scratch"]).toBe("extra");
       await runtime.drain();
       events.length = 0;

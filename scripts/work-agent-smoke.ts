@@ -109,7 +109,7 @@ async function unavailable(): Promise<never> {
 
 function currentBinding(runtime: Runtime, task: string): z.output<typeof binding> {
   const node = runtime.graph
-    .all({ lean: false })
+    .all({ includeArchived: true })
     .find(
       (entry) =>
         entry.attributes[workAgentAttributes.binding] === true && bindingOf(entry).task === task,
@@ -120,7 +120,7 @@ function currentBinding(runtime: Runtime, task: string): z.output<typeof binding
 
 function hasBinding(runtime: Runtime, task: string): boolean {
   return runtime.graph
-    .all({ lean: false })
+    .all({ includeArchived: true })
     .some(
       (entry) =>
         entry.attributes[workAgentAttributes.binding] === true && bindingOf(entry).task === task,
@@ -1062,7 +1062,7 @@ async function missedSettlementPhase(): Promise<string[]> {
 
 function bindingNode(runtime: Runtime, task: string): string {
   const node = runtime.graph
-    .all({ lean: false })
+    .all({ includeArchived: true })
     .find(
       (entry) =>
         entry.attributes[workAgentAttributes.binding] === true && bindingOf(entry).task === task,

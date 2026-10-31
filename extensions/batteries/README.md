@@ -4,7 +4,9 @@ Everyday graph operations: `node`, `edge`, `query`, `await` and `batch`. Node cr
 
 Select `"@botlake/extension-batteries"` in workspace `extensions`, or default-export `batteries(namedQueries)` from a local module. The package's default export is an inert, unconfigured Batteries extension. The `q` predicate builders belong to core, not Batteries.
 
-`bl node list` and `bl node ready` accept `--query NAME`, `--params JSON`, `--limit` and `--lean`. Inspect registered definitions with `bl query [NAME]`. For ad hoc predicates and JavaScript composition use [`botlake lake eval`](../../README.md#javascript-evaluation); `api.call("node", { command: "list"|"ready", where, params, limit, lean })` retains programmatic selection. Raw `bl --input` also accepts predicates; there is no `--where` flag.
+`bl node show`, `list`, `ready` and `subgraph` omit archived attributes by default. `--include-archived` adds archived values; `--lean` returns only `id`, `title` and `state` for each node, omitting all attributes even with `--include-archived`. Subgraph edges are unchanged.
+
+`bl node list` and `bl node ready` accept `--query NAME`, `--params JSON` and `--limit`. Inspect registered definitions with `bl query [NAME]`. For ad hoc predicates and JavaScript composition use [`botlake lake eval`](../../README.md#javascript-evaluation); `api.call("node", { command: "list"|"ready", where, params, limit, lean, includeArchived })` retains programmatic selection. Raw `bl --input` also accepts predicates; there is no `--where` flag.
 
 List/ready default to 100 results (maximum 10,000); a full result page does not establish completeness. Separate calls do not share a snapshot.
 

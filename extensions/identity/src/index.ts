@@ -46,11 +46,14 @@ export function callerActor(ctx: Context): string | undefined {
 }
 
 export function identityRecords(graph: Graph): Node[] {
-  return graph.all({ where: q.eq(q.attr(identityAttributes.session), true), lean: false });
+  return graph.all({
+    where: q.eq(q.attr(identityAttributes.session), true),
+    includeArchived: true,
+  });
 }
 
 export function resolveIdentity(graph: Graph, name: string): Node | undefined {
-  return graph.all({ where: q.eq(q.attr(identityAttributes.id), name), lean: false })[0];
+  return graph.all({ where: q.eq(q.attr(identityAttributes.id), name), includeArchived: true })[0];
 }
 
 export function attribution(graph: Graph, name: string): { identity: string; nodeIds: string[] } {

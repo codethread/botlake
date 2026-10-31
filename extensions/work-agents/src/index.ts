@@ -121,7 +121,7 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
 
   function bindings(): ReturnType<typeof binding>[] {
     return ctx.graph
-      .all({ lean: false })
+      .all({ includeArchived: true })
       .filter((node) => node.attributes[workAgentAttributes.binding] === true)
       .map((node) => binding(node));
   }

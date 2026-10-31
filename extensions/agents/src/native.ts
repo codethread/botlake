@@ -193,7 +193,7 @@ export class NativeSessions {
         q.eq(q.attr(agentAttributes.provider), provider),
         q.eq(q.attr(agentAttributes.sessionId), sessionId),
       ),
-      lean: false,
+      includeArchived: true,
     });
   }
 }

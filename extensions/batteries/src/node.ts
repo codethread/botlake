@@ -6,6 +6,7 @@ import {
   nodeSchema,
   predicateSchema,
   type Context,
+  type Node,
 } from "@botlake/core";
 import { z } from "zod";
 
@@ -16,12 +17,24 @@ const patch = {
   attributes: attributesSchema.optional(),
   expectedRevision: z.number().int().positive().optional(),
 };
+const readOptions = {
+  lean: z.boolean().default(false),
+  includeArchived: z.boolean().default(false),
+};
+const readFlags = {
+  lean: { type: "boolean", description: "Return only id, title and state for each node" },
+  "include-archived": {
+    key: "includeArchived",
+    type: "boolean",
+    description: "Include archived attributes; omitted by default",
+  },
+} as const;
 const selection = {
   query: z.string().optional(),
   where: predicateSchema.optional(),
   params: attributesSchema.optional(),
   limit: z.number().int().positive().optional(),
-  lean: z.boolean().optional(),
+  ...readOptions,
 };
 
 const inputSchema = z.compile(
@@ -32,7 +45,7 @@ const inputSchema = z.compile(
       state: nodeSchema.shape.state.exclude(["replaced"]).optional(),
       attributes: attributesSchema.optional(),
     }),
-    z.strictObject({ command: z.literal("show"), id, lean: z.boolean().optional() }),
+    z.strictObject({ command: z.literal("show"), id, ...readOptions }),
     z.strictObject({ command: z.literal("update"), id, ...patch }),
     z.strictObject({
       command: z.literal("set-attributes"),
@@ -51,7 +64,7 @@ const inputSchema = z.compile(
       attributes: attributesSchema.optional(),
     }),
     z.strictObject({ command: z.literal("archive"), id, keys: z.array(id).min(1) }),
-    z.strictObject({ command: z.literal("subgraph"), id, relation: id.optional() }),
+    z.strictObject({ command: z.literal("subgraph"), id, relation: id.optional(), ...readOptions }),
   ]),
 );
 
@@ -83,10 +96,10 @@ export function registerNode(ctx: Context): void {
           },
           show: {
             description:
-              "Read a node and its attributes, including archived values; --lean shows only hot attributes",
+              "Read a node with hot attributes; --include-archived adds archived values, --lean returns only id, title and state",
             examples: ["bl node show ID"],
             positionals: [{ name: "id", type: "string", required: true }],
-            flags: { lean: { type: "boolean", description: "Show only hot attributes" } },
+            flags: readFlags,
           },
           update: {
             description:
@@ -136,7 +149,7 @@ export function registerNode(ctx: Context): void {
               query: { type: "string", description: "Registered query name" },
               params: { type: "json", description: "Named-query parameters" },
               limit: { type: "number", description: "Maximum results; defaults to 100" },
-              lean: { type: "boolean", description: "Show only hot attributes" },
+              ...readFlags,
             },
           },
           ready: {
@@ -147,7 +160,7 @@ export function registerNode(ctx: Context): void {
               query: { type: "string", description: "Registered query name" },
               params: { type: "json", description: "Named-query parameters" },
               limit: { type: "number", description: "Maximum results; defaults to 100" },
-              lean: { type: "boolean", description: "Show only hot attributes" },
+              ...readFlags,
             },
           },
           supersede: {
@@ -177,7 +190,7 @@ export function registerNode(ctx: Context): void {
           },
           archive: {
             description:
-              "Hide keys from hot selection without deleting them; archived values remain on full reads and immutable note keys cannot be archived",
+              "Hide keys from hot selection without deleting them; read retained values with --include-archived. Immutable note keys cannot be archived",
             examples: ["bl node archive ID KEY"],
             positionals: [
               { name: "id", type: "string", required: true },
@@ -191,6 +204,7 @@ export function registerNode(ctx: Context): void {
             positionals: [{ name: "id", type: "string", required: true }],
             flags: {
               relation: { type: "string", description: "Traversal relation (default parent-of)" },
+              ...readFlags,
             },
           },
         },
@@ -211,7 +225,10 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
       return ctx.graph.add(node);
     }
     case "show":
-      return ctx.graph.show(input.id, input.lean);
+      return nodeView(
+        ctx.graph.show(input.id, { includeArchived: input.includeArchived }),
+        input.lean,
+      );
     case "update": {
       const { command: _, id: node, ...changes } = input;
       return ctx.graph.update(node, changes);
@@ -220,7 +237,7 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
       return ctx.graph.setAttributes(input.id, input.attributes, input.expectedRevision);
     case "list":
     case "ready": {
-      const { command, ...options } = input;
+      const { command, lean, ...options } = input;
       let where = options.where;
       if (options.query !== undefined) {
         const named = ctx.namedQuery(options.query);
@@ -233,7 +250,9 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
             throw new Fault("query", `Missing parameter: ${param}`);
         where = named.where;
       }
-      return ctx.graph.list({ ...options, where, ready: command === "ready" });
+      return ctx.graph
+        .list({ ...options, where, ready: command === "ready" })
+        .map((node) => nodeView(node, lean));
     }
     case "supersede":
       return ctx.graph.supersede(input.id, input.replacement);
@@ -243,7 +262,15 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
       return ctx.graph.note(input.id, input.text, input.attributes);
     case "archive":
       return ctx.graph.archive(input.id, input.keys);
-    case "subgraph":
-      return ctx.graph.subgraph(input.id, input.relation);
+    case "subgraph": {
+      const subgraph = ctx.graph.subgraph(input.id, input.relation, {
+        includeArchived: input.includeArchived,
+      });
+      return { ...subgraph, nodes: subgraph.nodes.map((node) => nodeView(node, input.lean)) };
+    }
   }
+}
+
+function nodeView(node: Node, lean: boolean): Node | Pick<Node, "id" | "title" | "state"> {
+  return lean ? { id: node.id, title: node.title, state: node.state } : node;
 }

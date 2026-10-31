@@ -201,7 +201,7 @@ export interface Selection {
   where?: Predicate | undefined;
   params?: Attributes | undefined;
   ready?: boolean | undefined;
-  lean?: boolean | undefined;
+  includeArchived?: boolean | undefined;
 }
 
 export class Graph {
@@ -316,7 +316,10 @@ export class Graph {
     return result;
   }
 
-  show(id: string, lean = false): Node {
+  show(
+    id: string,
+    { includeArchived = true }: { includeArchived?: boolean | undefined } = {},
+  ): Node {
     const row = rowSchema.parse(
       requireValue(
         this.db
@@ -334,7 +337,7 @@ export class Graph {
         .query(sql`
           SELECT key, value
           FROM attributes
-          WHERE node_id = ? ${lean ? sql`AND archived = 0` : ""}
+          WHERE node_id = ? ${includeArchived ? "" : sql`AND archived = 0`}
           ORDER BY key
         `)
         .all(id),
@@ -676,7 +679,11 @@ export class Graph {
       `)
       .all(id);
   }
-  subgraph(root: string, relation = "parent-of"): { nodes: Node[]; edges: Edge[] } {
+  subgraph(
+    root: string,
+    relation = "parent-of",
+    options: { includeArchived?: boolean | undefined } = {},
+  ): { nodes: Node[]; edges: Edge[] } {
     this.show(root);
     const ids = idRowsSchema
       .parse(
@@ -698,7 +705,7 @@ export class Graph {
       .map(({ id }) => id);
     const members = new Set(ids);
     return {
-      nodes: ids.map((id) => this.show(id)),
+      nodes: ids.map((id) => this.show(id, options)),
       edges: this.edges().filter((edge) => members.has(edge.from_id) && members.has(edge.to_id)),
     };
   }
@@ -806,7 +813,9 @@ export class Graph {
         `)
         .all(...selection.bindings, ...(limit === undefined ? [] : [limit])),
     );
-    return ids.map(({ id }) => this.show(id, options.lean ?? true));
+    return ids.map(({ id }) =>
+      this.show(id, { includeArchived: options.includeArchived ?? false }),
+    );
   }
 
   private compileSelection(options: Selection): ReturnType<typeof compileQuery> {

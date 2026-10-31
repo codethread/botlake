@@ -114,7 +114,10 @@ export class Agents {
   }
 
   runs(): Node[] {
-    return this.ctx.graph.all({ where: q.eq(q.attr(agentAttributes.run), true), lean: false });
+    return this.ctx.graph.all({
+      where: q.eq(q.attr(agentAttributes.run), true),
+      includeArchived: true,
+    });
   }
 
   start(raw: StartRun): Node {

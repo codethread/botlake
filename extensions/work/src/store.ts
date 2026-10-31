@@ -287,7 +287,7 @@ export function workStore(ctx: Context): WorkStore {
     if (input.audience !== undefined)
       where.push(q.eq(q.attr(workAttributes.audience), input.audience));
     const matches = graph
-      .all({ where: q.and(...where), lean: false })
+      .all({ where: q.and(...where), includeArchived: true })
       .filter((node) => {
         const item = get(node.id);
         if (input.parent !== undefined && parentOf(node.id) !== input.parent) return false;
@@ -674,7 +674,7 @@ function protect(graph: Graph, changes: readonly Mutation[], token: symbol | und
           "work-history",
           "Work records are retained; close them instead of deleting",
         );
-      const hot = graph.show(after.id, true);
+      const hot = graph.show(after.id, { includeArchived: false });
       for (const key of keys) {
         if (after.attributes[key] !== undefined && hot.attributes[key] === undefined)
           throw new Fault("work-history", "Work evidence cannot be archived");
@@ -700,8 +700,8 @@ function protect(graph: Graph, changes: readonly Mutation[], token: symbol | und
     }
     const edge = change.after ?? change.before;
     if (edge === null || !workRelationLabels.includes(edge.relation)) continue;
-    const from = graph.all({ where: q.eq("id", edge.from_id), lean: false })[0];
-    const to = graph.all({ where: q.eq("id", edge.to_id), lean: false })[0];
+    const from = graph.all({ where: q.eq("id", edge.from_id), includeArchived: true })[0];
+    const to = graph.all({ where: q.eq("id", edge.to_id), includeArchived: true })[0];
     if (
       from?.attributes[workAttributes.item] !== true &&
       to?.attributes[workAttributes.item] !== true

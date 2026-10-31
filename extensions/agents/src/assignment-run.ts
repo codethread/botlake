@@ -13,7 +13,7 @@ export function resolveAssignmentRun(ctx: Context, assignee: string): Assignment
   const reference = ctx.env.bl["BL_RUN_REFERENCE"];
   if (reference !== undefined) return resolveManagedReference(ctx, reference, assignee);
 
-  const matches = ctx.graph.all({ lean: false }).filter((node) => {
+  const matches = ctx.graph.all({ includeArchived: true }).filter((node) => {
     if (
       node.attributes[agentAttributes.run] !== true ||
       node.attributes[agentAttributes.external] !== true
@@ -41,7 +41,7 @@ function resolveManagedReference(
   const runId = reference.slice(0, separator);
   const invocation = reference.slice(separator + 1);
   const run = ctx.graph
-    .all({ lean: false })
+    .all({ includeArchived: true })
     .find((node) => node.id === runId && node.attributes[agentAttributes.run] === true);
   if (run === undefined || run.attributes[agentAttributes.external] === true) return null;
 

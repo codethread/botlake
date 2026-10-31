@@ -532,7 +532,7 @@ function protectWorkflow(graph: Graph, authority: symbol): void {
       );
       if (keys.size === 0) continue;
       if (after === null) throw new Fault("workflow", "Workflow execution evidence is retained");
-      const hot = graph.show(after.id, true);
+      const hot = graph.show(after.id, { includeArchived: false });
       for (const key of keys) {
         if (after.attributes[key] !== undefined && hot.attributes[key] === undefined)
           throw new Fault("workflow", "Workflow evidence cannot be archived");

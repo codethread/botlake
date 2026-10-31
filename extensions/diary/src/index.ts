@@ -187,7 +187,7 @@ function listEntries(
   const records = ctx.graph.list({
     where: q.and(...predicates),
     limit: pageSize + 1,
-    lean: false,
+    includeArchived: true,
   });
   const page = records.slice(0, pageSize);
 
@@ -203,7 +203,7 @@ function listEntries(
 }
 
 function entry(ctx: Context, id: string): Node {
-  const record = ctx.graph.show(id, false);
+  const record = ctx.graph.show(id, { includeArchived: true });
   if (record.attributes[diaryAttributes.entry] !== true)
     throw new Fault("diary", "Unknown diary entry");
   return record;

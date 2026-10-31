@@ -263,7 +263,7 @@ export class RunActivity {
   private resolve(id: string) {
     const run = this.ctx.graph.all({
       where: q.and(q.eq("id", id), q.eq(q.attr(agentAttributes.run), true)),
-      lean: false,
+      includeArchived: true,
     })[0];
     const handle = run === undefined ? id : run.attributes[agentAttributes.activity];
     if (typeof handle !== "string")

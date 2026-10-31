@@ -265,7 +265,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
           q.eq(q.attr(agentAttributes.provider), name),
           q.eq(q.attr(agentAttributes.sessionId), outcome.sessionId),
         ),
-        lean: false,
+        includeArchived: true,
       }),
     );
     check(external !== undefined, "Direct native session was not registered");

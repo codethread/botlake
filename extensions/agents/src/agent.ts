@@ -263,7 +263,7 @@ function listRuns(ctx: Context, { state, limit, offset }: z.infer<typeof listSch
   const runs = ctx.graph.all({
     where:
       state === undefined ? tracked : q.and(tracked, q.eq(q.attr(agentAttributes.state), state)),
-    lean: false,
+    includeArchived: true,
   });
   const page = runs.slice(offset, offset + limit);
 
