@@ -262,6 +262,8 @@ export class Runtime {
       gitCommonDir?: string;
       env?: Record<string, string | undefined>;
       terminal?: Invocation["terminal"];
+      outputFormat?: Invocation["output"]["format"];
+      onText?: () => void;
     } = {},
   ): Promise<unknown> {
     const began = this.context.clock.now();
@@ -355,6 +357,13 @@ export class Runtime {
               worktreeRoot: options.worktreeRoot,
               gitCommonDir: options.gitCommonDir,
               terminal: options.terminal ?? { isTTY: false, columns: null },
+              output: {
+                format: options.outputFormat ?? "auto",
+                text(value) {
+                  options.onText?.();
+                  return value;
+                },
+              },
             }),
           );
         })(),

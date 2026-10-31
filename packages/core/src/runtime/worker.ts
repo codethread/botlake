@@ -63,6 +63,7 @@ port.on("message", (raw: unknown) => {
     }
 
     let streaming = false;
+    let textOutput = false;
     try {
       const result = await runtime.invoke(
         request.name,
@@ -77,11 +78,17 @@ port.on("message", (raw: unknown) => {
           ...(request.worktree_root === undefined ? {} : { worktreeRoot: request.worktree_root }),
           ...(request.git_common_dir === undefined ? {} : { gitCommonDir: request.git_common_dir }),
           terminal: { isTTY: request.is_tty ?? false, columns: request.tty_col ?? null },
+          outputFormat: request.output_format ?? "auto",
+          onText: () => {
+            if (streaming) throw new Fault("output", "Text output cannot be streamed");
+            textOutput = true;
+          },
           signal: controller.signal,
         },
       );
 
       if (isStream(result)) {
+        if (textOutput) throw new Fault("output", "Text output cannot be streamed");
         streaming = true;
         send({ protocol_version: 1, request_id: request.request_id, stream: true });
         for await (const item of result)
@@ -93,7 +100,11 @@ port.on("message", (raw: unknown) => {
           success: true,
           result: null,
         });
-      } else send({ ok: true, result });
+      } else {
+        if (textOutput && typeof result !== "string")
+          throw new Fault("output", "Text output must be a string");
+        send({ ok: true, result, ...(textOutput ? { content_type: "text/plain" } : {}) });
+      }
     } catch (error) {
       send(
         streaming

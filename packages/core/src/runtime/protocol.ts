@@ -18,6 +18,7 @@ export const invocationSchema = z.compile(
       is_tty: z.boolean().optional(),
       tty_col: z.number().int().positive().nullable().optional(),
       timeout_ms: z.number().positive().optional(),
+      output_format: z.enum(["auto", "json"]).optional(),
     })
     .refine((value) => value.argv === undefined || !Object.hasOwn(value, "input"), {
       message: "Choose argv or input, not both",

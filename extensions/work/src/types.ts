@@ -145,6 +145,54 @@ export interface Page<T> {
   nextOffset: number | null;
 }
 
+export interface WorkTopologyOptions {
+  /** Optional work item anchoring the projection. */
+  id?: string | undefined;
+  /** Included lifecycle state; defaults to open. */
+  state?: "open" | "closed" | "all" | undefined;
+  /** Return only identity, title, and state when true. */
+  lean?: boolean | undefined;
+  /** Include local descriptions on non-lean nodes. */
+  showDescription?: boolean | undefined;
+  /** Include task acceptance criteria on non-lean nodes. */
+  showCriteria?: boolean | undefined;
+}
+
+export interface WorkTreeOptions extends WorkTopologyOptions {}
+
+export interface WorkGraphOptions extends WorkTopologyOptions {
+  /** Relationship traversal from the root; requires id. */
+  direction?: "prerequisites" | "dependents" | undefined;
+}
+
+export type WorkTopologyNode =
+  | Pick<WorkSummary, "id" | "title" | "state">
+  | (WorkSummary & {
+      description?: string | undefined;
+      acceptanceCriteria?: Criterion[] | undefined;
+    });
+
+export interface WorkTopology {
+  /** Projection kind. */
+  view: "tree" | "graph";
+  /** Explicit projection root, or null for a forest. */
+  root: string | null;
+  /** Visible entry points in deterministic order. */
+  roots: string[];
+  /** Edge traversal or containment direction. */
+  direction: "children" | "prerequisites" | "dependents";
+  /** Visible work items in deterministic order. */
+  nodes: WorkTopologyNode[];
+  /** Visible canonical relationships. */
+  edges: { from: string; to: string; relation: "parent-of" | "depends-on" }[];
+  /** Nonmatching ancestors retained to connect a tree. */
+  context: string[];
+  /** Weak graph components or tree containment families. */
+  components: string[][];
+  /** Scoped relationships crossing the visible projection. */
+  omittedLinks: number;
+}
+
 export interface WorkDetail {
   item: WorkItem;
   context: Group[];
@@ -169,6 +217,8 @@ export interface WorkStore {
   inspect(id: string, options?: { history?: boolean; limit?: number; offset?: number }): WorkDetail;
   summary(id: string): WorkSummary;
   list(options?: ListOptions): Page<WorkSummary>;
+  tree(options?: WorkTreeOptions): WorkTopology;
+  graph(options?: WorkGraphOptions): WorkTopology;
   close(id: string, by?: string): WorkItem;
   reopen(id: string, reason: string, by?: string): WorkItem;
   addCriterion(id: string, condition: string, by?: string): Criterion;

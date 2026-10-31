@@ -93,9 +93,10 @@ func relay(req Request, view presentation) int {
 		}
 
 		var frame struct {
-			OK     bool            `json:"ok"`
-			Result json.RawMessage `json:"result"`
-			Error  json.RawMessage `json:"error"`
+			OK          bool            `json:"ok"`
+			Result      json.RawMessage `json:"result"`
+			Error       json.RawMessage `json:"error"`
+			ContentType string          `json:"content_type"`
 		}
 		if err := json.Unmarshal(output.Bytes(), &frame); err != nil {
 			return cliFailure(err, view.json)
@@ -105,7 +106,7 @@ func relay(req Request, view presentation) int {
 			return renderError(frame.Error, view.json)
 		}
 
-		return renderResult(frame.Result, view)
+		return renderResultContent(frame.Result, frame.ContentType, view)
 	}
 
 	conn, err := net.DialTimeout("unix", socket(), time.Second)
@@ -142,7 +143,14 @@ func relay(req Request, view presentation) int {
 			}
 
 			if bytes.Equal(frame["ok"], []byte("true")) {
-				return renderResult(frame["result"], view)
+				var contentType string
+				if raw := frame["content_type"]; raw != nil {
+					if err := json.Unmarshal(raw, &contentType); err != nil {
+						return cliFailure(err, view.json)
+					}
+				}
+
+				return renderResultContent(frame["result"], contentType, view)
 			}
 
 			return renderError(frame["error"], view.json)
@@ -169,8 +177,26 @@ func relay(req Request, view presentation) int {
 }
 
 func renderResult(raw json.RawMessage, view presentation) int {
+	return renderResultContent(raw, "", view)
+}
+
+func renderResultContent(raw json.RawMessage, contentType string, view presentation) int {
 	if !json.Valid(raw) {
 		return cliFailure(fmt.Errorf("malformed result"), view.json)
+	}
+
+	if contentType != "" && contentType != "text/plain" {
+		return cliFailure(fmt.Errorf("unsupported result content type: %s", contentType), view.json)
+	}
+
+	if contentType == "text/plain" && !view.json {
+		var text string
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return cliFailure(fmt.Errorf("text result is not a string"), view.json)
+		}
+		fmt.Fprintln(os.Stdout, text)
+
+		return 0
 	}
 
 	if view.json || !term.IsTerminal(int(os.Stdout.Fd())) {
@@ -205,8 +231,8 @@ func renderResult(raw json.RawMessage, view presentation) int {
 }
 
 type helpArgument struct {
-	Name, Key, Type, Description string
-	Required, Multiple           bool
+	Name, Key, Short, Type, Description string
+	Required, Multiple                  bool
 }
 
 type helpCommand struct {
@@ -393,6 +419,9 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 			for _, name := range sortedKeys(op.CLI.Flags) {
 				arg := op.CLI.Flags[name]
 				label := "--" + name
+				if arg.Short != "" {
+					label = "-" + arg.Short + ", " + label
+				}
 				if arg.Type != "boolean" {
 					label += " <" + arg.Type + ">"
 				}

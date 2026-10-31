@@ -173,7 +173,7 @@ func BL(args []string) int {
 
 	for i, argument := range argv {
 		prefix, value := "", argument
-		if strings.HasPrefix(argument, "--") {
+		if strings.HasPrefix(argument, "-") {
 			if key, rest, found := strings.Cut(argument, "="); found {
 				prefix, value = key+"=", rest
 			}
@@ -199,6 +199,9 @@ func BL(args []string) int {
 		"name": name, "argv": argv, "payloads": payloads,
 		"cwd": cwd, "is_tty": isTTY, "tty_col": columns,
 		"env": environment(),
+	}
+	if p.json {
+		payload["output_format"] = "json"
 	}
 	if p.timeoutSet {
 		payload["timeout_ms"] = duration.Milliseconds()

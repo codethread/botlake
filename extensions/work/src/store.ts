@@ -26,6 +26,13 @@ import {
   type WorkData,
   type WorkLinkRelation,
 } from "./node-model.ts";
+import {
+  graphInput,
+  projectGraph,
+  projectTree,
+  treeInput,
+  type TopologySource,
+} from "./topology.ts";
 import type {
   Assignment,
   CreateItem,
@@ -35,9 +42,13 @@ import type {
   Page,
   UpdateItem,
   WorkDetail,
+  WorkGraphOptions,
   WorkItem,
   WorkStore,
   WorkSummary,
+  WorkTopology,
+  WorkTopologyOptions,
+  WorkTreeOptions,
 } from "./types.ts";
 
 const authority = Symbol("work");
@@ -321,6 +332,72 @@ export function workStore(ctx: Context): WorkStore {
     return page(matches, input.limit, input.offset);
   }
 
+  function tree(options: WorkTreeOptions = {}): WorkTopology {
+    const parsed = treeInput.parse(options);
+    return topologyDetails(projectTree(topologySource(), parsed), parsed);
+  }
+
+  function topologyGraph(options: WorkGraphOptions = {}): WorkTopology {
+    const parsed = graphInput.parse(options);
+    return topologyDetails(projectGraph(topologySource(), parsed), parsed);
+  }
+
+  function topologySource(): TopologySource {
+    const nodes = graph.all({
+      where: q.eq(q.attr(workAttributes.item), true),
+      includeArchived: true,
+    });
+    const states = new Map(nodes.map((node) => [node.id, node.state]));
+    const workEdges = (relation: string) =>
+      graph
+        .edges(undefined, relation)
+        .filter((edge) => states.has(edge.from_id) && states.has(edge.to_id))
+        .map((edge) => ({ from: edge.from_id, to: edge.to_id }));
+    const parentEdges = workEdges(workRelations.parentOf);
+    const dependencyEdges = workEdges(workRelations.dependsOn);
+    const parents = new Map(parentEdges.map((edge) => [edge.to, edge.from]));
+    const waiting = new Set(
+      dependencyEdges.filter((edge) => states.get(edge.to) !== "closed").map((edge) => edge.from),
+    );
+    const summaries = nodes.map((node): WorkSummary => {
+      const data = read(node);
+      return {
+        id: node.id,
+        title: node.title,
+        kind: data.kind,
+        state: node.state === "closed" ? "closed" : "open",
+        ready: node.state === "active" && !waiting.has(node.id),
+        assignee: data.kind === "task" ? (currentAssignment(data)?.assignee ?? null) : null,
+        audience: data.kind === "task" ? data.audience : null,
+        origin: data.kind === "task" ? data.origin : null,
+        priority: data.kind === "task" ? data.priority : null,
+        parent: parents.get(node.id) ?? null,
+      };
+    });
+    return { summaries, parentEdges, dependencyEdges };
+  }
+
+  function topologyDetails(view: WorkTopology, options: WorkTopologyOptions): WorkTopology {
+    if (
+      options.lean === true ||
+      (options.showDescription !== true && options.showCriteria !== true)
+    )
+      return view;
+    return {
+      ...view,
+      nodes: view.nodes.map((node) => {
+        const detail = get(node.id);
+        return {
+          ...node,
+          ...(options.showDescription === true ? { description: detail.description } : {}),
+          ...(options.showCriteria === true && detail.kind === "task"
+            ? { acceptanceCriteria: detail.acceptanceCriteria }
+            : {}),
+        };
+      }),
+    };
+  }
+
   function close(id: string, by?: string): WorkItem {
     return graph.atomic(() => {
       const item = get(id);
@@ -565,6 +642,8 @@ export function workStore(ctx: Context): WorkStore {
     inspect,
     summary,
     list,
+    tree,
+    graph: topologyGraph,
     close,
     reopen,
     addCriterion,

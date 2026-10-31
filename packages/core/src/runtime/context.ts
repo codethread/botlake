@@ -19,6 +19,12 @@ export interface Invocation {
   worktreeRoot?: string | undefined;
   gitCommonDir?: string | undefined;
   terminal: { isTTY: boolean; columns: number | null };
+  /** CLI presentation preference; terminal facts remain unchanged by --json. */
+  output: {
+    format: "auto" | "json";
+    /** Mark a single-result string for unquoted text transport; still validates normally. */
+    text(value: string): string;
+  };
 }
 
 export interface Op {

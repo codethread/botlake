@@ -6,6 +6,10 @@ const numberSchema = z.compile(z.number());
 
 const argumentShape = {
   key: z.string().min(1).exactOptional(),
+  short: z
+    .string()
+    .regex(/^[A-Za-z][A-Za-z0-9]*$/u)
+    .exactOptional(),
   type: z.enum(["string", "number", "boolean", "json"]),
   required: z.boolean().exactOptional(),
   multiple: z.boolean().exactOptional(),
@@ -31,6 +35,8 @@ const commandSchema = z.compile(commandDefinition);
 export interface Argument {
   name: string;
   key?: string;
+  /** Exact single-dash alias, without clustering; may contain multiple letters. */
+  short?: string;
   type: "string" | "number" | "boolean" | "json";
   required?: boolean;
   multiple?: boolean;
@@ -66,9 +72,17 @@ export function validateCommand(input: Command): Command {
         if (positional.multiple === true && index !== positionals.length - 1)
           throw new Fault("cli", "Only the last positional can accept multiple values");
       }
+      const flags = Object.entries(node.flags ?? {});
+      const aliases = new Set<string>();
+      for (const [, flag] of flags) {
+        if (flag.short === undefined) continue;
+        if (aliases.has(flag.short))
+          throw new Fault("cli", `Duplicate short alias: -${flag.short}`);
+        aliases.add(flag.short);
+      }
       const keys = [
         ...positionals.map((positional) => positional.key ?? positional.name),
-        ...Object.entries(node.flags ?? {}).map(([name, flag]) => flag.key ?? name),
+        ...flags.map(([name, flag]) => flag.key ?? name),
       ];
       for (const key of keys)
         if (selectors.includes(key))
@@ -124,6 +138,11 @@ export async function parseArgs(
     }
     let position = 0;
     let literal = false;
+    const shortFlags = new Map(
+      Object.entries(command.flags ?? {}).flatMap(([name, spec]) =>
+        spec.short === undefined ? [] : ([[spec.short, { name, spec }]] as const),
+      ),
+    );
     async function value(text: string, type: Argument["type"]): Promise<Json> {
       if (text.startsWith("@")) text = await Bun.file(text.slice(1)).text();
       if (reference(text) !== undefined) return parseValue(resolvePayload(text), type);
@@ -138,14 +157,26 @@ export async function parseArgs(
         continue;
       }
 
-      if (!literal && arg.startsWith("--")) {
+      const positional = command.positionals?.[position];
+      const negativeNumber =
+        !literal &&
+        positional?.type === "number" &&
+        arg.startsWith("-") &&
+        !Number.isNaN(Number(arg));
+      if (!literal && arg.startsWith("-") && !negativeNumber) {
+        const long = arg.startsWith("--");
         const split = arg.indexOf("=");
-        const name = arg.slice(2, split < 0 ? undefined : split);
-        const spec = command.flags?.[name];
-        if (spec === undefined) throw new Fault("argv", `Unknown flag: --${name}`);
+        const spelling = arg.slice(long ? 2 : 1, split < 0 ? undefined : split);
+        const declared = long
+          ? command.flags?.[spelling] === undefined
+            ? undefined
+            : { name: spelling, spec: command.flags[spelling] }
+          : shortFlags.get(spelling);
+        if (declared === undefined) throw new Fault("argv", `Unknown flag: ${arg}`);
+        const { name, spec } = declared;
         const raw =
           split < 0 ? (spec.type === "boolean" ? "true" : args.shift()) : arg.slice(split + 1);
-        if (raw === undefined) throw new Fault("argv", `Missing value for --${name}`);
+        if (raw === undefined) throw new Fault("argv", `Missing value for ${arg}`);
         const parsed = await value(raw, spec.type);
         const key = spec.key ?? name;
         if (spec.multiple === true) {
@@ -156,7 +187,7 @@ export async function parseArgs(
           result[key] = parsed;
         }
       } else {
-        const spec = command.positionals?.[position];
+        const spec = positional;
         if (spec === undefined) throw new Fault("argv", `Unexpected positional: ${arg}`);
         const parsed = await value(arg, spec.type);
         const key = spec.key ?? spec.name;

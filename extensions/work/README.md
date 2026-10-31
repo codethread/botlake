@@ -41,6 +41,22 @@ Claim defaults to `BL_ACTOR`; competing owners must explicitly release before ha
 
 `show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes, including closed work unless `--state` narrows it. Lists omit briefs and findings.
 
+## Tree and graph
+
+```sh
+bl work tree                         # Group/task containment forest
+bl work tree GROUP --state all -sd -ss
+bl work graph TASK                   # Transitive prerequisites
+bl work graph TASK --direction dependents
+bl work graph --lean --format json   # All open dependency components
+```
+
+`tree [ID]` follows only `parent-of`; `graph [ID]` follows only `depends-on`. Without ID they include all matching work. Graph direction defaults to `prerequisites`; an explicit `--direction prerequisites|dependents` requires ID. Stored dependency edges always point from dependent to prerequisite, regardless of traversal.
+
+Output defaults to a static text outline on a terminal and JSON otherwise. `--format text|json` overrides detection; global `bl --json` forces JSON. Both formats default to summaries. `--show-description` (`-sd`) and `--show-criteria` (`-ss`) expand local briefs and criterion assessments. `--lean` overrides expansions and keeps only `id`, `title`, `state` per node, preserving edges and topology metadata.
+
+`--state open|closed|all` defaults to `open`. An explicit root stays visible. Trees retain required nonmatching ancestors as context; graphs never bridge hidden nodes with invented edges. `omittedLinks` counts scoped links crossing the state filter. Readiness always considers actual prerequisites. JSON stores nodes once with typed edges, entry roots and component membership; text marks repeated branches as shown above.
+
 [Workflow](../workflow/README.md) publishes this same task/group model. Only explicit authored workflow actions advance execution; ordinary Work closure never does. No agents launch automatically.
 
-Verify the packaged CLI against disposable SQLite lakes with `bun scripts/work-smoke.ts`.
+Verify the packaged CLI against disposable SQLite lakes with `bun scripts/work-smoke.ts` and `bun scripts/work-topology-smoke.ts`.

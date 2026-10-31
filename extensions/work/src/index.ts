@@ -3,7 +3,9 @@ import { z } from "zod";
 
 import { registerWorkEvents } from "./events.ts";
 import { workAttributes, workRelations } from "./node-model.ts";
+import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
+import { treeInput } from "./topology.ts";
 
 export { workAssignmentEstablished, workChanged } from "./events.ts";
 export {
@@ -30,12 +32,18 @@ export type {
   WorkItem,
   WorkStore,
   WorkSummary,
+  WorkGraphOptions,
+  WorkTreeOptions,
+  WorkTopology,
+  WorkTopologyNode,
+  WorkTopologyOptions,
 } from "./types.ts";
 
 const text = z.string().trim().min(1);
 const attribution = { by: text.optional() };
 const item = { id: text };
 const relation = z.enum([workRelations.dependsOn, workRelations.references]);
+const topologyInput = treeInput.extend({ format: z.enum(["json", "text"]).optional() });
 const input = z.compile(
   z.discriminatedUnion("command", [
     z.discriminatedUnion("kind", [
@@ -47,6 +55,16 @@ const input = z.compile(
     ]),
     updateInput.extend({ command: z.literal("update"), ...item }),
     listInput.extend({ command: z.literal("list") }),
+    topologyInput.extend({ command: z.literal("tree") }),
+    topologyInput
+      .extend({
+        command: z.literal("graph"),
+        direction: z.enum(["prerequisites", "dependents"]).optional(),
+      })
+      .refine(
+        (value) => value.direction === undefined || value.id !== undefined,
+        "Direction requires an id",
+      ),
     z.strictObject({
       command: z.literal("show"),
       ...item,
@@ -131,6 +149,8 @@ export function work(): Extension {
               "bl work list --view available",
               "bl work list --view human --assignee IDENTITY",
               "bl work show ID --history",
+              "bl work tree --lean",
+              "bl work graph ID --show-description --show-criteria",
             ],
             commands: {
               create: {
@@ -218,6 +238,22 @@ export function work(): Extension {
                   },
                 },
               },
+              tree: {
+                description: "Containment forest or descendants of ID; never prerequisite nesting",
+                positionals: [{ name: "id", type: "string" }],
+                flags: topologyFlags(),
+              },
+              graph: {
+                description: "Dependency graph for ID or all work; never contextual containment",
+                positionals: [{ name: "id", type: "string" }],
+                flags: {
+                  ...topologyFlags(),
+                  direction: {
+                    type: "string",
+                    description: "prerequisites (default) or dependents; requires ID",
+                  },
+                },
+              },
               close: {
                 description:
                   "Close resolved work; does not assert success or submit a workflow action",
@@ -301,8 +337,20 @@ export function work(): Extension {
               },
             },
           },
-          handler(value) {
+          handler(value, _ctx, invocation) {
             switch (value.command) {
+              case "tree":
+              case "graph": {
+                const { command, format, ...options } = value;
+                const result = command === "tree" ? store.tree(options) : store.graph(options);
+                const selectedFormat =
+                  invocation.output.format === "json"
+                    ? "json"
+                    : (format ?? (invocation.terminal.isTTY ? "text" : "json"));
+                return selectedFormat === "text"
+                  ? invocation.output.text(renderWorkTopology(result, invocation.terminal.columns))
+                  : jsonSchema.parse(result);
+              }
               case "create": {
                 const { command: _, ...request } = value;
                 const result = store.create(request);
@@ -387,6 +435,32 @@ export function work(): Extension {
 export default work();
 
 // -- CLI fragments --
+
+function topologyFlags() {
+  return {
+    format: {
+      type: "string" as const,
+      description: "json or text; defaults to text on a terminal, JSON otherwise",
+    },
+    state: { type: "string" as const, description: "open (default), closed or all" },
+    lean: {
+      type: "boolean" as const,
+      description: "Only id, title and state per node; overrides detail flags, preserves edges",
+    },
+    "show-description": {
+      short: "sd",
+      key: "showDescription",
+      type: "boolean" as const,
+      description: "Include each node's local description",
+    },
+    "show-criteria": {
+      short: "ss",
+      key: "showCriteria",
+      type: "boolean" as const,
+      description: "Include task conditions and their current assessments",
+    },
+  };
+}
 
 function criterionCommand(description: string) {
   return {
