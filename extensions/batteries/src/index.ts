@@ -1,11 +1,9 @@
 import {
-  jsonSchema,
   attributesSchema,
-  nodeSchema,
-  Fault,
-  predicateSchema,
+  jsonSchema,
   batchSchema,
   defineOp,
+  Fault,
   q,
   type NamedQuery,
   type Command,
@@ -16,6 +14,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 
 import { registerAwait } from "./await.ts";
+import { registerNode } from "./node.ts";
 
 const coordinationQueries: Record<string, NamedQuery> = {
   "node-closed": {
@@ -42,63 +41,24 @@ const coordinationQueries: Record<string, NamedQuery> = {
 
 const id = z.compile(z.string().min(1));
 
-const patch = {
-  title: z.string().min(1).optional(),
-  state: nodeSchema.shape.state.exclude(["replaced"]).optional(),
-  attributes: attributesSchema.optional(),
-  expectedRevision: z.number().int().positive().optional(),
-};
-
 const queryInput = z.compile(
   z.strictObject({
-    query: z.string().optional(),
-    where: predicateSchema.optional(),
-    params: attributesSchema.optional(),
-    limit: z.number().int().positive().optional(),
-    lean: z.boolean().optional(),
+    name: id.optional(),
   }),
 );
 
+const batchFlags: NonNullable<Command["flags"]> = {
+  refs: { type: "json" },
+  nodes: { type: "json" },
+  edges: { type: "json" },
+  burn: { type: "json" },
+};
+
 const guidance = {
-  add: {
-    description: "Create a node with a title and attributes",
-    primer: "Create a node, then use its returned id for notes, edges and updates.",
-    examples: ['bl add "Investigate issue" --attributes \'{"priority":"p2"}\''],
-  },
-  show: {
-    description: "Read a node and its attributes",
-    primer:
-      "Point reads include archived attributes. Use --lean to see only hot attributes; retain the revision for guarded updates.",
-    examples: ["bl show ID"],
-  },
-  update: {
-    description: "Patch a node with optional revision checking",
-    primer:
-      "Omitted attributes stay unchanged; objects merge recursively and null deletes a key. Use set-attributes for exact JSON values. Read the current revision and pass --expected-revision when a stale write must fail.",
-    examples: ['bl update ID --expected-revision 2 --attributes \'{"priority":"p1"}\''],
-  },
-  "set-attributes": {
-    description: "Set supplied attributes to exact JSON values",
-    primer:
-      "Each supplied key replaces its entire value, including objects and nulls; omitted keys stay unchanged. Use update for merge patches or key deletion. Pass --expected-revision to reject stale writes.",
-    examples: ['bl set-attributes ID --attributes \'{"context":{"answer":null}}\''],
-  },
-  list: {
-    description: "Select nodes, optionally with a named query",
-    primer:
-      "Use --query NAME and --params JSON for named queries. For ad hoc predicates and composition use botlake lake eval with q and api.call('list', {where, params, limit}). The default limit is 100; a full page does not prove completeness. Archived values do not participate in hot selection.",
-    examples: ["bl list --limit 20"],
-  },
-  ready: {
-    description: "Select active nodes whose dependencies are satisfied",
-    primer:
-      "An active node is ready when no outgoing depends-on target remains active. Use --query NAME and --params JSON, or botlake lake eval with api.call('ready', {where, params, limit}) for ad hoc predicates. The default limit is 100; a full page does not prove completeness.",
-    examples: ["bl ready --limit 20"],
-  },
   query: {
     description: "Inspect registered query definitions",
     primer:
-      "List query names, inspect a definition and its parameters, then use it with list or ready.",
+      "List query names, inspect a definition and its parameters, then use it with bl node list or bl node ready.",
     examples: ["bl query", "bl query NAME"],
   },
   batch: {
@@ -106,36 +66,6 @@ const guidance = {
     primer:
       "Bind durable ids in refs; name new nodes with local refs. Supply ordered edge operations and optional expectedRevision values. Any failure rolls back the entire batch.",
     examples: ["bl --input @batch.json batch"],
-  },
-  supersede: {
-    description: "Replace a node and retarget its dependents",
-    primer:
-      "Create the replacement first. Supersession marks the original replaced, preserves dependency attributes and rejects cycles or an already-replaced original.",
-    examples: ["bl supersede OLD_ID NEW_ID"],
-  },
-  burn: {
-    description: "Delete nodes and incident edges, retaining tombstones",
-    primer:
-      "Burn removes live records and records their snapshots. Domain guards can reject deletion of protected evidence.",
-    examples: ["bl burn ID"],
-  },
-  note: {
-    description: "Attach an immutable note to a node",
-    primer:
-      "Notes are closed nodes connected by notes edges. Their text and timestamp are immutable. Use --stdin and :stdin for multiline text.",
-    examples: ["printf 'Investigation notes' | bl --stdin note ID :stdin"],
-  },
-  archive: {
-    description: "Hide attributes from hot selection without deleting them",
-    primer:
-      "Archived keys remain visible on full point reads. Immutable note keys cannot be archived.",
-    examples: ["bl archive ID KEY"],
-  },
-  subgraph: {
-    description: "Read a node and descendants along a named relation",
-    primer:
-      "Traversal follows outgoing edges, using parent-of by default. The result includes all edges between selected nodes.",
-    examples: ["bl subgraph ID --relation parent-of"],
   },
   edge: {
     description: "Add, remove or inspect named graph edges",
@@ -155,6 +85,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
       ])
         ctx.registerQuery(name, query);
       registerAwait(ctx);
+      registerNode(ctx);
       function register<I extends z.ZodType>(
         name: keyof typeof guidance,
         input: I,
@@ -180,92 +111,8 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
         );
       }
       register(
-        "add",
-        z.compile(
-          z.strictObject({
-            title: id,
-            state: nodeSchema.shape.state.exclude(["replaced"]).optional(),
-            attributes: attributesSchema.optional(),
-          }),
-        ),
-        (input) => ctx.graph.add(input),
-        [{ name: "title", type: "string", required: true }],
-        { state: { type: "string" }, attributes: { type: "json" } },
-      );
-      register(
-        "show",
-        z.compile(z.strictObject({ id, lean: z.boolean().optional() })),
-        (input) => ctx.graph.show(input.id, input.lean),
-        [{ name: "id", type: "string", required: true }],
-        { lean: { type: "boolean" } },
-      );
-      register(
-        "update",
-        z.compile(z.strictObject({ id, ...patch })),
-        ({ id: node, ...input }) => ctx.graph.update(node, input),
-        [{ name: "id", type: "string", required: true }],
-        {
-          title: { type: "string" },
-          state: { type: "string" },
-          attributes: { type: "json" },
-          "expected-revision": {
-            key: "expectedRevision",
-            type: "number",
-            description: "Reject changes since this revision",
-          },
-        },
-      );
-      register(
-        "set-attributes",
-        z.compile(
-          z.strictObject({
-            id,
-            attributes: attributesSchema,
-            expectedRevision: patch.expectedRevision,
-          }),
-        ),
-        ({ id: node, attributes, expectedRevision }) =>
-          ctx.graph.setAttributes(node, attributes, expectedRevision),
-        [{ name: "id", type: "string", required: true }],
-        {
-          attributes: { type: "json", required: true },
-          "expected-revision": {
-            key: "expectedRevision",
-            type: "number",
-            description: "Reject changes since this revision",
-          },
-        },
-      );
-      for (const ready of [false, true])
-        register(
-          ready ? "ready" : "list",
-          queryInput,
-          (input) => {
-            let where = input.where;
-            if (input.query !== undefined) {
-              const named = ctx.namedQuery(input.query);
-              if (named === undefined) throw new Fault("query", `Unknown query: ${input.query}`);
-
-              if (where !== undefined) throw new Fault("query", "Choose named or ad hoc query");
-
-              for (const param of named.params ?? [])
-                if (input.params?.[param] === undefined)
-                  throw new Fault("query", `Missing parameter: ${param}`);
-              where = named.where;
-            }
-            return ctx.graph.list({ ...input, where, ready });
-          },
-          [],
-          {
-            query: { type: "string" },
-            params: { type: "json" },
-            limit: { type: "number" },
-            lean: { type: "boolean" },
-          },
-        );
-      register(
         "query",
-        z.compile(z.strictObject({ name: id.optional() })),
+        queryInput,
         ({ name }) =>
           name === undefined
             ? ctx.queryCatalog()
@@ -275,53 +122,7 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
               })()),
         [{ name: "name", type: "string" }],
       );
-      register("batch", batchSchema, (input) => ctx.graph.batch(input), [], {
-        refs: { type: "json" },
-        nodes: { type: "json" },
-        edges: { type: "json" },
-        burn: { type: "json" },
-      });
-      register(
-        "supersede",
-        z.compile(z.strictObject({ id, replacement: id })),
-        (input) => ctx.graph.supersede(input.id, input.replacement),
-        [
-          { name: "id", type: "string", required: true },
-          { name: "replacement", type: "string", required: true },
-        ],
-      );
-      register(
-        "burn",
-        z.compile(z.strictObject({ ids: z.array(id).min(1) })),
-        (input) => ctx.graph.burn(input.ids),
-        [{ name: "ids", type: "string", multiple: true, required: true }],
-      );
-      register(
-        "note",
-        z.compile(z.strictObject({ id, text: id, attributes: attributesSchema.optional() })),
-        (input) => ctx.graph.note(input.id, input.text, input.attributes),
-        [
-          { name: "id", type: "string", required: true },
-          { name: "text", type: "string", required: true },
-        ],
-        { attributes: { type: "json" } },
-      );
-      register(
-        "archive",
-        z.compile(z.strictObject({ id, keys: z.array(id).min(1) })),
-        (input) => ctx.graph.archive(input.id, input.keys),
-        [
-          { name: "id", type: "string", required: true },
-          { name: "keys", type: "string", multiple: true, required: true },
-        ],
-      );
-      register(
-        "subgraph",
-        z.compile(z.strictObject({ id, relation: id.optional() })),
-        (input) => ctx.graph.subgraph(input.id, input.relation),
-        [{ name: "id", type: "string", required: true }],
-        { relation: { type: "string", description: "Traversal relation (default parent-of)" } },
-      );
+      register("batch", batchSchema, (input) => ctx.graph.batch(input), [], batchFlags);
       register(
         "edge",
         z.compile(
@@ -333,7 +134,12 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
               relation: id,
               attributes: attributesSchema.optional(),
             }),
-            z.strictObject({ command: z.literal("remove"), from: id, to: id, relation: id }),
+            z.strictObject({
+              command: z.literal("remove"),
+              from: id,
+              to: id,
+              relation: id,
+            }),
             z.strictObject({
               command: z.literal("list"),
               id: id.optional(),

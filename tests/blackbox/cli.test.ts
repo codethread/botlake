@@ -52,7 +52,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
           ),
         }),
       )
-      .parse(await host.bl("nodes", "subgraph", { id: committed.refs.root }));
+      .parse(await host.bl("nodes", "node", { command: "subgraph", id: committed.refs.root }));
     expect(subgraph.nodes.map(({ id }) => id).toSorted()).toEqual(
       [committed.refs.root, committed.refs.child].toSorted(),
     );
@@ -67,7 +67,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
         "eval",
         "--workspace",
         "nodes",
-        'console.log("diagnostic"); return await api.call("list", {where:q.eq(q.attr("kind"),"root")});',
+        'console.log("diagnostic"); return await api.call("node", {command:"list",where:q.eq(q.attr("kind"),"root")});',
       ],
       "",
       {},
@@ -82,7 +82,9 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     expect(JSON.parse(rejected.stderr)).toMatchObject({ code: "not-found" });
 
     await host.botlake(["lake", "restart", "--workspace", workspace]);
-    expect(await host.bl("nodes", "show", { id: committed.refs.child })).toMatchObject({
+    expect(
+      await host.bl("nodes", "node", { command: "show", id: committed.refs.child }),
+    ).toMatchObject({
       title: "Child",
     });
   } finally {
@@ -144,21 +146,31 @@ export default {name:"commands",activate(ctx){
       error: { message: "invoke payload must be an object" },
     });
     expect(await host.bl("cli", "echo", { value: "still running" })).toBe("still running");
-    const root = idResult.parse(await host.cli(["--workspace", "cli", "add", "Root"]));
-    const child = idResult.parse(await host.cli(["--workspace", "cli", "add", "Dependency"]));
+    const root = idResult.parse(await host.cli(["--workspace", "cli", "node", "add", "Root"]));
+    const child = idResult.parse(
+      await host.cli(["--workspace", "cli", "node", "add", "Dependency"]),
+    );
     await host.cli(["--workspace", "cli", "edge", "add", root.id, child.id, "depends-on"]);
     expect(
       z
         .compile(z.object({ nodes: z.array(z.object({ id: z.string() })) }))
         .parse(
-          await host.cli(["--workspace", "cli", "subgraph", root.id, "--relation", "depends-on"]),
+          await host.cli([
+            "--workspace",
+            "cli",
+            "node",
+            "subgraph",
+            root.id,
+            "--relation",
+            "depends-on",
+          ]),
         )
         .nodes.map((entry) => entry.id)
         .toSorted(),
     ).toEqual([root.id, child.id].toSorted());
-    const shippedHelp = await runTerminal(host, ["--workspace", "cli", "prime", "update"]);
+    const shippedHelp = await runTerminal(host, ["--workspace", "cli", "prime", "node"]);
     expect(shippedHelp.code).toBe(0);
-    expect(shippedHelp.output).toContain("--expected-revision");
+    expect(shippedHelp.output).toContain("Create, inspect, select and mutate graph nodes");
   } finally {
     await host.close();
   }
@@ -429,7 +441,10 @@ export default {name:"payloads",activate(ctx){
 test("nested discovery renders for real terminals and stays machine-readable when piped or explicitly requested", async () => {
   const host = await system();
   try {
-    const workspace = await host.workspace("help", ["./commands.ts"]);
+    const workspace = await host.workspace("help", [
+      "@botlake/extension-batteries",
+      "./commands.ts",
+    ]);
     await Bun.write(
       join(workspace, "commands.ts"),
       `import {defineOp} from "@botlake/core";
@@ -478,12 +493,113 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
     ).toContain("Repeated flag");
     const catalog = z.compile(z.array(z.object({ name: z.string() })));
     const rootDiscovery = await host.cli([...prefix, "help"]);
-    expect(catalog.parse(rootDiscovery)).toEqual([
-      { name: "bins" },
-      { name: "events" },
-      { name: "nested" },
+    const rootNames = catalog
+      .parse(rootDiscovery)
+      .map((op) => op.name)
+      .toSorted();
+    expect(rootNames).toEqual([
+      "await",
+      "batch",
+      "bins",
+      "edge",
+      "events",
+      "nested",
+      "node",
+      "query",
     ]);
     expect(JSON.stringify(rootDiscovery)).not.toContain("jsonSchema");
+    const [nodeOperation] = z
+      .compile(
+        z.tuple([
+          z.object({
+            cli: z.object({ commands: z.record(z.string(), z.unknown()) }),
+            jsonSchema: z.object({ input: z.unknown() }),
+          }),
+        ]),
+      )
+      .parse(await host.cli([...prefix, "help", "node"]));
+    const nodeCommands = Object.keys(nodeOperation.cli.commands).toSorted();
+    expect(nodeCommands).toEqual(
+      [
+        "add",
+        "archive",
+        "burn",
+        "list",
+        "note",
+        "ready",
+        "set-attributes",
+        "show",
+        "subgraph",
+        "supersede",
+        "update",
+      ].toSorted(),
+    );
+    const nodeInputSchema = z
+      .compile(
+        z.object({
+          oneOf: z.array(
+            z.object({
+              properties: z.object({
+                command: z.object({ const: z.string() }),
+                title: z.object({ type: z.string(), minLength: z.number() }).optional(),
+                attributes: z.object({ type: z.string() }).optional(),
+              }),
+              required: z.array(z.string()),
+            }),
+          ),
+        }),
+      )
+      .parse(nodeOperation.jsonSchema.input);
+    expect(
+      nodeInputSchema.oneOf.map((variant) => variant.properties.command.const).toSorted(),
+    ).toEqual(nodeCommands);
+    const addSchema = nodeInputSchema.oneOf.find(
+      (variant) => variant.properties.command.const === "add",
+    );
+    expect(addSchema?.required).toContain("title");
+    expect(addSchema).toMatchObject({
+      properties: {
+        title: { type: "string", minLength: 1 },
+        attributes: { type: "object" },
+      },
+    });
+    const nestedNode = z
+      .compile(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          attributes: z.record(z.string(), z.json()),
+        }),
+      )
+      .parse(
+        await host.cli([
+          ...prefix,
+          "node",
+          "add",
+          "Nested root",
+          "--attributes",
+          '{"kind":"root"}',
+        ]),
+      );
+    expect(nestedNode).toMatchObject({ title: "Nested root", attributes: { kind: "root" } });
+    expect(await host.cli([...prefix, "node", "show", nestedNode.id])).toMatchObject({
+      id: nestedNode.id,
+      title: "Nested root",
+    });
+    expect(await host.cli([...prefix, "node", "add"], false)).toContain(
+      "Required positional: title",
+    );
+    expect(
+      await host.cli([...prefix, "node", "add", "Invalid", "--attributes", "[]"], false),
+    ).toContain("validation");
+    const nodeUpdateHelp = await host.cli([...prefix, "help", "node", "update"]);
+    expect(nodeUpdateHelp).toMatchObject([
+      {
+        name: "node",
+        path: ["update"],
+        cli: { flags: { "expected-revision": { type: "number" } } },
+      },
+    ]);
     const leaf = await host.cli([...prefix, "help", "nested", "group", "take"]);
     expect(leaf).toMatchObject([
       { name: "nested", cli: { description: "Collect named items with optional labels" } },

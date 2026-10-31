@@ -258,7 +258,8 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       "Native agent did not read the fresh fixture",
     );
     const [external] = runListSchema.parse(
-      await host.bl("native-smoke", "list", {
+      await host.bl("native-smoke", "node", {
+        command: "list",
         where: q.and(
           q.eq(q.attr(agentAttributes.external), true),
           q.eq(q.attr(agentAttributes.provider), name),

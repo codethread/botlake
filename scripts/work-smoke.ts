@@ -295,14 +295,27 @@ try {
     [scope, trials],
   );
   await failure({ command: "link", from: vpn, to: build, relation: "depends-on" }, /Cycle/iu);
-  for (const [op, input] of [
+  for (const [command, input] of [
     ["update", { id: x, attributes: { [workAttributes.description]: "forged" } }],
     ["set-attributes", { id: x, attributes: { [workAttributes.criteria]: [] } }],
     ["burn", { ids: [x] }],
     ["archive", { id: x, keys: [workAttributes.description] }],
-    ["edge", { command: "add", from: elsewhere, to: x, relation: "parent-of" }],
   ] as const)
-    assert.ok(z.string().parse(await host.bl(workspace, op, input, false)).length > 0);
+    assert.ok(
+      z.string().parse(await host.bl(workspace, "node", { command, ...input }, false)).length > 0,
+    );
+  assert.ok(
+    z
+      .string()
+      .parse(
+        await host.bl(
+          workspace,
+          "edge",
+          { command: "add", from: elsewhere, to: x, relation: "parent-of" },
+          false,
+        ),
+      ).length > 0,
+  );
   evidence.push(
     "single contextual home, non-contextual references, cycles and generic mutation guards",
   );
@@ -326,12 +339,13 @@ try {
   });
   const raw = z
     .object({ attributes: attributesSchema })
-    .parse(await host.bl(workspace, "show", { id: planned }));
+    .parse(await host.bl(workspace, "node", { command: "show", id: planned }));
   assert.equal(raw.attributes[workAttributes.kind], "task");
   assert.equal(raw.attributes[workAttributes.priority], "P0");
   assert.ok(Array.isArray(raw.attributes[workAttributes.assignments]));
   const urgent = z.array(identifier).parse(
-    await host.bl(workspace, "list", {
+    await host.bl(workspace, "node", {
+      command: "list",
       where: q.eq(q.attr(workAttributes.priority), "P0"),
     }),
   );
@@ -361,7 +375,8 @@ try {
 
   // Exact value assignment differs from merge patches through the packaged CLI.
   const plain = identifier.parse(
-    await host.bl(workspace, "add", {
+    await host.bl(workspace, "node", {
+      command: "add",
       title: "Attribute semantics",
       attributes: { document: { obsolete: true, nested: { old: true } }, unrelated: "retained" },
     }),
@@ -371,6 +386,7 @@ try {
     nullable: null,
   };
   await cli([
+    "node",
     "set-attributes",
     plain,
     "--attributes",
@@ -381,20 +397,21 @@ try {
   const attributes = async () =>
     z
       .object({ attributes: attributesSchema })
-      .parse(await host.bl(workspace, "show", { id: plain })).attributes;
+      .parse(await host.bl(workspace, "node", { command: "show", id: plain })).attributes;
   assert.deepEqual(await attributes(), { ...values, unrelated: "retained" });
   assert.match(
     z
       .string()
       .parse(
         await cli(
-          ["set-attributes", plain, "--attributes", "{}", "--expected-revision", "1"],
+          ["node", "set-attributes", plain, "--attributes", "{}", "--expected-revision", "1"],
           false,
         ),
       ),
     /Stale/iu,
   );
   await cli([
+    "node",
     "update",
     plain,
     "--attributes",

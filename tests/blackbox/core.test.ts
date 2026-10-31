@@ -64,7 +64,7 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     expect(graph.tombstones(a.id)).toHaveLength(1);
     expect(graph.tombstones(replacement.id)).toHaveLength(1);
     expect(await runtime.invoke("help", [])).toBeArray();
-    expect(await runtime.invoke("about", ["list"])).toBeArray();
+    expect(await runtime.invoke("about", ["node", "list"])).toBeArray();
   });
 });
 
@@ -80,7 +80,8 @@ test("archival preserves immutable evidence and burn records each deletion exact
       expect(
         (
           await rejected(
-            runtime.invoke("archive", {
+            runtime.invoke("node", {
+              command: "archive",
               id: note.id,
               keys: ["scratch", noteAttributes.text],
             }),
@@ -90,7 +91,8 @@ test("archival preserves immutable evidence and burn records each deletion exact
       expect(
         (
           await rejected(
-            runtime.invoke("archive", {
+            runtime.invoke("node", {
+              command: "archive",
               id: note.id,
               keys: ["scratch", "typo"],
             }),
@@ -99,7 +101,8 @@ test("archival preserves immutable evidence and burn records each deletion exact
       ).toContain("Unknown attribute");
       expect(graph.show(note.id, true)).toEqual(note);
       expect(
-        (await rejected(runtime.invoke("burn", { ids: [target.id, target.id] }))).message,
+        (await rejected(runtime.invoke("node", { command: "burn", ids: [target.id, target.id] })))
+          .message,
       ).toContain("Duplicate node");
       expect(
         (
@@ -116,12 +119,12 @@ test("archival preserves immutable evidence and burn records each deletion exact
       expect(graph.tombstones(target.id)).toEqual([]);
       await runtime.drain();
       expect(events).toEqual([]);
-      await runtime.invoke("archive", { id: note.id, keys: ["scratch"] });
+      await runtime.invoke("node", { command: "archive", id: note.id, keys: ["scratch"] });
       expect(graph.show(note.id, true).attributes).not.toHaveProperty("scratch");
       expect(graph.show(note.id).attributes["scratch"]).toBe("extra");
       await runtime.drain();
       events.length = 0;
-      await runtime.invoke("burn", { ids: [target.id, note.id] });
+      await runtime.invoke("node", { command: "burn", ids: [target.id, note.id] });
       await runtime.drain();
       expect(graph.tombstones(target.id)).toHaveLength(1);
       expect(graph.tombstones(note.id)).toHaveLength(1);
@@ -165,7 +168,7 @@ test("query negation requires present hot values and composes across named queri
           .map((row) => row.title)
           .toSorted();
       const select = async (where: Predicate): Promise<string[]> =>
-        titles(await runtime.invoke("list", { where }));
+        titles(await runtime.invoke("node", { command: "list", where }));
       expect(await select(q.not(b))).toEqual(["different", "other"]);
       expect(await select(q.not(q.inArray(field, [2])))).toEqual(["different", "other"]);
       expect(await select(q.not(q.and(a, b)))).toEqual(["different", "other", "partial"]);
@@ -176,11 +179,17 @@ test("query negation requires present hot values and composes across named queri
       expect(await select(q.eq(field, null))).toEqual([]);
       expect(await select(q.ne(field, null))).toEqual([]);
       expect(
-        titles(await runtime.invoke("list", { query: "different", params: { value: 2 } })),
+        titles(
+          await runtime.invoke("node", {
+            command: "list",
+            query: "different",
+            params: { value: 2 },
+          }),
+        ),
       ).toEqual(["different", "other"]);
-      expect((await rejected(runtime.invoke("list", { query: "different" }))).message).toContain(
-        "Missing parameter",
-      );
+      expect(
+        (await rejected(runtime.invoke("node", { command: "list", query: "different" }))).message,
+      ).toContain("Missing parameter");
       graph.connect(matching.id, different.id, "ref");
       expect(await select(q.edgeOut("ref", q.not(b)))).toEqual(["matching"]);
       expect(await select(q.not(q.edgeOut("ref")))).toEqual([

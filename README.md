@@ -34,8 +34,8 @@ export PATH="$HOME/.local/bin:$PATH"
 botlake start # Foreground supervisor; leave running in its own terminal.
 # In another terminal, from this checkout:
 botlake lake start
-bl add 'My first node' --attributes '{"stuff":"data"}'
-bl list
+bl node add 'My first node' --attributes '{"stuff":"data"}'
+bl node list
 bl work create 'My first task' --description 'What done means'
 bl work list --view available
 bl work show ID
@@ -150,11 +150,12 @@ Agents supports Codex, Pi and Claude. Native agents own session IDs; [native ada
 
 ## JavaScript evaluation
 
-Use `bl list|ready --query NAME --params JSON` for named queries. For ad hoc predicates, joins and projections, run JavaScript against an already-running lake:
+Use `bl node list|ready --query NAME --params JSON` for named queries. For ad hoc predicates, joins and projections, run JavaScript against an already-running lake:
 
 ```sh
 botlake lake eval --workspace work - <<'JS'
-const runs = await api.call("list", {
+const runs = await api.call("node", {
+  command: "list",
   where: q.and(
     q.eq(q.attr("agent/run"), true),
     q.eq(q.attr("agent/state"), "running"),

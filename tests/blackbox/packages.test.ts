@@ -27,7 +27,7 @@ test("packed core runs alone; installed extensions require explicit selection an
       { name: "bins" },
       { name: "events" },
     ]);
-    expect(await host.bl("bare", "list", {}, false)).toContain("Unknown op");
+    expect(await host.bl("bare", "node", { command: "list" }, false)).toContain("Unknown op");
     expect(await Bun.file(join(bare, ".botlake/world.db")).exists()).toBe(true);
 
     await install(
@@ -48,9 +48,9 @@ test("packed core runs alone; installed extensions require explicit selection an
     );
     await host.botlake(["lake", "restart", "--workspace", "bare"]);
     expect(
-      await host.cli(["--workspace", "bare", "add", "Configuration-local dependency"]),
+      await host.cli(["--workspace", "bare", "node", "add", "Configuration-local dependency"]),
     ).toMatchObject({ title: "Configuration-local dependency" });
-    expect(await host.bl("bare", "list", {})).toMatchObject([
+    expect(await host.bl("bare", "node", { command: "list" })).toMatchObject([
       { title: "Configuration-local dependency" },
     ]);
 

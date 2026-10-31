@@ -111,9 +111,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         false,
       ),
     ).toContain("different input");
-    expect(await host.bl("agents", "update", { id: first.id, state: "closed" }, false)).toContain(
-      "Agents API",
-    );
+    expect(
+      await host.bl("agents", "node", { command: "update", id: first.id, state: "closed" }, false),
+    ).toContain("Agents API");
     // Public reconciliation is the synchronization boundary; it observes Botlake's terminal fact.
     let settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     for (
@@ -125,7 +125,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     }
     expect(settled.attributes[agentAttributes.substatus]).toBe("completed");
-    expect(row.parse(await host.bl("agents", "show", { id: target.id })).state).toBe("active");
+    expect(
+      row.parse(await host.bl("agents", "node", { command: "show", id: target.id })).state,
+    ).toBe("active");
     const resumed = status.parse(
       await host.bl("agents", "agent", {
         command: "resume",
@@ -341,7 +343,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(
       await host.bl("agents", "agent", { command: "acknowledge", id: preparationFailure.id }),
     ).toEqual({ id: preparationFailure.id, acknowledged: true });
-    expect(row.parse(await host.bl("agents", "show", { id: waiting.id })).state).toBe("active");
+    expect(
+      row.parse(await host.bl("agents", "node", { command: "show", id: waiting.id })).state,
+    ).toBe("active");
   } finally {
     await host.close();
   }

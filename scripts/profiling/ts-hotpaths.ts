@@ -10,7 +10,9 @@ const [database, queriesPath] = z
 const queries = z
   .compile(z.record(z.string(), z.tuple([z.string(), jsonSchema])))
   .parse(await Bun.file(queriesPath).json());
-const querySchema = z.compile(z.object({ where: predicateSchema, limit: z.number() }));
+const querySchema = z.compile(
+  z.object({ command: z.literal("list"), where: predicateSchema, limit: z.number() }),
+);
 const runtime = new Runtime({ database });
 const records: unknown[] = [];
 
@@ -24,7 +26,7 @@ try {
     mmap: runtime.graph.db.query(sql`PRAGMA mmap_size`).get(),
   });
   for (const [name, [op, input]] of Object.entries(queries)) {
-    if (op !== "list") continue;
+    if (op !== "node") continue;
     const query = querySchema.parse(input);
     const compiled = compileQuery(query.where);
     const querySql = sql`

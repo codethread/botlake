@@ -23,9 +23,11 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
       await Bun.write(join(workspace, "probe.ts"), extension);
       await host.botlake(["lake", "start", "--workspace", name]);
     }
-    await host.cli(["--workspace", "./alpha", "add", "A"]);
-    expect(titles.parse(await host.bl("alpha", "list", {})).map((row) => row.title)).toEqual(["A"]);
-    expect(await host.bl("beta", "list", {})).toEqual([]);
+    await host.cli(["--workspace", "./alpha", "node", "add", "A"]);
+    expect(
+      titles.parse(await host.bl("alpha", "node", { command: "list" })).map((row) => row.title),
+    ).toEqual(["A"]);
+    expect(await host.bl("beta", "node", { command: "list" })).toEqual([]);
     const before = handleRow.parse(await host.bl("alpha", "process", { command: "launch" }));
     await host.botlake(["lake", "restart", "--workspace", "alpha"]);
     expect(
@@ -58,11 +60,13 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
     expect(handleRows.parse(await host.bl("alpha", "process", { command: "list" }))).toHaveLength(
       1,
     );
-    expect(await Promise.all([host.bl("alpha", "load", {}), host.bl("beta", "list", {})])).toEqual([
-      10000,
-      [],
-    ]);
-    await host.bl("unknown", "list", {}, false);
+    expect(
+      await Promise.all([
+        host.bl("alpha", "load", {}),
+        host.bl("beta", "node", { command: "list" }),
+      ]),
+    ).toEqual([10000, []]);
+    await host.bl("unknown", "node", { command: "list" }, false);
     await mkdir(join(host.dir, "duplicate/.botlake"), { recursive: true });
     await Bun.write(
       join(host.dir, "duplicate/.botlake/package.json"),
@@ -102,7 +106,7 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
       name: "alpha",
     });
     await host.botlake(["lake", "restart", "--workspace", alpha]);
-    await host.bl("renamed", "add", { title: "A" });
+    await host.bl("renamed", "node", { command: "add", title: "A" });
     expect(await host.botlake(["lake", "start", "--workspace", "renamed"])).toMatchObject({
       name: "renamed",
     });
@@ -110,27 +114,31 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     // Published names win for bare selections; explicit paths still select paths.
     await configure(beta, "alpha");
     await host.botlake(["lake", "restart", "--workspace", beta]);
-    expect(await host.bl("alpha", "list", {})).toEqual([]);
-    expect(await host.bl("./alpha", "list", {})).toHaveLength(1);
+    expect(await host.bl("alpha", "node", { command: "list" })).toEqual([]);
+    expect(await host.bl("./alpha", "node", { command: "list" })).toHaveLength(1);
     await configure(alpha, "next");
     await host.botlake(["restart-host"]);
-    expect(await host.bl("next", "list", {})).toHaveLength(1);
-    expect(await host.bl("renamed", "list", {}, false)).toContain("unknown workspace");
+    expect(await host.bl("next", "node", { command: "list" })).toHaveLength(1);
+    expect(await host.bl("renamed", "node", { command: "list" }, false)).toContain(
+      "unknown workspace",
+    );
 
     // Reject a colliding member replacement before taking its current worker down.
     await configure(beta, "next");
     expect(await host.botlake(["lake", "restart", "--workspace", beta], false)).toContain(
       "duplicate workspace name",
     );
-    expect(await host.bl("alpha", "list", {})).toEqual([]);
+    expect(await host.bl("alpha", "node", { command: "list" })).toEqual([]);
 
     // Pool recovery rejects every ambiguous name, without disrupting healthy peers.
     expect(await host.botlake(["restart-host"], false)).toContain("duplicate workspace name");
     expect(await host.botlake(["lake", "list"])).toEqual([
       { path: await realpath(healthy), name: "healthy" },
     ]);
-    expect(await host.bl("next", "list", {}, false)).toContain("unknown workspace");
-    expect(await host.bl("healthy", "list", {})).toEqual([]);
+    expect(await host.bl("next", "node", { command: "list" }, false)).toContain(
+      "unknown workspace",
+    );
+    expect(await host.bl("healthy", "node", { command: "list" })).toEqual([]);
     await configure(alpha);
     await host.botlake(["lake", "start", "--workspace", alpha]);
     await host.botlake(["lake", "stop", "--workspace", alpha]);

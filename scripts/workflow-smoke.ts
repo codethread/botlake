@@ -203,7 +203,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   );
 
   // Private execution checkpoints and decision evidence cannot be forged or erased through Batteries.
-  for (const [op, input] of [
+  for (const [command, input] of [
     ["update", { id: done.run.id, attributes: { [workflowAttributes.snapshot]: "{}" } }],
     ["update", { id: firstReview, attributes: { [workflowAttributes.result]: "{}" } }],
     [
@@ -216,7 +216,9 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     ["burn", { ids: [done.run.id] }],
     ["archive", { id: done.run.id, keys: [workflowAttributes.snapshot] }],
   ] as const)
-    assert.ok(z.string().parse(await host.bl(workspace, op, input, false)).length > 0);
+    assert.ok(
+      z.string().parse(await host.bl(workspace, "node", { command, ...input }, false)).length > 0,
+    );
 
   // Nested machine routing restores after restart. Context and business scope can outlive execution.
   const business = idResult.parse(
@@ -266,8 +268,9 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   );
   const nativeTask = task(native, "Native JSON task");
   const attributes = async (id: string) =>
-    z.object({ attributes: attributesSchema }).parse(await host.bl(workspace, "show", { id }))
-      .attributes;
+    z
+      .object({ attributes: attributesSchema })
+      .parse(await host.bl(workspace, "node", { command: "show", id })).attributes;
   const runAttributes = await attributes(native.run.id);
   assert.equal(typeof runAttributes[workflowAttributes.definition], "object");
   assert.equal(typeof runAttributes[workflowAttributes.snapshot], "string");
@@ -282,7 +285,8 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     },
   );
   const matching = z.array(idResult).parse(
-    await host.bl(workspace, "list", {
+    await host.bl(workspace, "node", {
+      command: "list",
       where: q.eq(q.attr(workflowAttributes.meta, "evidence", "label"), "native"),
     }),
   );

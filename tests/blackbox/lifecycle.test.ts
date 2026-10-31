@@ -48,7 +48,7 @@ export default {name:"late",activate(ctx){ctx.resource({
     );
     expect(await Bun.file(cleaned).text()).toBe("cleaned");
     expect(lakes.parse(await host.botlake(["lake", "list"]))).toEqual([{ name: "healthy" }]);
-    expect(await host.bl("healthy", "list", {})).toEqual([]);
+    expect(await host.bl("healthy", "node", { command: "list" })).toEqual([]);
   } finally {
     await host.close();
   }
