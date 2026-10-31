@@ -34,8 +34,58 @@ export const eventSchema = z.compile(
 );
 
 export const capabilitySchema = z.compile(
-  z.enum(["activity", "model", "effort", "session-end", "parent"]),
+  z.enum(["activity", "tools", "messages", "usage", "model", "effort", "session-end", "parent"]),
 );
+
+const tokenCount = z.number().int().nonnegative().nullable();
+export const runUsageSchema = z.compile(
+  z.strictObject({
+    scope: z.enum(["message", "turn", "session"]),
+    inputTokens: tokenCount,
+    outputTokens: tokenCount,
+    cacheReadTokens: tokenCount,
+    cacheWriteTokens: tokenCount,
+    totalTokens: tokenCount,
+    cost: z.strictObject({ amount: z.number().nonnegative(), currency: text }).nullable(),
+  }),
+);
+
+const turn = { turnId: text.nullable().default(null) };
+const excerpt = { summary: z.string().max(2048), truncated: z.boolean().default(false) };
+/** Small plugin observations; complete conversation/tool output stays in the native transcript. */
+export const runActivityDetailSchema = z.compile(
+  z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("tool-started"),
+      ...turn,
+      callId: text,
+      tool: text,
+      ...excerpt,
+    }),
+    z.strictObject({
+      kind: z.literal("tool-ended"),
+      ...turn,
+      callId: text,
+      tool: text,
+      ...excerpt,
+      outcome: z.enum(["completed", "failed", "cancelled"]),
+    }),
+    z.strictObject({
+      kind: z.literal("message"),
+      ...turn,
+      role: z.enum(["user", "assistant"]),
+      ...excerpt,
+    }),
+    z.strictObject({ kind: z.literal("usage"), ...turn, usage: runUsageSchema }),
+  ]),
+);
+
+export type RunActivityDetail = z.infer<typeof runActivityDetailSchema>;
+
+/** Excerpts are deliberately bounded; the native session file remains the full record. */
+export function activityExcerpt(value: string): { summary: string; truncated: boolean } {
+  return { summary: value.slice(0, 2048), truncated: value.length > 2048 };
+}
 
 export const observationSchema = z.compile(
   sessionSchema.extend({
@@ -47,6 +97,8 @@ export const observationSchema = z.compile(
     sessionPath: text.nullable().optional(),
     parentNativeSessionId: text.optional(),
     capabilities: z.array(capabilitySchema).optional(),
+    turnId: text.optional(),
+    activity: z.array(runActivityDetailSchema).max(10).optional(),
   }),
 );
 
@@ -128,17 +180,12 @@ export function agentMetadata(
   });
 }
 
-/** Managed runs and explicitly observed native children never inherit a caller override. */
+/** Managed runs never inherit a caller audience override. */
 export function sessionAudience(
-  input: Pick<NativeRegistration, "audience" | "runId" | "nativeEvent">,
+  input: Pick<NativeRegistration, "audience" | "runId">,
   env: Readonly<Record<string, string | undefined>>,
 ): Audience {
-  if (
-    input.runId !== undefined ||
-    input.nativeEvent === "SubagentStart" ||
-    input.nativeEvent === "SubagentStop"
-  )
-    return "agent";
+  if (input.runId !== undefined) return "agent";
   if (input.audience !== undefined) return input.audience;
   const override = env["BL_AUDIENCE"];
   return override === undefined ? "unknown" : audienceOverrideSchema.parse(override);

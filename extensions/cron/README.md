@@ -19,4 +19,11 @@ export default cron({
 
 Schedules accept `everyMs` or `expression` with an IANA `timezone`. Jobs declare overlap (`skip`, `queue`, `allow`), missed-run (`skip`, `once`, `catch-up`) and retry policies. Unchanged definitions retain cadence; changes reset it. Actions receive stable occurrence IDs for deduplicating external effects under at-least-once delivery.
 
-`defineJob`, `Cron`, `nextFire`, job/action types and `jobJsonSchema()` are public exports. The default export is an inert Cron extension with no jobs/actions, useful for status/history. Core's durable wake scheduler remains separate from Cron's job model.
+```mermaid
+classDiagram
+  Job "1" --> "*" Occurrence : produces
+```
+
+A job is a definition, not a run. An occurrence records one scheduled execution at `${job.id}/${scheduledAt}`; retries increment that occurrence's `attempt` rather than creating a new one.
+
+`defineJob`, `Cron`, `nextFire`, `jobSchema`, `scheduleSchema`, job/action types and `jobJsonSchema()` are public exports. The default export is an inert Cron extension with no jobs/actions, useful for status/history. Core's durable wake scheduler remains separate from Cron's job model.

@@ -1,5 +1,6 @@
 export { Graph, batchSchema, nodeSchema } from "./core/store.ts";
 export { nodeId } from "./core/node-id.ts";
+export { noteAttributes, noteRelations } from "./core/node-model.ts";
 
 export type { Node, Edge, Mutation, Patch, Guard, GraphEvent, Selection } from "./core/store.ts";
 export {
@@ -29,6 +30,8 @@ export type {
   Peers,
 } from "./runtime/context.ts";
 export { defineOp } from "./runtime/ops.ts";
+export { defineEvent } from "./runtime/events.ts";
+export type { EventDefinition, EventHandler, EventPhase } from "./runtime/events.ts";
 
 export type { Op, Invocation } from "./runtime/context.ts";
 

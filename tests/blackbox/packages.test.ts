@@ -8,6 +8,10 @@ import { install, system } from "./fixtures/system.ts";
 
 const catalog = z.compile(z.array(z.object({ name: z.string() })));
 const providers = z.compile(z.object({ providers: z.array(z.string()) }));
+const workItem = z.compile(
+  z.object({ id: z.string(), kind: z.enum(["task", "group"]), state: z.string() }),
+);
+const workDetail = z.compile(z.object({ item: z.object({ title: z.string() }) }));
 
 test("packed core runs alone; installed extensions require explicit selection and own their configuration", async () => {
   const host = await system();
@@ -19,7 +23,10 @@ test("packed core runs alone; installed extensions require explicit selection an
       '{"name":"@example/not-the-lake-name","private":true,"botlake":{}}',
     );
     await host.botlake(["lake", "start", "--workspace", bare]);
-    expect(catalog.parse(await host.bl("bare", "help", {}))).toEqual([{ name: "bins" }]);
+    expect(catalog.parse(await host.bl("bare", "help", {}))).toEqual([
+      { name: "bins" },
+      { name: "events" },
+    ]);
     expect(await host.bl("bare", "list", {}, false)).toContain("Unknown op");
     expect(await Bun.file(join(bare, ".botlake/world.db")).exists()).toBe(true);
 
@@ -47,7 +54,7 @@ test("packed core runs alone; installed extensions require explicit selection an
       { title: "Configuration-local dependency" },
     ]);
 
-    const board = await host.workspace("board", ["@botlake/extension-kanban"]);
+    const board = await host.workspace("board", ["@botlake/extension-work"]);
     expect(await host.botlake(["lake", "start", "--workspace", board], false)).toContain(
       "requires explicitly selected identity",
     );
@@ -56,7 +63,7 @@ test("packed core runs alone; installed extensions require explicit selection an
       JSON.stringify({
         botlake: {
           name: "board",
-          extensions: ["@botlake/extension-kanban", "@botlake/extension-identity"],
+          extensions: ["@botlake/extension-work", "@botlake/extension-identity"],
         },
       }),
     );
@@ -66,11 +73,12 @@ test("packed core runs alone; installed extensions require explicit selection an
         .parse(await host.bl("board", "help", {}))
         .map((op) => op.name)
         .toSorted(),
-    ).toEqual(["bins", "identity", "kanban", "kanban-export"]);
+    ).toEqual(["bins", "events", "identity", "work"]);
+    const task = workItem.parse(
+      await host.bl("board", "work", { command: "create", title: "No Batteries" }),
+    );
     expect(
-      z
-        .compile(z.object({ title: z.string() }))
-        .parse(await host.bl("board", "kanban", { command: "add", title: "No Batteries" })).title,
+      workDetail.parse(await host.bl("board", "work", { command: "show", id: task.id })).item.title,
     ).toBe("No Batteries");
 
     const agents = await host.workspace("configured", [
@@ -93,11 +101,19 @@ export default agents(agentConfigSchema.parse(config));`,
     expect(
       providers.parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
     ).toEqual([]);
+    expect(
+      catalog.parse(await host.bl("configured", "help", {})).map((op) => op.name),
+    ).not.toContain("work-agent");
     await Bun.write(
       join(agents, "flags.ts"),
       `import { agentFlags } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], [agentFlags.claude, true]]);`,
+    );
+    await Bun.write(
+      join(agents, "work-agents.ts"),
+      `import { workAgents } from "@botlake/extension-work-agents";
+export default workAgents({ checkIntervalMs: 60000 });`,
     );
     await Bun.write(
       join(agents, ".botlake/package.json"),
@@ -108,12 +124,20 @@ export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], 
             "@botlake/extension-identity",
             "./flags.ts",
             "./agents.ts",
+            "@botlake/extension-work",
+            "./work-agents.ts",
             "@botlake/extension-cron",
           ],
         },
       }),
     );
     await host.botlake(["lake", "restart", "--workspace", agents]);
+    expect(
+      catalog
+        .parse(await host.bl("configured", "help", {}))
+        .map((op) => op.name)
+        .toSorted(),
+    ).toEqual(["agent", "bins", "cron", "events", "flag", "identity", "work", "work-agent"]);
     expect(
       z
         .compile(z.object({ aliases: z.record(z.string(), z.unknown()) }))

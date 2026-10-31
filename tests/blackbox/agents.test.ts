@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { agentAttributes } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
@@ -23,6 +24,9 @@ const row = z.compile(
 );
 const performed = z.compile(z.array(z.object({ relation: z.string() })));
 const nativeRun = z.compile(z.object({ runId: z.string() }));
+const workItem = z.compile(
+  z.object({ id: z.string(), kind: z.enum(["task", "group"]), state: z.string() }),
+);
 test("Agents publishes, binds actual native sessions, fences writes, reconciles custody and resumes without Workflow", async () => {
   const host = await system();
   try {
@@ -31,7 +35,7 @@ test("Agents publishes, binds actual native sessions, fences writes, reconciles 
       "@botlake/extension-identity",
       "./flags.ts",
       "./providers.ts",
-      "@botlake/extension-kanban",
+      "@botlake/extension-work",
     ]);
     await Bun.write(
       join(workspace, "flags.ts"),
@@ -49,10 +53,12 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {agents,provider} from "@botlake/extension-agents";const base=provider("codex");export default agents({providers:[{...base,prepare(run){return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
+      `import {agents,provider} from "@botlake/extension-agents";const base=provider("codex");export default agents({providers:[{...base,prepare(run){if(run.prompt==="preparation-failure")throw new Error("fixture preparation failure");return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
-    const target = row.parse(await host.bl("agents", "kanban", { command: "add", title: "Work" }));
+    const target = workItem.parse(
+      await host.bl("agents", "work", { command: "create", kind: "task", title: "Work" }),
+    );
     const first = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
@@ -112,13 +118,13 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     let settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     for (
       let attempts = 0;
-      attempts < 100 && settled.attributes["agent/settled"] !== true;
+      attempts < 100 && settled.attributes[agentAttributes.settled] !== true;
       attempts++
     ) {
       await host.bl("agents", "agent", { command: "reconcile" });
       settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
     }
-    expect(settled.attributes["agent/substatus"]).toBe("completed");
+    expect(settled.attributes[agentAttributes.substatus]).toBe("completed");
     expect(row.parse(await host.bl("agents", "show", { id: target.id })).state).toBe("active");
     const resumed = status.parse(
       await host.bl("agents", "agent", {
@@ -131,8 +137,12 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     const resumedRun = row.parse(
       await host.bl("agents", "agent", { command: "show", id: resumed.id }),
     );
-    expect(resumedRun.attributes["agent/identity"]).toBe(settled.attributes["agent/identity"]);
-    expect(resumedRun.attributes["agent/session-id"]).toBe(settled.attributes["agent/session-id"]);
+    expect(resumedRun.attributes[agentAttributes.identity]).toBe(
+      settled.attributes[agentAttributes.identity],
+    );
+    expect(resumedRun.attributes[agentAttributes.sessionId]).toBe(
+      settled.attributes[agentAttributes.sessionId],
+    );
     expect(
       await host.bl(
         "agents",
@@ -162,7 +172,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       let run = row.parse(await host.bl("agents", "agent", { command: "show", id }));
       for (
         let attempts = 0;
-        attempts < 100 && run.attributes["agent/settled"] !== true;
+        attempts < 100 && run.attributes[agentAttributes.settled] !== true;
         attempts++
       ) {
         await host.bl("agents", "agent", { command: "reconcile" });
@@ -171,12 +181,27 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       return run;
     }
     let retry = await settle(retryStart.id);
-    expect(retry.attributes["agent/substatus"]).toBe("execution");
+    expect(retry.attributes[agentAttributes.substatus]).toBe("execution");
+    const previousActivity = z.string().parse(retry.attributes[agentAttributes.activity]);
+    expect(await host.bl("agents", "agent", { command: "acknowledge", id: retry.id })).toEqual({
+      id: retry.id,
+      acknowledged: true,
+    });
     await host.bl("agents", "agent", { command: "retry", id: retry.id });
     retry = await settle(retry.id);
-    expect(retry.attributes["agent/substatus"]).toBe("completed");
-    expect(retry.attributes["agent/integration"]).toBe("output");
-    expect(retry.attributes["agent/session-confirmed"]).toBe(true);
+    expect(retry.attributes[agentAttributes.acknowledged]).toBe(false);
+    expect(retry.attributes[agentAttributes.activity]).not.toBe(previousActivity);
+    const earlier = z.object({ stream: z.object({ id: z.string(), endedAt: z.number() }) }).parse(
+      await host.bl("agents", "agent", {
+        command: "activity",
+        operation: "list",
+        id: previousActivity,
+      }),
+    );
+    expect(earlier.stream.id).toBe(previousActivity);
+    expect(retry.attributes[agentAttributes.substatus]).toBe("completed");
+    expect(retry.attributes[agentAttributes.integration]).toBe("output");
+    expect(retry.attributes[agentAttributes.sessionConfirmed]).toBe(true);
     const parentA = await settle(
       status.parse(
         await host.bl("agents", "agent", {
@@ -217,9 +242,9 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     ).toContain("different input");
     expect(
       row.parse(await host.bl("agents", "agent", { command: "show", id: childA.id })).attributes[
-        "agent/identity"
+        agentAttributes.identity
       ],
-    ).toBe(parentA.attributes["agent/identity"]);
+    ).toBe(parentA.attributes[agentAttributes.identity]);
     const cancellable = status.parse(
       await host.bl("agents", "agent", {
         command: "start",
@@ -245,8 +270,8 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     await host.botlake(["restart-host"]);
     expect(
       row.parse(await host.bl("agents", "agent", { command: "show", id: cancellable.id }))
-        .attributes["agent/handle"],
-    ).toBe(beforeRestart.attributes["agent/handle"]);
+        .attributes[agentAttributes.handle],
+    ).toBe(beforeRestart.attributes[agentAttributes.handle]);
     const cancelled = status.parse(
       await host.bl("agents", "agent", { command: "cancel", id: cancellable.id }),
     );
@@ -263,6 +288,60 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(
       await host.bl("agents", "agent", { command: "cancel", id: external.runId }, false),
     ).toContain("no stop authority");
+
+    // A queued run restores without launching, and can be abandoned without process custody.
+    const prerequisite = workItem.parse(
+      await host.bl("agents", "work", { command: "create", kind: "task", title: "Prerequisite" }),
+    );
+    const waiting = workItem.parse(
+      await host.bl("agents", "work", {
+        command: "create",
+        kind: "task",
+        title: "Waiting work",
+        prerequisites: [prerequisite.id],
+      }),
+    );
+    const queued = status.parse(
+      await host.bl("agents", "agent", {
+        command: "start",
+        seat: "worker",
+        cwd: workspace,
+        prompt: "Wait for prerequisite",
+        target: waiting.id,
+      }),
+    );
+    expect(queued.state).toBe("ready");
+    await host.botlake(["restart-host"]);
+    expect(
+      row.parse(await host.bl("agents", "agent", { command: "show", id: queued.id })).attributes[
+        agentAttributes.handle
+      ],
+    ).toBeUndefined();
+    expect(
+      status.parse(await host.bl("agents", "agent", { command: "cancel", id: queued.id })),
+    ).toEqual({ id: queued.id, state: "stopped", substatus: "abandoned", settled: true });
+    expect(await host.bl("agents", "agent", { command: "acknowledge", id: queued.id })).toEqual({
+      id: queued.id,
+      acknowledged: true,
+    });
+    const preparationFailure = status.parse(
+      await host.bl("agents", "agent", {
+        command: "start",
+        seat: "worker",
+        cwd: workspace,
+        prompt: "preparation-failure",
+      }),
+    );
+    expect(preparationFailure).toEqual({
+      id: preparationFailure.id,
+      state: "failed",
+      substatus: "reconciliation",
+      settled: true,
+    });
+    expect(
+      await host.bl("agents", "agent", { command: "acknowledge", id: preparationFailure.id }),
+    ).toEqual({ id: preparationFailure.id, acknowledged: true });
+    expect(row.parse(await host.bl("agents", "show", { id: waiting.id })).state).toBe("active");
   } finally {
     await host.close();
   }

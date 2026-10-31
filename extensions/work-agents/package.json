@@ -1,0 +1,24 @@
+{
+  "name": "@botlake/extension-work-agents",
+  "version": "0.1.0",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-agents": "workspace:^",
+    "@botlake/extension-identity": "workspace:^",
+    "@botlake/extension-work": "workspace:^"
+  }
+}

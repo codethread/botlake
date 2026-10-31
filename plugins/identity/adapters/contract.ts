@@ -1,6 +1,7 @@
 import type { NativeObservation, ProviderName } from "@botlake/native-session";
 
 import type { SessionReport } from "../session.ts";
+import type { NativeHookInput } from "./events.ts";
 
 export interface HookEvent {
   /** Parsed native identity, activity and metadata. */
@@ -16,8 +17,8 @@ export interface HookEvent {
 export interface HookAdapter {
   /** Native host whose wire protocol this adapter translates. */
   provider: ProviderName;
-  /** Parse a host payload into an observation. */
-  decode(raw: unknown): HookEvent;
+  /** Translate a parsed root-session hook into an observation. */
+  decode(input: NativeHookInput): HookEvent;
   /** Deliver context through the host-specific transport. */
   deliver(event: HookEvent, report: SessionReport, env: NodeJS.ProcessEnv): Promise<unknown>;
 }

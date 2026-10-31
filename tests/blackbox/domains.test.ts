@@ -4,137 +4,40 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sql, Runtime, ManualClock, type Context, type Extension } from "@botlake/core";
-import { batteries } from "@botlake/extension-batteries";
 import { Cron, defineJob, nextFire } from "@botlake/extension-cron";
 import { identity } from "@botlake/extension-identity";
-import { kanban } from "@botlake/extension-kanban";
 import { z } from "zod";
 
-import { rejected } from "./assert.ts";
-
-const node = z.compile(z.object({ id: z.string(), attributes: z.record(z.string(), z.json()) }));
-const text = z.compile(z.string());
 const nextAtHistory = z.compile(z.array(z.object({ next_at: z.number() })));
 const statusHistory = z.compile(z.array(z.object({ status: z.string() })));
 
-test("Kanban preserves ownership evidence and fences generic writes, batch burns, links and stale references", async () => {
-  await world([batteries(), identity(), kanban()], new ManualClock(1000), async (runtime) => {
-    const invoke = (input: unknown): Promise<unknown> => runtime.invoke("kanban", input);
-    const epic = node.parse(await invoke({ command: "add", title: "Epic", type: "epic" }));
-    const feature = node.parse(await invoke({ command: "add", title: "Feature", epic: epic.id }));
-
-    expect(
-      z
-        .compile(z.array(node))
-        .parse(await runtime.invoke("ready", { query: "kanban-pending" }))
-        .map((row) => row.id),
-    ).toEqual([feature.id]);
-
-    const task = node.parse(await invoke({ command: "task", feature: feature.id, title: "Task" }));
-    const claim = z
-      .compile(z.object({ result: z.string(), claim: node }))
-      .parse(
-        await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
-      );
-    expect(
-      z
-        .compile(z.object({ result: z.string() }))
-        .parse(
-          await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" }),
-        ).result,
-    ).toBe("unchanged");
-
-    expect(() => runtime.graph.update(claim.claim.id, { title: "forged" })).toThrow("immutable");
-    expect(() => runtime.graph.batch({ refs: { claim: claim.claim.id }, burn: ["claim"] })).toThrow(
-      "immutable",
-    );
-    expect(
-      (
-        await rejected(
-          invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "different" }),
-        )
-      ).message,
-    ).toContain("ambiguous");
-    await invoke({ command: "claim", id: feature.id, owner: "second", branch: "next" });
-    await invoke({ command: "claim", id: feature.id, owner: "unresolved", branch: "topic" });
-    const history = z
-      .compile(z.object({ history: z.array(node) }))
-      .parse(await invoke({ command: "card", id: feature.id, history: true })).history;
-    expect(history.map((entry) => entry.attributes["kanban/owner"])).toEqual([
-      "unresolved",
-      "second",
-      "unresolved",
-    ]);
-
-    const times = history.map((entry) =>
-      Date.parse(text.parse(entry.attributes["kanban/claimed-at"])),
-    );
-    expect(times[0]).toBeLessThan(times[1] ?? 0);
-    expect(times[1]).toBeLessThan(times[2] ?? 0);
-    const view = z
-      .compile(
-        z.object({
-          tasks: z.array(z.object({ status: z.string(), owner: z.object({ source: z.string() }) })),
-        }),
-      )
-      .parse(await invoke({ command: "card", id: feature.id }));
-    expect(view.tasks[0]?.status).toBe("ready");
-    expect(view.tasks[0]?.owner.source).toBe("inherited");
-
-    await invoke({ command: "claim", id: task.id, owner: "worker" });
-    expect(
-      z
-        .compile(z.object({ tasks: z.array(z.object({ status: z.string() })) }))
-        .parse(await invoke({ command: "card", id: feature.id })).tasks[0]?.status,
-    ).toBe("doing");
-
-    await invoke({
-      command: "ref",
-      operation: "add",
-      id: feature.id,
-      url: "https://example.com/a?x=1#b",
-    });
-    expect(
-      (
-        await rejected(
-          invoke({
-            command: "ref",
-            operation: "add",
-            id: feature.id,
-            url: "https://example.com/b",
-            expectedRevision: 1,
-          }),
-        )
-      ).message,
-    ).toContain("Stale");
-    expect(() =>
-      runtime.graph.update(feature.id, {
-        attributes: { "kanban/external-refs": [{ url: "file:///etc/passwd" }] },
-      }),
-    ).toThrow();
-
-    await invoke({ command: "finish", id: epic.id, outcome: "abandoned" });
-    expect(runtime.graph.show(task.id).attributes["kanban/outcome"]).toBe("unactioned");
-    await invoke({ command: "reopen", id: epic.id });
-    expect(runtime.graph.show(feature.id).state).toBe("active");
-    expect(runtime.graph.show(task.id).state).toBe("active");
-    const native = await runtime.invoke("identity", {
-      command: "startup",
-      provider: "codex",
-      nativeSessionId: "actual",
-    });
-    expect(
+test("Identity recovers a repeated native session startup", async () => {
+  const result = z.compile(
+    z.object({
+      identity: z.string(),
+      nodeId: z.string(),
+      instruction: z.string(),
+      result: z.enum(["created", "recovered"]),
+    }),
+  );
+  await world([identity()], new ManualClock(1000), async (runtime) => {
+    const created = result.parse(
       await runtime.invoke("identity", {
         command: "startup",
         provider: "codex",
         nativeSessionId: "actual",
       }),
-    ).toEqual({
-      ...z
-        .compile(z.object({ identity: z.string(), nodeId: z.string(), instruction: z.string() }))
-        .parse(native),
-      result: "recovered",
-    });
+    );
+    expect(created.result).toBe("created");
+    expect(
+      result.parse(
+        await runtime.invoke("identity", {
+          command: "startup",
+          provider: "codex",
+          nativeSessionId: "actual",
+        }),
+      ),
+    ).toEqual({ ...created, result: "recovered" });
   });
 });
 

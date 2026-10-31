@@ -22,6 +22,11 @@ import {
 } from "@botlake/native-session";
 import { z } from "zod";
 
+import { identityAttributes, identityRelations, type AttributionRelation } from "./node-model.ts";
+
+export { identityAttributes, identityRelations } from "./node-model.ts";
+export type { AttributionRelation } from "./node-model.ts";
+
 const authority = Symbol("identity");
 
 const text = z.compile(z.string().trim().min(1));
@@ -41,11 +46,11 @@ export function callerActor(ctx: Context): string | undefined {
 }
 
 export function identityRecords(graph: Graph): Node[] {
-  return graph.all({ where: q.eq(q.attr("identity/session"), true), lean: false });
+  return graph.all({ where: q.eq(q.attr(identityAttributes.session), true), lean: false });
 }
 
 export function resolveIdentity(graph: Graph, name: string): Node | undefined {
-  return graph.all({ where: q.eq(q.attr("identity/id"), name), lean: false })[0];
+  return graph.all({ where: q.eq(q.attr(identityAttributes.id), name), lean: false })[0];
 }
 
 export function attribution(graph: Graph, name: string): { identity: string; nodeIds: string[] } {
@@ -58,7 +63,7 @@ export function attribute(
   ctx: Context,
   target: string,
   name: string,
-  relation: "attributed" | "reported" | "claimed",
+  relation: AttributionRelation,
 ): void {
   const resolved = resolveIdentity(ctx.graph, name);
 
@@ -79,8 +84,8 @@ export function nativeStartup(
     let record = resolveIdentity(ctx.graph, identityId);
     if (
       record !== undefined &&
-      (record.attributes["identity/provider"] !== input.provider ||
-        record.attributes["identity/native-session-id"] !== input.nativeSessionId)
+      (record.attributes[identityAttributes.provider] !== input.provider ||
+        record.attributes[identityAttributes.nativeSessionId] !== input.nativeSessionId)
     )
       throw new Fault("identity", `Native identity name collision: ${identityId}`);
     const result = record === undefined ? "created" : "recovered";
@@ -88,18 +93,19 @@ export function nativeStartup(
     record ??= ctx.graph.add({
       title: `${input.provider} ${input.nativeSessionId}`,
       attributes: {
-        "identity/session": true,
-        "identity/id": identityId,
-        "identity/provider": input.provider,
-        "identity/native-session-id": input.nativeSessionId,
-        "identity/activity": "unknown",
+        [identityAttributes.session]: true,
+        [identityAttributes.id]: identityId,
+        [identityAttributes.provider]: input.provider,
+        [identityAttributes.nativeSessionId]: input.nativeSessionId,
+        [identityAttributes.activity]: "unknown",
       },
     });
 
     const patch: Attributes = {};
-    if (input.agentSeat !== undefined) patch["identity/agent-seat"] = input.agentSeat;
-    if (input.model !== undefined) patch["identity/model"] = input.model;
-    if (input.thinkingLevel !== undefined) patch["identity/thinking-level"] = input.thinkingLevel;
+    if (input.agentSeat !== undefined) patch[identityAttributes.agentSeat] = input.agentSeat;
+    if (input.model !== undefined) patch[identityAttributes.model] = input.model;
+    if (input.thinkingLevel !== undefined)
+      patch[identityAttributes.thinkingLevel] = input.thinkingLevel;
     if (Object.keys(patch).length > 0) ctx.graph.update(record.id, { attributes: patch });
 
     if (input.parentNativeSessionId !== undefined) {
@@ -112,12 +118,12 @@ export function nativeStartup(
       });
       const recordId = record.id;
       const oldParent = ctx.graph
-        .edges(recordId, "spawned")
+        .edges(recordId, identityRelations.spawned)
         .find((edge) => edge.to_id === recordId);
       if (oldParent !== undefined && oldParent.from_id !== parent.nodeId)
         throw new Fault("identity", "Native parent attribution conflicts");
 
-      ctx.graph.connect(parent.nodeId, record.id, "spawned");
+      ctx.graph.connect(parent.nodeId, record.id, identityRelations.spawned);
     }
 
     return {
@@ -133,17 +139,22 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
   return ctx.graph.atomic(() => {
     const binding = nativeStartup(ctx, input);
     const record = ctx.graph.show(binding.nodeId);
-    const previous = activitySchema.parse(record.attributes["identity/activity"] ?? "unknown");
+    const previous = activitySchema.parse(
+      record.attributes[identityAttributes.activity] ?? "unknown",
+    );
 
     const attributes: Attributes = {
-      "identity/activity": observedActivity(input.event, previous),
-      "identity/last-event": input.event,
-      "identity/observed-at": ctx.clock.now(),
-      "identity/cwd": input.cwd,
+      [identityAttributes.activity]: observedActivity(input.event, previous),
+      [identityAttributes.lastEvent]: input.event,
+      [identityAttributes.observedAt]: ctx.clock.now(),
+      [identityAttributes.cwd]: input.cwd,
     };
-    if (input.nativeEvent !== undefined) attributes["identity/native-event"] = input.nativeEvent;
-    if (input.sessionPath !== undefined) attributes["identity/session-path"] = input.sessionPath;
-    if (input.capabilities !== undefined) attributes["identity/capabilities"] = input.capabilities;
+    if (input.nativeEvent !== undefined)
+      attributes[identityAttributes.nativeEvent] = input.nativeEvent;
+    if (input.sessionPath !== undefined)
+      attributes[identityAttributes.sessionPath] = input.sessionPath;
+    if (input.capabilities !== undefined)
+      attributes[identityAttributes.capabilities] = input.capabilities;
 
     ctx.graph.update(binding.nodeId, { attributes });
 
@@ -160,7 +171,7 @@ export function recordParticipation(
 ): void {
   const record = requireValue(resolveIdentity(ctx.graph, identityId), "Unknown native identity");
   ctx.graph.atomic(
-    () => ctx.graph.connect(record.id, runId, "performed", { invocation }),
+    () => ctx.graph.connect(record.id, runId, identityRelations.performed, { invocation }),
     authority,
   );
 }
@@ -175,20 +186,21 @@ export function identity(): Extension {
         for (const change of changes) {
           if (
             change.kind === "node" &&
-            (change.before?.attributes["identity/id"] !== undefined ||
-              change.after?.attributes["identity/id"] !== undefined)
+            (change.before?.attributes[identityAttributes.id] !== undefined ||
+              change.after?.attributes[identityAttributes.id] !== undefined)
           )
             throw new Fault("identity-guard", "Identity records require the Identity API");
           if (
             change.kind === "edge" &&
             [change.before?.relation, change.after?.relation].some(
-              (relation) => relation === "performed" || relation === "spawned",
+              (relation) =>
+                relation === identityRelations.performed || relation === identityRelations.spawned,
             )
           )
             throw new Fault("identity-guard", "Native attribution requires the Identity API");
         }
       });
-      ctx.graph.declareAcyclic("spawned");
+      ctx.graph.declareAcyclic(identityRelations.spawned);
       const commandSchema = z.compile(
         z.discriminatedUnion("command", [
           startupSchema.extend({ command: z.literal("startup") }),

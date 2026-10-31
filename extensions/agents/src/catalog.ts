@@ -4,6 +4,7 @@ import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { agentFlags } from "./flags.ts";
+import { runActivityOptionsSchema } from "./node-model.ts";
 import { resolveSystemPrompt, systemPromptSchema, type SystemPrompt } from "./prompt.ts";
 import type { Provider } from "./providers/contract.ts";
 
@@ -288,6 +289,7 @@ function configSchemas<P extends z.ZodType>(prompt: P) {
       z.strictObject({
         aliases: z.record(text, alias).default({}),
         unmanaged: z.strictObject({ systemPrompt: prompt.optional() }).optional(),
+        activity: runActivityOptionsSchema.prefault({}),
       }),
     ),
   };

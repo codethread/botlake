@@ -38,6 +38,7 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
   about?: string;
   primer?: string;
   dependencies?: string[];
+  /** Whether this operation may return a stream; other command branches may return one result. */
   stream?: boolean;
   deadline?: Op["deadline"];
   jsonSchema?: { input: StandardJSONSchemaV1; output: StandardJSONSchemaV1 };
@@ -73,9 +74,7 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
       const parsed = await validate(descriptor.input, input);
       request.signal.throwIfAborted();
       const result = await descriptor.handler(parsed, ctx, request);
-      if (descriptor.stream === true) {
-        if (!isStream(result))
-          throw new Fault("output", "Streaming op must return an AsyncIterable");
+      if (descriptor.stream === true && isStream(result)) {
         const iterable = result;
         async function* stream(): AsyncGenerator {
           for await (const item of iterable) {

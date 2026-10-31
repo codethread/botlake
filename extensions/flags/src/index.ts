@@ -10,15 +10,13 @@ import {
 } from "@botlake/core";
 import { z } from "zod";
 
+import { flagSchema, storedFlagSchema, type Flag } from "./node-model.ts";
+
+export { flagSchema, storedFlagSchema, type Flag } from "./node-model.ts";
+
 const nameSchema = z.compile(z.string().trim().min(1));
 
-const flagSchema = z.compile(
-  z.strictObject({ description: z.string().trim().min(1), value: z.boolean() }),
-);
-
 const flagUpdateSchema = z.compile(flagSchema.partial({ description: true }));
-
-const storedFlagSchema = z.compile(flagSchema.readonly());
 
 const definitionSchema = z.compile(
   z
@@ -44,8 +42,6 @@ const overrideSchema = z.compile(
 const overridesSchema = z.compile(z.array(overrideSchema));
 
 const defaultsByContext = new WeakMap<Context, Map<string, Flag>>();
-
-export type Flag = z.infer<typeof storedFlagSchema>;
 
 export type FlagDefinition = z.infer<typeof definitionSchema>;
 

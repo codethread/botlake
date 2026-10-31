@@ -159,7 +159,6 @@ export default {name:"commands",activate(ctx){
     const shippedHelp = await runTerminal(host, ["--workspace", "cli", "prime", "update"]);
     expect(shippedHelp.code).toBe(0);
     expect(shippedHelp.output).toContain("--expected-revision");
-    expect(shippedHelp.output).toContain("Runbook");
   } finally {
     await host.close();
   }
@@ -478,22 +477,60 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
       await host.cli([...prefix, "nested", "group", "take", "--count=2", "--count=3", "a"], false),
     ).toContain("Repeated flag");
     const catalog = z.compile(z.array(z.object({ name: z.string() })));
-    expect(catalog.parse(await host.cli([...prefix, "help"]))).toEqual([
+    const rootDiscovery = await host.cli([...prefix, "help"]);
+    expect(catalog.parse(rootDiscovery)).toEqual([
       { name: "bins" },
+      { name: "events" },
       { name: "nested" },
     ]);
+    expect(JSON.stringify(rootDiscovery)).not.toContain("jsonSchema");
     const leaf = await host.cli([...prefix, "help", "nested", "group", "take"]);
     expect(leaf).toMatchObject([
       { name: "nested", cli: { description: "Collect named items with optional labels" } },
     ]);
     expect(await host.cli([...prefix, "nested", "group", "take", "--help"])).toEqual(leaf);
-    for (const tier of ["about", "prime", "primer"]) {
-      expect(await host.cli([...prefix, tier, "nested", "group", "take"])).toMatchObject([
-        {
-          about: "Collect explicitly selected items into a bundle.",
-          jsonSchema: { input: { properties: { count: { type: "integer" } } } },
-        },
-      ]);
+    expect(await host.cli([...prefix, "about", "nested"])).toEqual([
+      {
+        name: "nested",
+        path: [],
+        about: "Collect explicitly selected items into a bundle.",
+      },
+    ]);
+    expect(await host.cli([...prefix, "prime", "nested"])).toEqual([
+      {
+        name: "nested",
+        path: [],
+        primer: "Choose items first. Inspect the result before publishing.",
+      },
+    ]);
+    expect(await host.cli([...prefix, "about", "nested", "group", "take"])).toEqual([
+      {
+        name: "nested",
+        path: ["group", "take"],
+        about: "No conceptual guidance is declared for nested group take.",
+      },
+    ]);
+    expect(JSON.stringify(leaf)).not.toContain("jsonSchema");
+    const rootHelp = z
+      .array(z.object({ name: z.string(), cli: z.object({ description: z.string() }) }))
+      .parse(rootDiscovery);
+    expect(rootHelp.find((op) => op.name === "nested")?.cli).toEqual({
+      description: "Bundle operations",
+    });
+    const selectedOperationHelp = await host.cli([...prefix, "help", "nested"]);
+    expect(selectedOperationHelp).toMatchObject([
+      { jsonSchema: { input: { properties: { count: { type: "integer" } } } } },
+    ]);
+    const operationHelp = z
+      .array(z.object({ cli: z.object({ commands: z.record(z.string(), z.unknown()) }) }))
+      .parse(selectedOperationHelp);
+    expect(operationHelp.at(0)?.cli.commands["group"]).not.toHaveProperty("commands");
+    const groupHelp = z
+      .array(z.object({ cli: z.object({ commands: z.record(z.string(), z.unknown()) }) }))
+      .parse(await host.cli([...prefix, "help", "nested", "group"]));
+    expect(groupHelp.at(0)?.cli.commands["take"]).not.toHaveProperty("flags");
+    for (const tier of ["about", "prime"]) {
+      expect(await host.cli([...prefix, tier], false)).toContain(`${tier} requires an operation`);
     }
     const human = await runTerminal(host, [...prefix, "help", "nested", "group", "take"]);
     expect(human.code).toBe(0);
@@ -512,9 +549,13 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
     expect((await runTerminal(host, [...prefix, "help", "nested"], false)).output).toContain(
       "\u001B[",
     );
-    expect((await runTerminal(host, [...prefix, "prime", "nested"])).output).toContain(
-      "Choose items first.",
-    );
+    const prime = (await runTerminal(host, [...prefix, "prime", "nested"])).output;
+    expect(prime).toContain("Choose items first.");
+    expect(prime).not.toContain("Usage");
+    expect(prime).not.toContain("properties");
+    const about = (await runTerminal(host, [...prefix, "about", "nested"])).output;
+    expect(about).toContain("Collect explicitly selected items");
+    expect(about).not.toContain("Usage");
     const machine = await runTerminal(host, [
       ...prefix,
       "--json",

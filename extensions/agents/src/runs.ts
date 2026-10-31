@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- Run orchestration composes custody, native sessions and its shared node model.
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 
@@ -16,19 +17,19 @@ import {
 import { getFlag } from "@botlake/extension-flags";
 import {
   registrationSchema,
+  agentMetadata,
   sessionAudience,
   type NativeRegistration,
 } from "@botlake/native-session";
 import { z } from "zod";
 
+import { RunActivity, type ActivityRead } from "./activity.ts";
 import { Catalog, agentConfigSchema, seatSchema, type AgentConfig } from "./catalog.ts";
+import { initialLifecycleAttributes, runLifecycle, transitionRun } from "./lifecycle.ts";
 import { NativeSessions } from "./native.ts";
+import { agentAttributes, agentRelations, agentLaunchSchema } from "./node-model.ts";
 import type { Provider, ProviderName, ProviderRun } from "./providers/contract.ts";
 import { provider } from "./providers/index.ts";
-
-export const runStateSchema = z.compile(
-  z.enum(["ready", "running", "stopped", "failed", "external"]),
-);
 
 const text = z.compile(z.string().min(1));
 const policy = z.compile(z.enum(["stop-on-complete", "close-on-complete"]));
@@ -46,22 +47,12 @@ export const startSchema = z.compile(
   }),
 );
 
-const launchSchema = z.compile(
-  z.strictObject({
-    owner: text,
-    key: text,
-    command: z.array(text).min(1),
-    cwd: text,
-    env: z.record(z.string(), z.string()),
-    stdin: z.string(),
-  }),
-);
-
 export type AgentOptions = AgentConfig & { providers?: Provider[] };
 
 export type StartRun = z.input<typeof startSchema>;
 
 export class Agents {
+  private readonly activity: RunActivity;
   private readonly authority = Symbol("agents");
   private readonly providers = new Map<ProviderName, Provider>();
   private readonly seats: Catalog;
@@ -74,7 +65,13 @@ export class Agents {
   ) {
     const { providers, ...config } = options;
     const configuration = agentConfigSchema.parse(config);
-    this.sessions = new NativeSessions(ctx, this.authority, configuration.unmanaged?.systemPrompt);
+    this.activity = new RunActivity(ctx, this.authority, configuration.activity.retentionMs);
+    this.sessions = new NativeSessions(
+      ctx,
+      this.authority,
+      this.activity,
+      configuration.unmanaged?.systemPrompt,
+    );
 
     for (const entry of providers ?? [provider("codex"), provider("pi"), provider("claude")]) {
       if (this.providers.has(entry.name))
@@ -93,15 +90,16 @@ export class Agents {
       for (const change of changes) {
         if (
           change.kind === "node" &&
-          (change.before?.attributes["agent/run"] === true ||
-            change.after?.attributes["agent/run"] === true)
+          (change.before?.attributes[agentAttributes.run] === true ||
+            change.after?.attributes[agentAttributes.run] === true)
         )
           throw new Fault("agent-guard", "Tracked runs require the Agents API");
         if (change.kind === "edge") {
           const edge = change.before ?? change.after;
           if (
             edge !== null &&
-            ["serves", "continues"].includes(edge.relation) &&
+            (edge.relation === agentRelations.serves ||
+              edge.relation === agentRelations.continues) &&
             this.runs().some((run) => run.id === edge.from_id)
           )
             throw new Fault("agent-guard", "Execution authority requires the Agents API");
@@ -116,7 +114,7 @@ export class Agents {
   }
 
   runs(): Node[] {
-    return this.ctx.graph.all({ where: q.eq(q.attr("agent/run"), true), lean: false });
+    return this.ctx.graph.all({ where: q.eq(q.attr(agentAttributes.run), true), lean: false });
   }
 
   start(raw: StartRun): Node {
@@ -138,30 +136,30 @@ export class Agents {
 
     return this.sessions.observe({
       ...input,
-      audience: sessionAudience(input, {}),
+      ...agentMetadata(input, this.ctx.env.bl),
+      audience: sessionAudience(input, this.ctx.env.bl),
       cwd: realpathSync(input.cwd),
     });
   }
 
+  readActivity(input: ActivityRead) {
+    return this.activity.read(input);
+  }
+
   async cancel(id: string): Promise<Node> {
     const run = this.run(id);
-    if (run.attributes["agent/external"] === true)
+    if (run.attributes[agentAttributes.external] === true)
       throw new Fault("custody", "External sessions grant no stop authority");
-    if (run.attributes["agent/state"] === "ready")
-      return this.patch(
-        id,
-        { "agent/state": "stopped", "agent/substatus": "abandoned", "agent/settled": true },
-        "closed",
-      );
-    const spec = launchSchema.parse(run.attributes["agent/launch"]);
+    if (runLifecycle(run).matches("pending")) return this.advance(id, { type: "ABANDON" });
+    const spec = agentLaunchSchema.parse(run.attributes[agentAttributes.launch]);
 
     await this.ctx.processes.cancel(
-      text.parse(run.attributes["agent/handle"]),
+      text.parse(run.attributes[agentAttributes.handle]),
       spec.owner,
       spec.key,
     );
     await this.reconcile();
-    const fact = await this.ctx.processes.get(text.parse(run.attributes["agent/handle"]));
+    const fact = await this.ctx.processes.get(text.parse(run.attributes[agentAttributes.handle]));
     if (fact.phase !== "terminal")
       throw new Fault("custody", "Cancellation has no terminal evidence");
 
@@ -172,37 +170,35 @@ export class Agents {
     return this.ctx.graph.atomic(() => {
       const run = this.run(id);
       if (
-        run.attributes["agent/state"] !== "failed" ||
-        run.attributes["agent/settled"] !== true ||
-        run.attributes["agent/external"] === true ||
-        run.attributes["agent/request-id"] !== undefined ||
-        this.ctx.graph.edges(id, "serves").some((edge) => edge.from_id === id)
+        run.attributes[agentAttributes.external] === true ||
+        !runLifecycle(run).can({ type: "RETRY" }) ||
+        run.attributes[agentAttributes.requestId] !== undefined ||
+        this.ctx.graph.edges(id, agentRelations.serves).some((edge) => edge.from_id === id)
       )
         throw new Fault(
           "retry",
           "Retry requires a settled unassigned failure without request binding",
         );
 
-      return this.patch(
+      return this.advance(
         id,
+        { type: "RETRY" },
         {
-          "agent/state": "ready",
-          "agent/substatus": "pending",
-          "agent/settled": false,
-          "agent/error": null,
-          "agent/result": null,
-          "agent/invocation": null,
-          "agent/handle": null,
-          "agent/launch": null,
-          "agent/custody": null,
-          "agent/session-id": null,
-          "agent/session-confirmed": false,
-          "agent/resumes": false,
-          "agent/identity": null,
-          "agent/integration": "unobserved",
-          "agent/observation": null,
+          [agentAttributes.error]: null,
+          [agentAttributes.result]: null,
+          [agentAttributes.invocation]: null,
+          [agentAttributes.handle]: null,
+          [agentAttributes.launch]: null,
+          [agentAttributes.custody]: null,
+          [agentAttributes.sessionId]: null,
+          [agentAttributes.sessionConfirmed]: false,
+          [agentAttributes.resumes]: false,
+          [agentAttributes.identity]: null,
+          [agentAttributes.integration]: "unobserved",
+          [agentAttributes.observation]: null,
+          [agentAttributes.activity]: null,
+          [agentAttributes.acknowledged]: false,
         },
-        "active",
       );
     }, this.authority);
   }
@@ -211,22 +207,24 @@ export class Agents {
     return this.ctx.graph.atomic(() => {
       const parent = this.run(id);
       if (
-        parent.attributes["agent/settled"] !== true ||
-        parent.attributes["agent/session-confirmed"] !== true ||
-        parent.attributes["agent/external"] === true
+        parent.attributes[agentAttributes.external] === true ||
+        !runLifecycle(parent).hasTag("settled") ||
+        parent.attributes[agentAttributes.sessionConfirmed] !== true
       )
         throw new Fault(
           "resume",
           "Resume requires a settled managed run with verified native session",
         );
 
-      const existing = this.ctx.graph.edges(id, "continues").find((edge) => edge.to_id === id);
+      const existing = this.ctx.graph
+        .edges(id, agentRelations.continues)
+        .find((edge) => edge.to_id === id);
       if (existing !== undefined) {
         const child = this.run(existing.from_id);
         if (
           requestId !== undefined &&
-          child.attributes["agent/request-id"] === requestId &&
-          child.attributes["agent/prompt"] === prompt
+          child.attributes[agentAttributes.requestId] === requestId &&
+          child.attributes[agentAttributes.prompt] === prompt
         )
           return child;
 
@@ -235,28 +233,31 @@ export class Agents {
       if (
         this.runs().some(
           (run) =>
-            run.attributes["agent/external"] !== true &&
             this.active(run) &&
-            run.attributes["agent/provider"] === parent.attributes["agent/provider"] &&
-            run.attributes["agent/session-id"] === parent.attributes["agent/session-id"],
+            run.attributes[agentAttributes.provider] ===
+              parent.attributes[agentAttributes.provider] &&
+            run.attributes[agentAttributes.sessionId] ===
+              parent.attributes[agentAttributes.sessionId],
         )
       )
         throw new Fault("resume", "Native session already has an active writer");
 
-      const target = this.ctx.graph.edges(id, "serves").find((edge) => edge.from_id === id)?.to_id;
+      const target = this.ctx.graph
+        .edges(id, agentRelations.serves)
+        .find((edge) => edge.from_id === id)?.to_id;
       const child = this.create(
         {
-          seat: text.parse(parent.attributes["agent/seat"]),
-          cwd: text.parse(parent.attributes["agent/cwd"]),
+          seat: text.parse(parent.attributes[agentAttributes.seat]),
+          cwd: text.parse(parent.attributes[agentAttributes.cwd]),
           prompt,
           ...(requestId === undefined ? {} : { requestId }),
           ...(target === undefined ? {} : { target }),
-          policy: policy.parse(parent.attributes["agent/policy"]),
-          context: attributesSchema.parse(parent.attributes["agent/context"]),
+          policy: policy.parse(parent.attributes[agentAttributes.policy]),
+          context: attributesSchema.parse(parent.attributes[agentAttributes.context]),
         },
         parent,
       );
-      this.ctx.graph.connect(child.id, id, "continues");
+      this.ctx.graph.connect(child.id, id, agentRelations.continues);
 
       return child;
     }, this.authority);
@@ -264,15 +265,21 @@ export class Agents {
 
   async acknowledge(id: string): Promise<Node> {
     const run = this.run(id);
-    if (run.attributes["agent/external"] === true || run.attributes["agent/settled"] !== true)
+    if (run.attributes[agentAttributes.external] === true)
+      throw new Fault("custody", "Only settled managed runs may acknowledge custody");
+    const lifecycle = runLifecycle(run);
+    if (!lifecycle.hasTag("settled"))
       throw new Fault("custody", "Only settled managed runs may acknowledge custody");
 
-    const spec = launchSchema.parse(run.attributes["agent/launch"]);
-    const owned = await this.ctx.processes.listOwned(spec.owner);
-    const fact = owned.find((entry) => entry.key === spec.key);
-    if (fact !== undefined) await this.ctx.processes.acknowledge(fact.handle, spec.owner, spec.key);
+    if (!lifecycle.hasTag("unlaunched")) {
+      const spec = agentLaunchSchema.parse(run.attributes[agentAttributes.launch]);
+      const owned = await this.ctx.processes.listOwned(spec.owner);
+      const fact = owned.find((entry) => entry.key === spec.key);
+      if (fact !== undefined)
+        await this.ctx.processes.acknowledge(fact.handle, spec.owner, spec.key);
+    }
 
-    return this.patch(id, { "agent/acknowledged": true });
+    return this.patch(id, { [agentAttributes.acknowledged]: true });
   }
 
   catalog(name?: string, all = false): unknown {
@@ -286,6 +293,7 @@ export class Agents {
   }
 
   async startResource(): Promise<void> {
+    this.activity.start();
     await this.reconcile();
     const pending = this.ctx.scheduler.pending().find((wake) => wake.key === "agents/reconcile");
     if (pending === undefined)
@@ -318,10 +326,10 @@ export class Agents {
     return this.ctx.graph.atomic(() => {
       if (input.requestId !== undefined) {
         const existing = this.runs().find(
-          (run) => run.attributes["agent/request-id"] === input.requestId,
+          (run) => run.attributes[agentAttributes.requestId] === input.requestId,
         );
         if (existing !== undefined) {
-          if (existing.attributes["agent/request-hash"] !== hash)
+          if (existing.attributes[agentAttributes.requestHash] !== hash)
             throw new Fault("replay", "Request ID was used with different input");
           return existing;
         }
@@ -330,7 +338,7 @@ export class Agents {
       const seat =
         parent === undefined
           ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
-          : seatSchema.parse(parent.attributes["agent/settings"]);
+          : seatSchema.parse(parent.attributes[agentAttributes.settings]);
       if (!this.providers.has(seat.provider))
         throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
 
@@ -341,36 +349,34 @@ export class Agents {
           this.runs().some(
             (run) =>
               this.active(run) &&
-              this.ctx.graph.edge(run.id, input.target ?? "", "serves") !== null,
+              this.ctx.graph.edge(run.id, input.target ?? "", agentRelations.serves) !== null,
           )
         )
           throw new Fault("assignment", "Target already has an active writer");
       }
 
       const attrs: Attributes = {
-        "agent/run": true,
-        "agent/state": "ready",
-        "agent/substatus": "pending",
-        "agent/accepted": true,
-        "agent/settled": false,
-        "agent/attempt": 0,
-        "agent/provider": seat.provider,
-        "agent/audience": "agent",
-        "agent/seat": input.seat,
-        "agent/cwd": cwd,
-        "agent/prompt": input.prompt,
-        "agent/policy": input.policy,
-        "agent/context": input.context,
+        [agentAttributes.run]: true,
+        ...initialLifecycleAttributes(),
+        [agentAttributes.accepted]: true,
+        [agentAttributes.attempt]: 0,
+        [agentAttributes.provider]: seat.provider,
+        [agentAttributes.audience]: "agent",
+        [agentAttributes.seat]: input.seat,
+        [agentAttributes.cwd]: cwd,
+        [agentAttributes.prompt]: input.prompt,
+        [agentAttributes.policy]: input.policy,
+        [agentAttributes.context]: input.context,
         ...(parent === undefined
           ? {}
           : {
-              "agent/session-id": text.parse(parent.attributes["agent/session-id"]),
-              "agent/identity": text.parse(parent.attributes["agent/identity"]),
+              [agentAttributes.sessionId]: text.parse(parent.attributes[agentAttributes.sessionId]),
+              [agentAttributes.identity]: text.parse(parent.attributes[agentAttributes.identity]),
             }),
-        "agent/resumes": parent !== undefined,
-        "agent/session-confirmed": false,
-        "agent/integration": "unobserved",
-        "agent/settings": jsonSchema.parse(
+        [agentAttributes.resumes]: parent !== undefined,
+        [agentAttributes.sessionConfirmed]: false,
+        [agentAttributes.integration]: "unobserved",
+        [agentAttributes.settings]: jsonSchema.parse(
           parent === undefined
             ? {
                 ...seat,
@@ -389,18 +395,19 @@ export class Agents {
                   .filter((part) => part.length > 0)
                   .join("\n\n"),
               }
-            : parent.attributes["agent/settings"],
+            : parent.attributes[agentAttributes.settings],
         ),
       };
 
       if (input.requestId !== undefined) {
-        attrs["agent/request-id"] = input.requestId;
-        attrs["agent/request-hash"] = hash;
+        attrs[agentAttributes.requestId] = input.requestId;
+        attrs[agentAttributes.requestHash] = hash;
       }
 
       const run = this.ctx.graph.add({ title: `Agent ${input.seat}`, attributes: attrs });
 
-      if (input.target !== undefined) this.ctx.graph.connect(run.id, input.target, "serves");
+      if (input.target !== undefined)
+        this.ctx.graph.connect(run.id, input.target, agentRelations.serves);
 
       return run;
     }, this.authority);
@@ -408,66 +415,51 @@ export class Agents {
 
   private async reconcileRuns(): Promise<void> {
     const owned = await this.ctx.processes.listOwned("agents");
-    for (let run of this.runs().filter(
-      (row) => row.attributes["agent/external"] !== true && this.active(row),
-    )) {
+    for (let run of this.runs().filter((row) => this.active(row))) {
       try {
-        if (run.attributes["agent/state"] === "ready") run = this.begin(run);
-        if (
-          run.attributes["agent/state"] !== "running" &&
-          run.attributes["agent/launch"] === undefined
-        )
-          continue;
+        if (runLifecycle(run).matches("pending")) run = this.begin(run);
+        if (!runLifecycle(run).hasTag("launched")) continue;
 
-        const invocation = text.parse(run.attributes["agent/invocation"]);
-        const spec = launchSchema.parse(run.attributes["agent/launch"]);
+        const invocation = text.parse(run.attributes[agentAttributes.invocation]);
+        const spec = agentLaunchSchema.parse(run.attributes[agentAttributes.launch]);
         let fact = owned.find((entry) => entry.owner === spec.owner && entry.key === spec.key);
         fact ??= await this.ctx.processes.launch(spec);
         const current = this.run(run.id);
-        if (current.attributes["agent/invocation"] !== invocation) continue;
+        if (current.attributes[agentAttributes.invocation] !== invocation) continue;
 
-        if (current.attributes["agent/handle"] !== fact.handle)
-          run = this.patch(run.id, { "agent/handle": fact.handle });
+        if (current.attributes[agentAttributes.handle] !== fact.handle)
+          run = this.patch(run.id, { [agentAttributes.handle]: fact.handle });
         if (fact.phase !== "terminal") continue;
 
         if (fact.launch_failure !== undefined) {
-          this.patch(
+          this.advance(
             run.id,
+            { type: "LAUNCH_FAILED" },
             {
-              "agent/state": "failed",
-              "agent/substatus": "launch",
-              "agent/settled": true,
-              "agent/error": fact.launch_failure.message,
+              [agentAttributes.error]: fact.launch_failure.message,
             },
-            "closed",
           );
           continue;
         }
 
         if (fact.cancellation?.stop === "uncertain") {
-          this.patch(
+          this.advance(
             run.id,
+            { type: "STOP_UNCERTAIN" },
             {
-              "agent/state": "stopped",
-              "agent/substatus": "requested",
-              "agent/settled": false,
-              "agent/custody": jsonSchema.parse(fact),
+              [agentAttributes.custody]: jsonSchema.parse(fact),
             },
-            "closed",
           );
           continue;
         }
 
         if (fact.exit === undefined && fact.cancellation === undefined) {
-          this.patch(
+          this.advance(
             run.id,
+            { type: "RECONCILIATION_FAILED" },
             {
-              "agent/state": "failed",
-              "agent/substatus": "reconciliation",
-              "agent/settled": false,
-              "agent/error": "Terminal custody has no observed exit",
+              [agentAttributes.error]: "Terminal custody has no observed exit",
             },
-            "closed",
           );
           continue;
         }
@@ -491,55 +483,52 @@ export class Agents {
           }
         }
 
-        this.patch(
+        this.advance(
           run.id,
           {
-            "agent/state":
-              fact.cancellation !== undefined || (outcome.success && integrationError === null)
-                ? "stopped"
-                : "failed",
-            "agent/substatus":
+            type:
               fact.cancellation !== undefined
-                ? "requested"
+                ? "CANCELLED"
                 : integrationError !== null
-                  ? "native-session"
+                  ? "SESSION_FAILED"
                   : outcome.success
-                    ? "completed"
-                    : "execution",
-            ...(integrationError === null ? {} : { "agent/session-confirmed": false }),
-            "agent/settled": true,
-            "agent/result": outcome.result,
-            "agent/error":
-              integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
-            "agent/custody": jsonSchema.parse(fact),
+                    ? "COMPLETED"
+                    : "EXECUTION_FAILED",
           },
-          "closed",
+          {
+            ...(integrationError === null ? {} : { [agentAttributes.sessionConfirmed]: false }),
+            [agentAttributes.result]: outcome.result,
+            [agentAttributes.error]:
+              integrationError ?? (fact.cancellation === undefined ? outcome.error : null),
+            [agentAttributes.custody]: jsonSchema.parse(fact),
+          },
         );
       } catch (error) {
-        this.patch(
+        this.advance(
           run.id,
+          { type: "RECONCILIATION_FAILED" },
           {
-            "agent/state": "failed",
-            "agent/substatus": "reconciliation",
-            "agent/error": String(error),
-            "agent/settled": run.attributes["agent/launch"] === undefined,
+            [agentAttributes.error]: String(error),
           },
-          "closed",
         );
       }
     }
   }
 
   private active(run: Node): boolean {
-    return run.attributes["agent/settled"] !== true;
+    return (
+      run.attributes[agentAttributes.external] !== true && !runLifecycle(run).hasTag("settled")
+    );
   }
 
   private begin(run: Node): Node {
     return this.ctx.graph.atomic(() => {
       const current = this.run(run.id);
-      if (current.attributes["agent/state"] !== "ready")
+      if (!runLifecycle(current).can({ type: "LAUNCH" }))
         throw new Fault("attempt", "Run is not ready");
-      const target = this.ctx.graph.edges(run.id, "serves").find((edge) => edge.from_id === run.id);
+      const target = this.ctx.graph
+        .edges(run.id, agentRelations.serves)
+        .find((edge) => edge.from_id === run.id);
       if (
         target !== undefined &&
         this.ctx.graph.all({ ready: true, where: q.eq("id", target.to_id) }).length === 0
@@ -553,11 +542,11 @@ export class Agents {
         "Provider unavailable",
       ).prepare(definition);
       const trackingEnv: Record<string, string> = {
-        BL_AGENT_SEAT: text.parse(current.attributes["agent/seat"]),
+        BL_AGENT_SEAT: text.parse(current.attributes[agentAttributes.seat]),
         ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
         ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
         ...(definition.resumes
-          ? { BL_ACTOR: text.parse(current.attributes["agent/identity"]) }
+          ? { BL_ACTOR: text.parse(current.attributes[agentAttributes.identity]) }
           : {}),
       };
       const spec: ProcessSpec = {
@@ -573,6 +562,8 @@ export class Agents {
             "BL_EFFORT",
             "BL_NATIVE_SESSION_ID",
             "BL_NATIVE_PROVIDER",
+            "PI_SUBAGENT",
+            "PI_SUBAGENT_CHILD",
           ].flatMap((key) => (trackingEnv[key] === undefined ? ["-u", key] : [])),
           ...plan.command,
         ],
@@ -586,38 +577,57 @@ export class Agents {
         },
       };
 
-      return this.patch(current.id, {
-        "agent/state": "running",
-        "agent/invocation": invocation,
-        "agent/attempt": number.parse(current.attributes["agent/attempt"]) + 1,
-        "agent/launch": jsonSchema.parse(spec),
-      });
+      const launched = this.advance(
+        current.id,
+        { type: "LAUNCH" },
+        {
+          [agentAttributes.invocation]: invocation,
+          [agentAttributes.attempt]: number.parse(current.attributes[agentAttributes.attempt]) + 1,
+          [agentAttributes.launch]: jsonSchema.parse(spec),
+        },
+      );
+      this.activity.create(launched, invocation);
+      return this.run(current.id);
     }, this.authority);
   }
 
-  private patch(id: string, attributes: Attributes, state?: "active" | "closed"): Node {
-    return this.ctx.graph.atomic(
-      () => this.ctx.graph.update(id, { attributes, ...(state === undefined ? {} : { state }) }),
-      this.authority,
-    );
+  private advance(
+    id: string,
+    event: Parameters<typeof transitionRun>[1],
+    attributes: Attributes = {},
+  ): Node {
+    return this.ctx.graph.atomic(() => {
+      const update = transitionRun(this.run(id), event);
+      const run = this.ctx.graph.update(id, {
+        ...update,
+        attributes: { ...attributes, ...update.attributes },
+      });
+      if (runLifecycle(run).hasTag("settled")) this.activity.settle(run);
+      return run;
+    }, this.authority);
+  }
+
+  private patch(id: string, attributes: Attributes): Node {
+    return this.ctx.graph.atomic(() => this.ctx.graph.update(id, { attributes }), this.authority);
   }
 
   private run(id: string): Node {
     const run = this.ctx.graph.show(id);
-    if (run.attributes["agent/run"] !== true) throw new Fault("run", "Expected tracked run");
+    if (run.attributes[agentAttributes.run] !== true)
+      throw new Fault("run", "Expected tracked run");
 
     return run;
   }
 
   private providerRun(run: Node): ProviderRun {
-    const seat = seatSchema.parse(run.attributes["agent/settings"]);
+    const seat = seatSchema.parse(run.attributes[agentAttributes.settings]);
 
     return {
       provider: seat.provider,
-      cwd: text.parse(run.attributes["agent/cwd"]),
-      prompt: text.parse(run.attributes["agent/prompt"]),
-      ...(run.attributes["agent/resumes"] === true
-        ? { resumes: true, sessionId: text.parse(run.attributes["agent/session-id"]) }
+      cwd: text.parse(run.attributes[agentAttributes.cwd]),
+      prompt: text.parse(run.attributes[agentAttributes.prompt]),
+      ...(run.attributes[agentAttributes.resumes] === true
+        ? { resumes: true, sessionId: text.parse(run.attributes[agentAttributes.sessionId]) }
         : { resumes: false }),
       model: seat.model,
       effort: seat.effort,

@@ -50,4 +50,4 @@ Consumers declare `requires: ["flags"]`. Reads and mutations accept a `FlagDefin
 - `unsetFlag(ctx, definition)` persists absence and reports whether a current flag was removed.
 - `resetFlag(ctx, definition)` deletes one override and reports whether it existed; `resetFlags(ctx)` deletes all overrides and returns their count.
 
-`FlagDefinition` has readonly `name`, `description` and `default` fields; `Flag` has readonly `description` and `value` fields. `flagsConfigSchema` and `flagsConfigJsonSchema()` describe the definition/boolean configuration list, including its serializable JSON form. Flags owns definitions, storage and commands; consumers own naming and policy.
+`FlagDefinition` has readonly `name`, `description` and `default` fields; `Flag` has readonly `description` and `value` fields. `flagSchema` and `storedFlagSchema` describe the mutable and persisted flag record. `flagsConfigSchema` and `flagsConfigJsonSchema()` describe the definition/boolean configuration list, including its serializable JSON form. Flags owns definitions, storage and commands; consumers own naming and policy.

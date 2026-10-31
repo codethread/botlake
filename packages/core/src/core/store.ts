@@ -15,6 +15,7 @@ import {
   requireValue,
   type Attributes,
 } from "./json.ts";
+import { noteAttributes, noteRelations } from "./node-model.ts";
 import { compileQuery, type Predicate } from "./query.ts";
 import { sql } from "./sql.ts";
 
@@ -125,7 +126,6 @@ const ddl = sql`
   VALUES ('depends-on'), ('parent-of'), ('supersedes'), ('serves'), ('notes');
 
   CREATE TABLE immutable_keys (key TEXT PRIMARY KEY);
-  INSERT INTO immutable_keys VALUES ('note/text'), ('note/at');
 
   CREATE TABLE burns (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,7 +239,12 @@ export class Graph {
           `)
           .all();
         if (tables.length > 0) throw new Fault("schema", "Only fresh workspaces are supported");
-        this.db.transaction(() => this.db.run(ddl)).immediate();
+        this.db
+          .transaction(() => {
+            this.db.run(ddl);
+            for (const key of Object.values(noteAttributes)) this.declareImmutable(key);
+          })
+          .immediate();
       } else if (version !== 1)
         throw new Fault("schema", `Unsupported database generation: ${version}`);
       this.db.run(sql`
@@ -260,6 +265,10 @@ export class Graph {
   }
 
   // Timer/resource side effects wait for the enclosing synchronous transaction.
+
+  get inTransaction(): boolean {
+    return this.writing;
+  }
 
   afterCommit(action: () => void): void {
     if (this.writing) this.commitActions.push(action);
@@ -723,11 +732,11 @@ export class Graph {
         state: "closed",
         attributes: {
           ...attributes,
-          "note/text": text,
-          "note/at": new Date(this.now()).toISOString(),
+          [noteAttributes.text]: text,
+          [noteAttributes.at]: new Date(this.now()).toISOString(),
         },
       });
-      this.connect(note.id, target, "notes");
+      this.connect(note.id, target, noteRelations.notes);
 
       return note;
     });

@@ -33,9 +33,6 @@ export async function reportNative(
   env: NodeJS.ProcessEnv,
   unmanaged = false,
 ): Promise<SessionReport> {
-  // Native children must not borrow their parent's seat/model/effort when the host omits them.
-  if (observation.parentNativeSessionId !== undefined)
-    env = { ...env, BL_AGENT_SEAT: undefined, BL_MODEL: undefined, BL_EFFORT: undefined };
   const identity = sessionIdentity(observation);
   const local = { identity, instruction: identityInstruction(identity), systemPrompt: "" };
 
@@ -76,10 +73,7 @@ export function sessionEnvironment(
   observation: NativeObservation,
   env: NodeJS.ProcessEnv,
 ): Record<string, string | undefined> {
-  const metadata = agentMetadata(
-    observation,
-    observation.parentNativeSessionId === undefined ? env : {},
-  );
+  const metadata = agentMetadata(observation, env);
   return {
     BL_ACTOR: sessionIdentity(observation),
     BL_AGENT_SEAT: metadata.agentSeat ?? undefined,

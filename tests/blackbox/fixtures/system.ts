@@ -66,7 +66,17 @@ export async function system(): Promise<System> {
     "@botlake/core": core,
     "@botlake/native-session": await pack("packages/native-session", "native-session"),
   };
-  for (const name of ["batteries", "identity", "diary", "kanban", "cron", "flags", "agents"])
+  for (const name of [
+    "batteries",
+    "identity",
+    "diary",
+    "cron",
+    "flags",
+    "agents",
+    "work",
+    "work-agents",
+    "workflow",
+  ])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
   packages["@botlake/identity"] = await pack("plugins/identity", "native-identity");
 
@@ -74,6 +84,7 @@ export async function system(): Promise<System> {
   await install(engine, { "@botlake/core": core });
   const env = {
     ...process.env,
+    BL_ACTOR: "fixture",
     BL_HOME: home,
     BL_CORE: join(engine, "node_modules/@botlake/core"),
     BL_BIN: blBin,

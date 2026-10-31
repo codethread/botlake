@@ -10,7 +10,9 @@
     "@botlake/extension-diary": "workspace:*",
     "@botlake/extension-flags": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
-    "@botlake/extension-kanban": "workspace:*"
+    "@botlake/extension-work": "workspace:*",
+    "@botlake/extension-work-agents": "workspace:*",
+    "@botlake/extension-workflow": "workspace:*"
   },
   "botlake": {
     "name": "botlake",
@@ -20,7 +22,9 @@
       "@botlake/extension-diary",
       "./.botlake/flags.ts",
       "./.botlake/agents.ts",
-      "@botlake/extension-kanban",
+      "@botlake/extension-work",
+      "./.botlake/work-agents.ts",
+      "@botlake/extension-workflow",
       "@botlake/extension-cron"
     ]
   }

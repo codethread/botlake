@@ -4,7 +4,7 @@ import { workspaceFlags } from "./flags.ts";
 
 const workPrompt = [
   "This project uses Botlake for tasks and agent runs.",
-  "Before tracking work, run `bl prime kanban` once per session.",
+  "Before tracking work, run `bl prime work` once per session.",
 ].join("\n");
 
 const delegationPrompt = [
@@ -45,7 +45,14 @@ export default agents({
     luna: {
       doc: `GPT Luna. Implementation details, scouting and tightly scoped delegated tasks. Give explicit success criteria.`,
       parent: "pi",
-      model: "openai-codex/gpt-6.1-luna",
+      model: "openai-codex/gpt-6-luna",
+      effort: "xhigh",
+      systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
+    },
+    "luna-codex": {
+      doc: "GPT Luna through the native Codex harness.",
+      parent: "codex",
+      model: "gpt-6-luna",
       effort: "xhigh",
       systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
     },

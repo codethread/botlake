@@ -1,0 +1,16 @@
+diff --git a/dist/declarations/src/types.d.ts b/dist/declarations/src/types.d.ts
+index 9175ac3cb9a6ff12c227cf6e7fcc55c0984244f2..fa9ba26d3fbe055b2b94588a8fb6a946650cd02a 100644
+--- a/dist/declarations/src/types.d.ts
++++ b/dist/declarations/src/types.d.ts
+@@ -957,9 +957,9 @@ export type ToChildren<TActor extends ProvidedActor> = string extends TActor['sr
+     exclude: unknown;
+ }[NonConcreteActors<TActor> extends never ? 'exclude' : 'include']>;
+ export type StateSchema = {
+-    id?: string;
++    id?: string | undefined;
+     route?: unknown;
+-    states?: Record<string, StateSchema>;
++    states?: Record<string, StateSchema> | undefined;
+     type?: unknown;
+     invoke?: unknown;
+     on?: unknown;

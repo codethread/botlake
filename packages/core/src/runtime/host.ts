@@ -55,6 +55,7 @@ interface Connection {
   input: string;
   decoder: TextDecoder;
   chunks: Uint8Array[];
+  queuedBytes: number;
   offset: number;
   ending: boolean;
   handled: boolean;
@@ -68,6 +69,7 @@ const server = Bun.listen<Connection>({
         input: "",
         decoder: new TextDecoder(),
         chunks: [],
+        queuedBytes: 0,
         offset: 0,
         ending: false,
         handled: false,
@@ -280,7 +282,14 @@ async function stop(workspace: string): Promise<void> {
 }
 
 function write(client: Bun.Socket<Connection>, frame: string, end = false): void {
-  client.data.chunks.push(encoder.encode(frame));
+  const bytes = encoder.encode(frame);
+  // Disconnect a stalled reader instead of accumulating a live stream indefinitely.
+  if (client.data.queuedBytes + bytes.byteLength > 16 * 1024 * 1024) {
+    client.terminate();
+    return;
+  }
+  client.data.chunks.push(bytes);
+  client.data.queuedBytes += bytes.byteLength;
   client.data.ending = end;
   flush(client);
 }
@@ -291,6 +300,7 @@ function flush(client: Bun.Socket<Connection>): void {
     if (chunk === undefined) break;
     const written = client.write(chunk.subarray(client.data.offset));
     if (written < 0) return;
+    client.data.queuedBytes -= written;
     client.data.offset += written;
     if (client.data.offset < chunk.byteLength) return;
     client.data.chunks.shift();

@@ -22,7 +22,7 @@ type presentation struct {
 }
 
 func isDiscovery(name string) bool {
-	return name == "help" || name == "about" || name == "prime" || name == "primer"
+	return name == "help" || name == "about" || name == "prime"
 }
 
 func terminalWidth(file *os.File) int {
@@ -218,10 +218,13 @@ type helpCommand struct {
 }
 
 type helpOperation struct {
-	Name, About, Primer, Deadline string
-	Stream                        bool
-	CLI                           helpCommand
-	JSONSchema                    json.RawMessage
+	Name, Deadline string
+	Path           []string
+	Stream         bool
+	CLI            helpCommand
+	About          *string
+	Primer         *string
+	JSONSchema     json.RawMessage
 }
 
 type helpPrinter struct {
@@ -298,6 +301,23 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 
 	_, noColor := os.LookupEnv("NO_COLOR")
 	p := helpPrinter{width: terminalWidth(os.Stdout), color: !noColor && os.Getenv("TERM") != "dumb"}
+	if view.tier == "about" || view.tier == "prime" {
+		for _, op := range operations {
+			p.heading("bl " + strings.Join(append([]string{op.Name}, op.Path...), " "))
+			switch view.tier {
+			case "about":
+				if op.About != nil {
+					p.body(*op.About, "")
+				}
+			case "prime":
+				if op.Primer != nil {
+					p.body(*op.Primer, "")
+				}
+			}
+		}
+		return nil
+	}
+
 	if len(view.path) == 0 {
 		p.heading("Workspace operations")
 
@@ -312,7 +332,7 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 		}
 
 		fmt.Fprintln(os.Stdout)
-		p.body("Use bl help OP for arguments, bl prime OP for a runbook, or bl about OP for details.", "")
+		p.body("Use bl help OP for arguments and its machine-readable contract, bl about OP for concepts, or bl prime OP for a runbook.", "")
 
 		return nil
 	}
@@ -388,18 +408,6 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 			for _, example := range op.CLI.Examples {
 				p.body(example, "  ")
 			}
-		}
-
-		if view.tier != "help" && op.About != "" {
-			fmt.Fprintln(os.Stdout)
-			p.heading("About")
-			p.body(op.About, "")
-		}
-
-		if (view.tier == "prime" || view.tier == "primer") && op.Primer != "" {
-			fmt.Fprintln(os.Stdout)
-			p.heading("Runbook")
-			p.body(op.Primer, "")
 		}
 
 		if op.Deadline == "unbounded" {

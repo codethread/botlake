@@ -11,59 +11,18 @@ import {
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 
+import {
+  jobSchema,
+  occurrencesSchema,
+  persistedJob,
+  persistedJobsSchema,
+  type Job,
+} from "./node-model.ts";
+
+export { jobSchema, scheduleSchema, type Job } from "./node-model.ts";
+
 const wakeSchema = z.compile(z.object({ job: z.string() }));
 const retrySchema = z.compile(z.object({ at: z.number().nullable() }));
-
-const scheduleSchema = z.compile(
-  z.union([
-    z.strictObject({ everyMs: z.number().int().positive() }),
-    z.strictObject({ expression: z.string().min(1), timezone: z.string().min(1) }),
-  ]),
-);
-
-const jobSchema = z.compile(
-  z.strictObject({
-    id: z.string().min(1),
-    action: z.string().min(1),
-    version: z.string().min(1).default("1"),
-    schedule: scheduleSchema,
-    payload: jsonSchema.default({}),
-    overlap: z.enum(["skip", "queue", "allow"]).default("skip"),
-    missed: z.enum(["skip", "once", "catch-up"]).default("once"),
-    retry: z
-      .strictObject({
-        attempts: z.number().int().nonnegative(),
-        delayMs: z.number().int().positive(),
-      })
-      .default({ attempts: 0, delayMs: 1000 }),
-  }),
-);
-
-const persistedJob = z.compile(
-  z.object({
-    id: z.string(),
-    spec: z.string(),
-    next_at: z.number(),
-    enabled: z.number(),
-  }),
-);
-const persistedJobsSchema = z.compile(z.array(persistedJob));
-
-const occurrenceSchema = z.compile(
-  z.object({
-    id: z.string(),
-    job: z.string(),
-    scheduled_at: z.number(),
-    status: z.enum(["pending", "running", "succeeded", "failed", "skipped"]),
-    attempt: z.number(),
-    retry_at: z.number().nullable(),
-    result: z.string().nullable(),
-    error: z.string().nullable(),
-  }),
-);
-const occurrencesSchema = z.compile(z.array(occurrenceSchema));
-
-export type Job = z.infer<typeof jobSchema>;
 
 export interface Occurrence {
   /** Stable identifier for deduplicating external effects. */

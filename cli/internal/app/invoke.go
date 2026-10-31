@@ -317,9 +317,9 @@ Workspace operations:
   bl help                        List selected operations
   bl help OP [SUBCOMMAND...]      Discover flags, positionals and subcommands
   bl OP [SUBCOMMAND...] --help    Discover the same command
-  bl prime OP                    Read its runbook (also: primer)
-  bl about OP                    Read its explanation and schema metadata
-  bl help --json OP              Print machine-readable discovery
+  bl about OP                    Read its conceptual explanation
+  bl prime OP                    Read its execution runbook
+  bl help --json OP              Print machine-readable help and declared schemas
 
 Examples (with Batteries selected):
   printf 'notes' | bl --stdin note NODE_ID :stdin

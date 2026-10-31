@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  noteAttributes,
   Runtime,
   ManualClock,
   defineOp,
@@ -56,7 +57,9 @@ test("graph mutations, archive selection, stale writes and atomic rollback throu
     graph.supersede(b.id, replacement.id);
     expect(graph.edge(a.id, replacement.id, "depends-on")).not.toBeNull();
     const note = graph.note(a.id, "immutable");
-    expect(() => graph.update(note.id, { attributes: { "note/text": null } })).toThrow("Immutable");
+    expect(() => graph.update(note.id, { attributes: { [noteAttributes.text]: null } })).toThrow(
+      "Immutable",
+    );
     graph.burn([a.id, replacement.id]);
     expect(graph.tombstones(a.id)).toHaveLength(1);
     expect(graph.tombstones(replacement.id)).toHaveLength(1);
@@ -79,7 +82,7 @@ test("archival preserves immutable evidence and burn records each deletion exact
           await rejected(
             runtime.invoke("archive", {
               id: note.id,
-              keys: ["scratch", "note/text"],
+              keys: ["scratch", noteAttributes.text],
             }),
           )
         ).message,

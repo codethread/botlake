@@ -4,19 +4,30 @@ import {
   requireValue,
   defineOp,
   q,
+  noteAttributes,
   type Context,
   type Extension,
   type Node,
   type Predicate,
 } from "@botlake/core";
-import { attribute, callerActor, resolveIdentity } from "@botlake/extension-identity";
+import {
+  attribute,
+  callerActor,
+  identityRelations,
+  identityAttributes,
+  resolveIdentity,
+} from "@botlake/extension-identity";
 import { z } from "zod";
+
+import { diaryAttributes, diaryNamespace } from "./node-model.ts";
+
+export { diaryAttributes, diaryNamespace } from "./node-model.ts";
 
 const authority = Symbol("diary");
 const text = z.compile(z.string().trim().min(1));
 const rawText = z.compile(z.string());
 const limit = z.compile(z.number().int().positive().max(100).default(20));
-const entryPredicate = q.eq(q.attr("diary/entry"), true);
+const entryPredicate = q.eq(q.attr(diaryAttributes.entry), true);
 
 export function diary(): Extension {
   return {
@@ -33,7 +44,7 @@ export function diary(): Extension {
             );
             if (
               records.some((record) =>
-                Object.keys(record.attributes).some((key) => key.startsWith("diary/")),
+                Object.keys(record.attributes).some((key) => key.startsWith(diaryNamespace)),
               )
             )
               throw new Fault("diary-guard", "Diary entries require the Diary API");
@@ -134,10 +145,10 @@ function addEntry(
   const owner = requireValue(resolveIdentity(ctx.graph, identity), "Unknown identity");
   const record = ctx.graph.atomic(() => {
     const created = ctx.graph.note(owner.id, body, {
-      "diary/entry": true,
-      "identity/by-identity": identity,
+      [diaryAttributes.entry]: true,
+      [identityAttributes.byIdentity]: identity,
     });
-    attribute(ctx, created.id, identity, "attributed");
+    attribute(ctx, created.id, identity, identityRelations.attributed);
     return created;
   }, authority);
 
@@ -158,12 +169,12 @@ function listEntries(
   requireValue(resolveIdentity(ctx.graph, identity), "Unknown identity");
   const predicates: [Predicate, ...Predicate[]] = [
     entryPredicate,
-    q.eq(q.attr("identity/by-identity"), identity),
+    q.eq(q.attr(identityAttributes.byIdentity), identity),
   ];
 
   if (after !== undefined) {
     const cursor = entry(ctx, after);
-    if (cursor.attributes["identity/by-identity"] !== identity)
+    if (cursor.attributes[identityAttributes.byIdentity] !== identity)
       throw new Fault("diary-cursor", "Cursor belongs to another identity");
     predicates.push(
       q.or(
@@ -185,7 +196,7 @@ function listEntries(
     entries: page.map((record) => ({
       id: record.id,
       at: entryAt(record),
-      preview: rawText.parse(record.attributes["note/text"]).slice(0, 120),
+      preview: rawText.parse(record.attributes[noteAttributes.text]).slice(0, 120),
     })),
     next: records.length > pageSize ? (page.at(-1)?.id ?? null) : null,
   };
@@ -193,21 +204,22 @@ function listEntries(
 
 function entry(ctx: Context, id: string): Node {
   const record = ctx.graph.show(id, false);
-  if (record.attributes["diary/entry"] !== true) throw new Fault("diary", "Unknown diary entry");
+  if (record.attributes[diaryAttributes.entry] !== true)
+    throw new Fault("diary", "Unknown diary entry");
   return record;
 }
 
 function presentEntry(record: Node): { id: string; identity: string; at: string; text: string } {
   return {
     id: record.id,
-    identity: text.parse(record.attributes["identity/by-identity"]),
+    identity: text.parse(record.attributes[identityAttributes.byIdentity]),
     at: entryAt(record),
-    text: rawText.parse(record.attributes["note/text"]),
+    text: rawText.parse(record.attributes[noteAttributes.text]),
   };
 }
 
 function entryAt(record: Node): string {
-  return text.parse(record.attributes["note/at"]);
+  return text.parse(record.attributes[noteAttributes.at]);
 }
 
 function selectedIdentity(ctx: Context, explicit: string | undefined): string {
