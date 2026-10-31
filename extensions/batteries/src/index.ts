@@ -74,8 +74,14 @@ const guidance = {
   update: {
     description: "Patch a node with optional revision checking",
     primer:
-      "Omitted attributes stay unchanged; null deletes a key. Read the current revision and pass --expected-revision when a stale write must fail.",
+      "Omitted attributes stay unchanged; objects merge recursively and null deletes a key. Use set-attributes for exact JSON values. Read the current revision and pass --expected-revision when a stale write must fail.",
     examples: ['bl update ID --expected-revision 2 --attributes \'{"priority":"p1"}\''],
+  },
+  "set-attributes": {
+    description: "Set supplied attributes to exact JSON values",
+    primer:
+      "Each supplied key replaces its entire value, including objects and nulls; omitted keys stay unchanged. Use update for merge patches or key deletion. Pass --expected-revision to reject stale writes.",
+    examples: ['bl set-attributes ID --attributes \'{"context":{"answer":null}}\''],
   },
   list: {
     description: "Select nodes, optionally with a named query",
@@ -202,6 +208,27 @@ export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
           title: { type: "string" },
           state: { type: "string" },
           attributes: { type: "json" },
+          "expected-revision": {
+            key: "expectedRevision",
+            type: "number",
+            description: "Reject changes since this revision",
+          },
+        },
+      );
+      register(
+        "set-attributes",
+        z.compile(
+          z.strictObject({
+            id,
+            attributes: attributesSchema,
+            expectedRevision: patch.expectedRevision,
+          }),
+        ),
+        ({ id: node, attributes, expectedRevision }) =>
+          ctx.graph.setAttributes(node, attributes, expectedRevision),
+        [{ name: "id", type: "string", required: true }],
+        {
+          attributes: { type: "json", required: true },
           "expected-revision": {
             key: "expectedRevision",
             type: "number",

@@ -10,7 +10,7 @@ export const workflowAttributes = {
   private: "workflow/private",
   /** Work group that carries the run's context. */
   contextGroup: "workflow/context-group",
-  /** Serialized locator used to restore the authored definition. */
+  /** Native JSON locator used to restore the authored definition. */
   definition: "workflow/definition",
   /** Serialized XState snapshot for resumption. */
   snapshot: "workflow/snapshot",
@@ -32,13 +32,13 @@ export const workflowAttributes = {
   number: "workflow/number",
   /** Publication order within the run. */
   order: "workflow/order",
-  /** Serialized task-facing context at publication. */
+  /** Native JSON task-facing context at publication. */
   context: "workflow/context",
-  /** Serialized resolved task metadata. */
+  /** Native JSON resolved task metadata. */
   meta: "workflow/meta",
   /** Marks a visit whose authored action was submitted. */
   consumed: "workflow/consumed",
-  /** Serialized original choice and payload. */
+  /** Native JSON original choice and payload. */
   result: "workflow/result",
   /** Completion sequence within the run. */
   completionOrder: "workflow/completion-order",

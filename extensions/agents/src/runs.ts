@@ -279,7 +279,7 @@ export class Agents {
         await this.ctx.processes.acknowledge(fact.handle, spec.owner, spec.key);
     }
 
-    return this.patch(id, { [agentAttributes.acknowledged]: true });
+    return this.setAttributes(id, { [agentAttributes.acknowledged]: true });
   }
 
   catalog(name?: string, all = false): unknown {
@@ -428,7 +428,7 @@ export class Agents {
         if (current.attributes[agentAttributes.invocation] !== invocation) continue;
 
         if (current.attributes[agentAttributes.handle] !== fact.handle)
-          run = this.patch(run.id, { [agentAttributes.handle]: fact.handle });
+          run = this.setAttributes(run.id, { [agentAttributes.handle]: fact.handle });
         if (fact.phase !== "terminal") continue;
 
         if (fact.launch_failure !== undefined) {
@@ -598,17 +598,28 @@ export class Agents {
   ): Node {
     return this.ctx.graph.atomic(() => {
       const update = transitionRun(this.run(id), event);
+      const values: Attributes = {};
+      const removals: Attributes = {};
+      // Null clears optional evidence; non-null documents replace the previous observation.
+      for (const [key, value] of Object.entries(attributes)) {
+        if (value === null) removals[key] = null;
+        else values[key] = value;
+      }
+      if (Object.keys(values).length > 0) this.ctx.graph.setAttributes(id, values);
       const run = this.ctx.graph.update(id, {
         ...update,
-        attributes: { ...attributes, ...update.attributes },
+        attributes: { ...removals, ...update.attributes },
       });
       if (runLifecycle(run).hasTag("settled")) this.activity.settle(run);
       return run;
     }, this.authority);
   }
 
-  private patch(id: string, attributes: Attributes): Node {
-    return this.ctx.graph.atomic(() => this.ctx.graph.update(id, { attributes }), this.authority);
+  private setAttributes(id: string, attributes: Attributes): Node {
+    return this.ctx.graph.atomic(
+      () => this.ctx.graph.setAttributes(id, attributes),
+      this.authority,
+    );
   }
 
   private run(id: string): Node {

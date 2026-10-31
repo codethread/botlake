@@ -124,7 +124,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
             [workflowAttributes.root]: true,
             [workflowAttributes.private]: true,
             [workflowAttributes.contextGroup]: context.id,
-            [workflowAttributes.definition]: JSON.stringify(loaded.locator),
+            [workflowAttributes.definition]: loaded.locator,
           },
         });
         publish(run, actor, []);
@@ -209,13 +209,11 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
             (item) => item.attributes[workflowAttributes.consumed] === true,
           ).length + 1;
         if (work.get(taskId).state === "open") work.close(taskId, actorName);
-        graph.update(taskId, {
-          attributes: {
-            [workflowAttributes.result]: JSON.stringify({ choice, data }),
-            [workflowAttributes.consumed]: true,
-            [workflowAttributes.completionOrder]: sequence,
-            [workflowAttributes.completedBy]: actorName,
-          },
+        graph.setAttributes(taskId, {
+          [workflowAttributes.result]: { choice, data },
+          [workflowAttributes.consumed]: true,
+          [workflowAttributes.completionOrder]: sequence,
+          [workflowAttributes.completedBy]: actorName,
         });
         graph.disconnect(run.id, taskId, workflowRelations.active);
         publish(
@@ -329,18 +327,16 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
           description: meta.instructions,
           parent,
         });
-    graph.update(item.id, {
-      attributes: {
-        [workflowAttributes.visit]: true,
-        [worker ? workflowAttributes.task : workflowAttributes.group]: true,
-        [workflowAttributes.state]: entry.node,
-        [workflowAttributes.key]: entry.key,
-        [workflowAttributes.path]: entry.path,
-        [workflowAttributes.number]: number,
-        [workflowAttributes.order]: history.length + 1,
-        [workflowAttributes.context]: JSON.stringify(entry.context),
-        [workflowAttributes.meta]: JSON.stringify(meta),
-      },
+    graph.setAttributes(item.id, {
+      [workflowAttributes.visit]: true,
+      [worker ? workflowAttributes.task : workflowAttributes.group]: true,
+      [workflowAttributes.state]: entry.node,
+      [workflowAttributes.key]: entry.key,
+      [workflowAttributes.path]: entry.path,
+      [workflowAttributes.number]: number,
+      [workflowAttributes.order]: history.length + 1,
+      [workflowAttributes.context]: serialise(entry.context),
+      [workflowAttributes.meta]: serialise(meta),
     });
     graph.connect(run.id, item.id, workflowRelations.member);
     graph.connect(run.id, item.id, workflowRelations.active);
@@ -378,12 +374,8 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       node,
       key: text.parse(node.attributes[workflowAttributes.key]),
       path: z.array(z.string()).parse(node.attributes[workflowAttributes.path]),
-      context: contextSchema.parse(
-        JSON.parse(text.parse(node.attributes[workflowAttributes.context])),
-      ),
-      meta: resolvedTaskSchema.parse(
-        JSON.parse(text.parse(node.attributes[workflowAttributes.meta])),
-      ),
+      context: contextSchema.parse(node.attributes[workflowAttributes.context]),
+      meta: resolvedTaskSchema.parse(node.attributes[workflowAttributes.meta]),
     };
   }
 
@@ -460,9 +452,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
 
   async function loadRun(run: Node) {
     return catalogue.restore(
-      workflowLocatorSchema.parse(
-        JSON.parse(text.parse(run.attributes[workflowAttributes.definition])),
-      ),
+      workflowLocatorSchema.parse(run.attributes[workflowAttributes.definition]),
     );
   }
 
@@ -574,9 +564,7 @@ function runContext(run: Node): string {
 }
 
 function savedResult(node: Node) {
-  return workflowResultSchema.parse(
-    JSON.parse(text.parse(node.attributes[workflowAttributes.result])),
-  );
+  return workflowResultSchema.parse(node.attributes[workflowAttributes.result]);
 }
 
 function assertMatchingResult(node: Node, choice: string, data: Json): void {

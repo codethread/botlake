@@ -56,6 +56,6 @@ Parallel branches advance independently. Departed generated groups close only wh
 
 ## Persistence
 
-Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
+Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. Definition locators, published context/metadata and original results use native JSON attributes, including authored nulls. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
 
 Verify packed packages, real CLIs, nested/revision workflows and transaction rollback in disposable SQLite lakes with `bun scripts/workflow-smoke.ts`.

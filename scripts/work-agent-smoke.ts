@@ -128,7 +128,7 @@ function hasBinding(runtime: Runtime, task: string): boolean {
 }
 
 function bindingOf(node: { attributes: Record<string, unknown> }): z.output<typeof binding> {
-  return binding.parse(JSON.parse(z.string().parse(node.attributes[workAgentAttributes.value])));
+  return binding.parse(node.attributes[workAgentAttributes.value]);
 }
 
 async function directRuntime(

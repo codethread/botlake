@@ -133,7 +133,7 @@ export class RunActivity {
           this.ctx.clock.now(),
         );
       this.ctx.graph.connect(handle.id, run.id, runActivityRelations.run);
-      this.ctx.graph.update(run.id, { attributes: { [agentAttributes.activity]: handle.id } });
+      this.ctx.graph.setAttributes(run.id, { [agentAttributes.activity]: handle.id });
       return handle.id;
     }, this.authority);
   }

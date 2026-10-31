@@ -129,9 +129,7 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
   function binding(node: ReturnType<Context["graph"]["show"]>) {
     return {
       node,
-      value: workAgentBindingSchema.parse(
-        JSON.parse(text.parse(node.attributes[workAgentAttributes.value])),
-      ),
+      value: workAgentBindingSchema.parse(node.attributes[workAgentAttributes.value]),
     };
   }
 
@@ -188,21 +186,17 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
 
   function release(entry: ReturnType<typeof binding>, reason: string): boolean {
     if (!active(entry)) {
-      ctx.graph.update(entry.node.id, {
-        attributes: {
-          [workAgentAttributes.value]: JSON.stringify({ ...entry.value, status: "superseded" }),
-        },
+      ctx.graph.setAttributes(entry.node.id, {
+        [workAgentAttributes.value]: { ...entry.value, status: "superseded" },
       });
       ctx.scheduler.cancel(`work-agents/${entry.node.id}`);
       return false;
     }
     const released = store.release(entry.value.task, entry.value.assignment, reason, "work-agents");
-    ctx.graph.update(entry.node.id, {
-      attributes: {
-        [workAgentAttributes.value]: JSON.stringify({
-          ...entry.value,
-          status: released ? "released" : "superseded",
-        }),
+    ctx.graph.setAttributes(entry.node.id, {
+      [workAgentAttributes.value]: {
+        ...entry.value,
+        status: released ? "released" : "superseded",
       },
     });
     ctx.scheduler.cancel(`work-agents/${entry.node.id}`);
@@ -253,7 +247,7 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
       state: "closed",
       attributes: {
         [workAgentAttributes.binding]: true,
-        [workAgentAttributes.value]: JSON.stringify({
+        [workAgentAttributes.value]: {
           task: input.task,
           assignment: input.assignment,
           run: input.run,
@@ -261,7 +255,7 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
           identity: agent.identity,
           heartbeatAt,
           status: "active",
-        }),
+        },
       },
     });
     const entry = binding(node);
@@ -294,10 +288,8 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
       if (!active(entry)) throw new Fault("work-agent", "Assignment is no longer current");
       const heartbeatAt = ctx.clock.now();
       const refreshed = {
-        node: ctx.graph.update(entry.node.id, {
-          attributes: {
-            [workAgentAttributes.value]: JSON.stringify({ ...entry.value, heartbeatAt }),
-          },
+        node: ctx.graph.setAttributes(entry.node.id, {
+          [workAgentAttributes.value]: { ...entry.value, heartbeatAt },
         }),
         value: { ...entry.value, heartbeatAt },
       };
@@ -348,10 +340,8 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
       )
         return;
       const refreshed = {
-        node: ctx.graph.update(entry.node.id, {
-          attributes: {
-            [workAgentAttributes.value]: JSON.stringify({ ...currentBinding.value, heartbeatAt }),
-          },
+        node: ctx.graph.setAttributes(entry.node.id, {
+          [workAgentAttributes.value]: { ...currentBinding.value, heartbeatAt },
         }),
         value: { ...currentBinding.value, heartbeatAt },
       };

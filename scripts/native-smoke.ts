@@ -24,7 +24,7 @@ const observationSchema = z.compile(
     event: z.literal("session-end"),
     activity: z.literal("ended"),
     model: z.string().min(1),
-    thinkingLevel: z.string().optional(),
+    thinkingLevel: z.string().nullable(),
   }),
 );
 const settingSchema = z.compile(

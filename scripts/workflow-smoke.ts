@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
+import { attributesSchema, q } from "@botlake/core";
 import { workflowAttributes } from "@botlake/extension-workflow";
 import { z } from "zod";
 
@@ -68,6 +69,30 @@ export const machine = setup({}).createMachine({
       on: { NEXT: "second" },
     },
     second: { meta: { title: "Rejected publication", commands: { next: "DONE" }, task: () => { throw new Error("publication rejected"); } }, on: { DONE: "done" } },
+    done: { type: "final" },
+  },
+});
+`,
+  );
+  await Bun.write(
+    join(workspace, "native-values.ts"),
+    `
+import { setup } from "xstate";
+import { z } from "zod";
+export const inputSchema = z.object({ nullable: z.null(), nested: z.object({ value: z.null() }), items: z.array(z.null()) });
+export const commandSchemas = { finish: z.json() };
+export function runBrief() { return { title: "Native values", description: "Preserve authored JSON" }; }
+export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>, context: {} as z.infer<typeof inputSchema> } }).createMachine({
+  context: ({ input }) => input,
+  initial: "task",
+  states: {
+    task: {
+      meta: {
+        title: "Native JSON task", commands: { finish: "FINISH" },
+        task: () => ({ instructions: "Publish native values", evidence: { label: "native", nullable: null, nested: { value: null } } }),
+      },
+      on: { FINISH: "done" },
+    },
     done: { type: "final" },
   },
 });
@@ -181,6 +206,13 @@ export const machine = setup({}).createMachine({
   for (const [op, input] of [
     ["update", { id: done.run.id, attributes: { [workflowAttributes.snapshot]: "{}" } }],
     ["update", { id: firstReview, attributes: { [workflowAttributes.result]: "{}" } }],
+    [
+      "set-attributes",
+      {
+        id: firstReview,
+        attributes: { [workflowAttributes.result]: { choice: "forged", data: null } },
+      },
+    ],
     ["burn", { ids: [done.run.id] }],
     ["archive", { id: done.run.id, keys: [workflowAttributes.snapshot] }],
   ] as const)
@@ -219,6 +251,83 @@ export const machine = setup({}).createMachine({
   await cli(["work", "close", followup]);
   await cli(["work", "close", nested.run.context]);
   assert.equal(workDetail.parse(await cli(["work", "show", business])).item.state, "open");
+
+  // Authored values are queryable native JSON; only the execution snapshot is opaque.
+  const input = { nullable: null, nested: { value: null }, items: [null] };
+  const native = runView.parse(
+    await cli([
+      "workflow",
+      "start",
+      "--source",
+      "native-values.ts",
+      "--input",
+      JSON.stringify(input),
+    ]),
+  );
+  const nativeTask = task(native, "Native JSON task");
+  const attributes = async (id: string) =>
+    z.object({ attributes: attributesSchema }).parse(await host.bl(workspace, "show", { id }))
+      .attributes;
+  const runAttributes = await attributes(native.run.id);
+  assert.equal(typeof runAttributes[workflowAttributes.definition], "object");
+  assert.equal(typeof runAttributes[workflowAttributes.snapshot], "string");
+  const published = await attributes(nativeTask);
+  assert.deepEqual(published[workflowAttributes.context], input);
+  assert.deepEqual(
+    z.object({ evidence: z.unknown() }).parse(published[workflowAttributes.meta]).evidence,
+    {
+      label: "native",
+      nullable: null,
+      nested: { value: null },
+    },
+  );
+  const matching = z.array(idResult).parse(
+    await host.bl(workspace, "list", {
+      where: q.eq(q.attr(workflowAttributes.meta, "evidence", "label"), "native"),
+    }),
+  );
+  assert.ok(matching.some(({ id }) => id === nativeTask));
+  const result = { nullable: null, nested: { value: null } };
+  const completed = await cli([
+    "workflow",
+    "complete",
+    nativeTask,
+    "finish",
+    "--data",
+    JSON.stringify(result),
+  ]);
+  assert.deepEqual((await attributes(nativeTask))[workflowAttributes.result], {
+    choice: "finish",
+    data: result,
+  });
+  await host.botlake(["lake", "restart", "--workspace", workspace]);
+  assert.deepEqual((await attributes(nativeTask))[workflowAttributes.context], input);
+  assert.deepEqual(
+    await cli(["workflow", "complete", nativeTask, "finish", "--data", JSON.stringify(result)]),
+    completed,
+  );
+  assert.match(
+    z
+      .string()
+      .parse(await cli(["workflow", "complete", nativeTask, "finish", "--data", "null"], false)),
+    /different saved original result/iu,
+  );
+  const nullable = runView.parse(
+    await cli([
+      "workflow",
+      "start",
+      "--source",
+      "native-values.ts",
+      "--input",
+      JSON.stringify(input),
+    ]),
+  );
+  const nullableTask = task(nullable, "Native JSON task");
+  await cli(["workflow", "complete", nullableTask, "finish", "--data", "null"]);
+  assert.deepEqual((await attributes(nullableTask))[workflowAttributes.result], {
+    choice: "finish",
+    data: null,
+  });
 
   // A failed next-publication rolls back closure, assignment release, checkpoint and authored result.
   const rollback = runView.parse(await cli(["workflow", "start", "--source", "rollback.ts"]));
@@ -263,6 +372,7 @@ export const machine = setup({}).createMachine({
           "bounded action/decision pages with explicit continuation",
           "private checkpoint/result protection and consumed-visit recovery guard",
           "nested machine routes and checkpoint restore after restart",
+          "native queryable metadata, context, locator and results preserve nulls and retry equality across restart",
           "business/context groups may outlive execution without false completion",
           "authored HITL routing and criteria, atomic rollback of all completion effects",
         ],

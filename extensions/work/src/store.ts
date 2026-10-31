@@ -3,10 +3,12 @@ import {
   Fault,
   q,
   requireValue,
+  type Attributes,
   type Context,
   type Graph,
   type Mutation,
   type Node,
+  type Predicate,
 } from "@botlake/core";
 import { callerActor } from "@botlake/extension-identity";
 import { z } from "zod";
@@ -129,7 +131,7 @@ export function workStore(ctx: Context): WorkStore {
             };
       const node = graph.add({
         title: input.title,
-        attributes: { [workAttributes.item]: true, [workAttributes.data]: JSON.stringify(data) },
+        attributes: { [workAttributes.item]: true, ...attributesFor(data) },
       });
       if (input.parent !== undefined) move(node.id, input.parent);
       for (const prerequisite of input.prerequisites)
@@ -200,7 +202,7 @@ export function workStore(ctx: Context): WorkStore {
         ...(input.expectedRevision === undefined
           ? {}
           : { expectedRevision: input.expectedRevision }),
-        attributes: { [workAttributes.data]: JSON.stringify(data) },
+        attributes: attributesFor(data),
       });
       return get(id);
     }, authority);
@@ -278,25 +280,22 @@ export function workStore(ctx: Context): WorkStore {
           )
         : undefined;
     const needle = input.search?.toLowerCase();
+    const where: [Predicate, ...Predicate[]] = [q.eq(q.attr(workAttributes.item), true)];
+    if (state !== "all") where.push(q.eq("state", state === "open" ? "active" : "closed"));
+    if (input.kind !== undefined) where.push(q.eq(q.attr(workAttributes.kind), input.kind));
+    if (input.origin !== undefined) where.push(q.eq(q.attr(workAttributes.origin), input.origin));
+    if (input.audience !== undefined)
+      where.push(q.eq(q.attr(workAttributes.audience), input.audience));
     const matches = graph
-      .all({ where: q.eq(q.attr(workAttributes.item), true), lean: false })
+      .all({ where: q.and(...where), lean: false })
       .filter((node) => {
         const item = get(node.id);
-        if (state !== "all" && item.state !== state) return false;
-        if (input.kind !== undefined && item.kind !== input.kind) return false;
         if (input.parent !== undefined && parentOf(node.id) !== input.parent) return false;
         if (
           needle !== undefined &&
           ![item.title, item.description, item.kind === "task" ? (item.notes ?? "") : ""].some(
             (value) => value.toLowerCase().includes(needle),
           )
-        )
-          return false;
-        if (input.origin !== undefined && (item.kind !== "task" || item.origin !== input.origin))
-          return false;
-        if (
-          input.audience !== undefined &&
-          (item.kind !== "task" || item.audience !== input.audience)
         )
           return false;
         if (
@@ -342,7 +341,7 @@ export function workStore(ctx: Context): WorkStore {
       data.closures.push(attribution(by));
       graph.update(id, {
         state: "closed",
-        attributes: { [workAttributes.data]: JSON.stringify(data) },
+        attributes: attributesFor(data),
       });
       return get(id);
     }, authority);
@@ -357,7 +356,7 @@ export function workStore(ctx: Context): WorkStore {
       data.reopenings.push({ ...attribution(by), reason });
       graph.update(id, {
         state: "active",
-        attributes: { [workAttributes.data]: JSON.stringify(data) },
+        attributes: attributesFor(data),
       });
       return get(id);
     }, authority);
@@ -535,7 +534,7 @@ export function workStore(ctx: Context): WorkStore {
   }
 
   function save(id: string, data: WorkData): void {
-    graph.update(id, { attributes: { [workAttributes.data]: JSON.stringify(data) } });
+    graph.setAttributes(id, attributesFor(data));
   }
 
   function attribution(by?: string) {
@@ -586,7 +585,38 @@ export function workStore(ctx: Context): WorkStore {
 function read(node: Node): WorkData {
   if (node.attributes[workAttributes.item] !== true)
     throw new Fault("work", `Expected task or group: ${node.id}`);
-  return workDataSchema.parse(JSON.parse(text.parse(node.attributes[workAttributes.data])));
+  const attributes = node.attributes;
+  return workDataSchema.parse({
+    kind: attributes[workAttributes.kind],
+    description: attributes[workAttributes.description],
+    closures: attributes[workAttributes.closures],
+    reopenings: attributes[workAttributes.reopenings],
+    notes: attributes[workAttributes.notes] ?? null,
+    audience: attributes[workAttributes.audience],
+    origin: attributes[workAttributes.origin],
+    priority: attributes[workAttributes.priority],
+    criteria: attributes[workAttributes.criteria],
+    assignments: attributes[workAttributes.assignments],
+  });
+}
+
+function attributesFor(data: WorkData): Attributes {
+  const common = {
+    [workAttributes.kind]: data.kind,
+    [workAttributes.description]: data.description,
+    [workAttributes.closures]: data.closures,
+    [workAttributes.reopenings]: data.reopenings,
+  };
+  if (data.kind === "group") return common;
+  return {
+    ...common,
+    ...(data.notes === null ? {} : { [workAttributes.notes]: data.notes }),
+    [workAttributes.audience]: data.audience,
+    [workAttributes.origin]: data.origin,
+    [workAttributes.priority]: data.priority,
+    [workAttributes.criteria]: data.criteria,
+    [workAttributes.assignments]: data.assignments,
+  };
 }
 
 function criterionView(criterion: StoredCriterion): Criterion {

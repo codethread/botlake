@@ -77,24 +77,22 @@ export class NativeSessions {
       const binding = observeIdentity(this.ctx, input);
       const session = this.ctx.graph.show(binding.nodeId);
 
-      this.ctx.graph.update(run.id, {
-        attributes: {
-          [agentAttributes.identity]: binding.identity,
-          [agentAttributes.audience]: input.audience,
-          [agentAttributes.sessionId]: input.nativeSessionId,
-          [agentAttributes.sessionConfirmed]: true,
-          [agentAttributes.integration]: "native",
-          [agentAttributes.observation]: {
-            event: input.event,
-            audience: input.audience,
-            at: this.ctx.clock.now(),
-            activity: session.attributes[identityAttributes.activity] ?? "unknown",
-            agentSeat: session.attributes[identityAttributes.agentSeat] ?? null,
-            model: session.attributes[identityAttributes.model] ?? null,
-            thinkingLevel: session.attributes[identityAttributes.thinkingLevel] ?? null,
-            cwd: input.cwd,
-            capabilities: session.attributes[identityAttributes.capabilities] ?? [],
-          },
+      this.ctx.graph.setAttributes(run.id, {
+        [agentAttributes.identity]: binding.identity,
+        [agentAttributes.audience]: input.audience,
+        [agentAttributes.sessionId]: input.nativeSessionId,
+        [agentAttributes.sessionConfirmed]: true,
+        [agentAttributes.integration]: "native",
+        [agentAttributes.observation]: {
+          event: input.event,
+          audience: input.audience,
+          at: this.ctx.clock.now(),
+          activity: session.attributes[identityAttributes.activity] ?? "unknown",
+          agentSeat: session.attributes[identityAttributes.agentSeat] ?? null,
+          model: session.attributes[identityAttributes.model] ?? null,
+          thinkingLevel: session.attributes[identityAttributes.thinkingLevel] ?? null,
+          cwd: input.cwd,
+          capabilities: session.attributes[identityAttributes.capabilities] ?? [],
         },
       });
       const external = run.attributes[agentAttributes.external] === true;
@@ -143,13 +141,11 @@ export class NativeSessions {
       if (current.attributes[agentAttributes.integration] === "native") return;
 
       const binding = nativeStartup(this.ctx, input);
-      this.ctx.graph.update(run.id, {
-        attributes: {
-          [agentAttributes.identity]: binding.identity,
-          [agentAttributes.sessionId]: nativeSessionId,
-          [agentAttributes.sessionConfirmed]: true,
-          [agentAttributes.integration]: "output",
-        },
+      this.ctx.graph.setAttributes(run.id, {
+        [agentAttributes.identity]: binding.identity,
+        [agentAttributes.sessionId]: nativeSessionId,
+        [agentAttributes.sessionConfirmed]: true,
+        [agentAttributes.integration]: "output",
       });
 
       recordParticipation(this.ctx, binding.identity, run.id, input.invocation ?? "external");

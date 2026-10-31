@@ -396,45 +396,26 @@ export class Graph {
     });
   }
 
+  /** Patch node fields; attribute objects merge recursively and null deletes keys. */
   update(id: string, input: Patch): Node {
     const patch = patchSchema.parse(input);
+    return this.updateNode(
+      id,
+      patch,
+      patch.attributes === undefined ? undefined : { mode: "merge", values: patch.attributes },
+    );
+  }
 
-    return this.atomic(() => {
-      const before = this.show(id);
-      if (patch.expectedRevision !== undefined && before.revision !== patch.expectedRevision)
-        throw new Fault("stale", `Stale revision for ${id}`, {
-          expected: patch.expectedRevision,
-          actual: before.revision,
-        });
-
-      this.db
-        .query(sql`
-          UPDATE nodes
-          SET title = ?,
-              state = ?,
-              updated_at = ?,
-              revision = revision + 1
-          WHERE id = ?
-        `)
-        .run(
-          patch.title ?? before.title,
-          patch.state ?? before.state,
-          new Date(this.now()).toISOString(),
-          id,
-        );
-      if (patch.attributes !== undefined) this.writeAttributes(id, patch.attributes);
-
-      const after = this.show(id);
-      this.record({
-        kind: "node",
-        before,
-        after,
-        ...(patch.expectedRevision === undefined
-          ? {}
-          : { expectedRevision: patch.expectedRevision }),
-      });
-      return after;
-    });
+  /** Replace supplied attribute values verbatim, including null; retain unspecified keys. */
+  setAttributes(id: string, values: Attributes, expectedRevision?: number): Node {
+    const attributes = attributesSchema.parse(values);
+    const revision =
+      expectedRevision === undefined ? undefined : positiveIntegerSchema.parse(expectedRevision);
+    return this.updateNode(
+      id,
+      { expectedRevision: revision },
+      { mode: "replace", values: attributes },
+    );
   }
 
   archive(id: string, keys: string[]): Node {
@@ -850,9 +831,52 @@ export class Graph {
     return { ...query, sql: sql`${query.sql} ${ready}` };
   }
 
-  private writeAttributes(id: string, patch: Attributes): void {
+  private updateNode(
+    id: string,
+    patch: Pick<Patch, "title" | "state" | "expectedRevision">,
+    attributes?: { mode: "merge" | "replace"; values: Attributes },
+  ): Node {
+    return this.atomic(() => {
+      const before = this.show(id);
+      if (patch.expectedRevision !== undefined && before.revision !== patch.expectedRevision)
+        throw new Fault("stale", `Stale revision for ${id}`, {
+          expected: patch.expectedRevision,
+          actual: before.revision,
+        });
+
+      this.db
+        .query(sql`
+          UPDATE nodes
+          SET title = ?,
+              state = ?,
+              updated_at = ?,
+              revision = revision + 1
+          WHERE id = ?
+        `)
+        .run(
+          patch.title ?? before.title,
+          patch.state ?? before.state,
+          new Date(this.now()).toISOString(),
+          id,
+        );
+      if (attributes !== undefined) this.writeAttributes(id, attributes.values, attributes.mode);
+
+      const after = this.show(id);
+      this.record({
+        kind: "node",
+        before,
+        after,
+        ...(patch.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: patch.expectedRevision }),
+      });
+      return after;
+    });
+  }
+
+  private writeAttributes(id: string, values: Attributes, mode: "merge" | "replace"): void {
     const before = this.show(id).attributes;
-    const after = merge(before, patch);
+    const after = mode === "merge" ? merge(before, values) : { ...before, ...values };
 
     const keys = keyRowsSchema.parse(
       this.db
@@ -869,7 +893,7 @@ export class Graph {
       )
         throw new Fault("immutable", `Immutable attribute: ${key}`);
 
-    for (const key of Object.keys(patch)) {
+    for (const key of Object.keys(values)) {
       const value = after[key];
       if (value === undefined)
         this.db

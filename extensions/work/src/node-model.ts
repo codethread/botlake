@@ -4,8 +4,26 @@ import { z } from "zod";
 export const workAttributes = {
   /** Marks a task or context group. */
   item: "work/item",
-  /** Serialized task or group storage document. */
-  data: "work/data",
+  /** Task or context group. */
+  kind: "work/kind",
+  /** Local brief, inherited by descendants of a group. */
+  description: "work/description",
+  /** Conclusions, findings and references. Absent until recorded. */
+  notes: "work/notes",
+  /** Participation mode for a task. */
+  audience: "work/audience",
+  /** Planned work or an interruption. */
+  origin: "work/origin",
+  /** Task urgency from P0 through P4. */
+  priority: "work/priority",
+  /** Acceptance conditions and their resolution history. */
+  criteria: "work/criteria",
+  /** Assignment generations and retained release attribution. */
+  assignments: "work/assignments",
+  /** Attributed closures in chronological order. */
+  closures: "work/closures",
+  /** Attributed recoveries in chronological order. */
+  reopenings: "work/reopenings",
 } as const;
 
 /** Work relationship labels. */

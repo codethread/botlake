@@ -29,6 +29,12 @@ Workspace configuration lives in the required `botlake` field of `.botlake/packa
 
 `ctx.bin(name, { description, exec: { path, env? } | { command, env? }, build?: { argv, cwd } })` declares an executable. Paths and build directories are absolute; use the extension’s module location to resolve bundled assets. Commands are bare names resolved through the caller’s PATH. `bins list|plan` exposes the registry; Botlake performs builds and local terminal execution. Registration never launches or builds programs.
 
+## Attribute mutations
+
+`graph.update(id, { title?, state?, attributes?, expectedRevision? })` applies a merge patch: attribute objects merge recursively, arrays/scalars replace, and null deletes keys.
+
+`graph.setAttributes(id, values, expectedRevision?)` replaces each supplied attribute value verbatim, including objects and nulls; omitted keys remain unchanged. Use it for authored JSON, observations and whole documents. Both methods enforce revisions, guards and immutable keys atomically.
+
 ## Queries
 
 `q` constructs serializable predicates for `graph.list/all`, named queries and [Botlake eval](../../README.md#javascript-evaluation). Declarations stay inert; register them inside the selected extension’s `activate`:

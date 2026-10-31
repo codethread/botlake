@@ -17,7 +17,7 @@ Tasks are actionable leaves. Groups supply shared context and may contain groups
 
 ## Relationships
 
-`node-model.ts` declares `workAttributes`, `workRelations` and stored-value schemas, available from the package's public exports.
+`node-model.ts` declares `workAttributes`, `workRelations` and stored-value schemas, available from the package's public exports. Task/group facts use native `work/*` attributes; criteria, assignments and recovery history are JSON arrays. Generic queries can select fields such as `q.attr("work/priority")`; mutations still require Work operations.
 
 `parent-of` is contextual containment; `depends-on` is readiness; `references` is a non-contextual connection. Group prerequisites do not propagate to members.
 

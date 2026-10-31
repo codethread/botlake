@@ -1,6 +1,7 @@
 // Pack/install outside the checkout, exercise the real CLI, and remove every disposable lake.
 import assert from "node:assert/strict";
 
+import { attributesSchema, q } from "@botlake/core";
 import { workAttributes } from "@botlake/extension-work";
 import { z } from "zod";
 
@@ -295,9 +296,10 @@ try {
   );
   await failure({ command: "link", from: vpn, to: build, relation: "depends-on" }, /Cycle/iu);
   for (const [op, input] of [
-    ["update", { id: x, attributes: { [workAttributes.data]: "{}" } }],
+    ["update", { id: x, attributes: { [workAttributes.description]: "forged" } }],
+    ["set-attributes", { id: x, attributes: { [workAttributes.criteria]: [] } }],
     ["burn", { ids: [x] }],
-    ["archive", { id: x, keys: [workAttributes.data] }],
+    ["archive", { id: x, keys: [workAttributes.description] }],
     ["edge", { command: "add", from: elsewhere, to: x, relation: "parent-of" }],
   ] as const)
     assert.ok(z.string().parse(await host.bl(workspace, op, input, false)).length > 0);
@@ -322,6 +324,20 @@ try {
     origin: "unplanned",
     priority: "P4",
   });
+  const raw = z
+    .object({ attributes: attributesSchema })
+    .parse(await host.bl(workspace, "show", { id: planned }));
+  assert.equal(raw.attributes[workAttributes.kind], "task");
+  assert.equal(raw.attributes[workAttributes.priority], "P0");
+  assert.ok(Array.isArray(raw.attributes[workAttributes.assignments]));
+  const urgent = z.array(identifier).parse(
+    await host.bl(workspace, "list", {
+      where: q.eq(q.attr(workAttributes.priority), "P0"),
+    }),
+  );
+  assert.ok(urgent.some(({ id }) => id === planned));
+  evidence.push("native Work attributes and queryable task facts");
+
   const humanQueue = ids(await list({ view: "human", assignee: "human" }));
   assert.ok(humanQueue.indexOf(planned) < humanQueue.indexOf(interruption));
   const longNotes = "Durable findings and supporting evidence. ".repeat(4000);
@@ -343,7 +359,57 @@ try {
     "AFK/planned/P2 defaults, independent urgency, compact lists, expandable findings and complete pagination",
   );
 
+  // Exact value assignment differs from merge patches through the packaged CLI.
+  const plain = identifier.parse(
+    await host.bl(workspace, "add", {
+      title: "Attribute semantics",
+      attributes: { document: { obsolete: true, nested: { old: true } }, unrelated: "retained" },
+    }),
+  ).id;
+  const values = {
+    document: { nested: { answer: null }, array: [null, { value: null }] },
+    nullable: null,
+  };
+  await cli([
+    "set-attributes",
+    plain,
+    "--attributes",
+    JSON.stringify(values),
+    "--expected-revision",
+    "1",
+  ]);
+  const attributes = async () =>
+    z
+      .object({ attributes: attributesSchema })
+      .parse(await host.bl(workspace, "show", { id: plain })).attributes;
+  assert.deepEqual(await attributes(), { ...values, unrelated: "retained" });
+  assert.match(
+    z
+      .string()
+      .parse(
+        await cli(
+          ["set-attributes", plain, "--attributes", "{}", "--expected-revision", "1"],
+          false,
+        ),
+      ),
+    /Stale/iu,
+  );
+  await cli([
+    "update",
+    plain,
+    "--attributes",
+    '{"document":{"nested":{"answer":null,"added":true}}}',
+  ]);
+  assert.deepEqual((await attributes())["document"], {
+    nested: { added: true },
+    array: [null, { value: null }],
+  });
+  evidence.push(
+    "exact attribute setter preserves nulls and replaces documents; merge patches remain distinct and stale writes fail",
+  );
+
   await host.botlake(["lake", "restart", "--workspace", workspace]);
+  assert.equal((await attributes())["nullable"], null);
   assert.equal(task.parse((await show(build)).item).assignment?.id, current.assignment.id);
   assert.equal((await show(x, true)).history?.criteria[0]?.changes.length, 5);
   assert.equal(task.parse((await show(planned)).item).notes, longNotes);
