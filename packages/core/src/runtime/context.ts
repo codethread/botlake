@@ -29,7 +29,8 @@ export interface Invocation {
 
 export interface Op {
   name: string;
-  cli: Command;
+  /** Omit for JSON-only peer operations excluded from CLI discovery. */
+  cli?: Command | undefined;
   about?: string | undefined;
   primer?: string | undefined;
   dependencies: string[];

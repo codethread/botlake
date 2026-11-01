@@ -31,15 +31,21 @@ flowchart LR
 
 `link FROM TO --relation depends-on` adds a direct prerequisite task or group. An open item is ready when all its direct prerequisites are closed. Containment and references do not create prerequisites; a group prerequisite does not silently become a prerequisite of its members. Closing work neither asserts success nor completes dependents. `references` retains useful non-contextual connections without adding inherited instructions.
 
-Select [References](../references/README.md) explicitly in both lakes and configure `references({ projections: workReferenceProjections })`, importing `workReferenceProjections` from Work. The selectors are inert; importing Work never selects References. A local reference ID can be a prerequisite or non-contextual reference target, never an assignable task or contextual parent. Only source-verified `work/task` and `work/group` observations can satisfy prerequisites, and they must be current and closed. Stale, missing or replaced-source observations leave dependents waiting. Agent lifecycle states do not substitute for Work completion.
+Select one shared [References library](../references/README.md) explicitly in both lakes, configured with `workReferenceProjections`, and pass that binding to `work({ references })`. The selectors and imports are inert. For module-based configuration, export the binding from a selected `references.ts` module and import it into the selected Work module. Local-only Work needs no configuration.
+
+`link FROM TO --to-workspace LAKE` imports TO from its owner and creates the local relationship. It returns the local endpoint ID and source provenance; neither descriptions nor histories are copied. `unlink` accepts the same endpoint/workspace pair without fetching owner state, or the returned local ID when the owner is unavailable. Local references remain after unlinking because other relationships may use them. A failed link after import reports the retained reference in error details.
+
+A reference can be a prerequisite or non-contextual target, never an assignable task or contextual parent. Only source-verified `work/task` and `work/group` observations can satisfy prerequisites, and they must be current and closed. Stale, missing or replaced-source observations leave dependents waiting. Agent lifecycle states do not substitute for Work completion.
 
 Work links record their accepted projection kinds on the dependency edge. Generic edge writes must preserve the exact Work constraint; use `work link` to supply it automatically. Losing the source classification blocks both Work queues and generic readiness used for targeted agent launch, even when the last observed node state is closed.
 
 ```sh
-bl reference add OTHER_LAKE REMOTE_TASK
-bl work link LOCAL_TASK LOCAL_REFERENCE_ID --relation depends-on
+bl work link LOCAL_TASK REMOTE_TASK --to-workspace OTHER_LAKE --relation depends-on
 bl work diagnose LOCAL_TASK
+bl work unlink LOCAL_TASK LOCAL_REFERENCE_ID --relation depends-on
 ```
+
+TypeScript consumers use `workLinks(ctx, references.get(ctx)).link({ from, to, toWorkspace, relation }, signal)` and `.unlink(...)`; local synchronous graph operations remain available through `workStore(ctx)`.
 
 `diagnose ID` follows recorded prerequisite edges through live owners, with defaults of eight lakes, 1,000 nodes and 5,000 edges; `--max-lakes`, `--max-nodes` and `--max-edges` set explicit bounds. It returns one representative path per cyclic component, unavailable owners, reached limits and `complete`. Cycles can include closed historical work and do not establish current blockedness; an incomplete result does not establish the absence of cycles. `dependencies ID --limit 20 --offset 0` exposes bounded direct owner addresses with `nextOffset`; fetch that owner for current facts. Briefs and histories are omitted. These reads are observations, not a shared snapshot. Local cycle checks still cannot reject every cycle spanning multiple lakes, and a remote source can change after a dependent is claimed.
 

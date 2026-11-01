@@ -1,41 +1,63 @@
 # @botlake/extension-references
 
-Explicitly select References in both lakes to follow source-owned node summaries. Imports are inert; no domain extension is activated by selecting References. Generic references need only Core. For Work prerequisites, explicitly select Identity and Work, and select a local References configuration:
+A TypeScript library for following source-owned node summaries across independent lakes. Configure one binding, select it explicitly, and inject that same binding into domain extensions. Imports are inert; the library installs one synchronization resource per lake and a JSON-only peer protocol.
 
 ```ts
+import { agents, agentReferenceProjections } from "@botlake/extension-agents";
 import { references } from "@botlake/extension-references";
-import { workReferenceProjections } from "@botlake/extension-work";
+import { work, workReferenceProjections } from "@botlake/extension-work";
 
-export default references({ projections: workReferenceProjections });
+const shared = references({
+  projections: [...workReferenceProjections, ...agentReferenceProjections],
+});
+
+// Select Identity and Flags too, as required by Work and Agents.
+const selected = [shared, work({ references: shared }), agents({ references: shared })];
 ```
 
-Source projection selectors classify records using their own node fields/attributes. They cannot use edges or query parameters. Overlapping classifications fail explicitly. Without a matching projection, the observed kind is null; such nodes remain useful references but cannot satisfy Work prerequisites.
+For module-based configuration, export `shared` as the default from a selected `references.ts`. Selected Work and Agents configuration modules import that binding and pass it to their factories. Select the library in both the source and consuming lakes. Generic consumers need only Core; no domain extension is activated by the library.
+
+Domain commands own the workflow:
 
 ```sh
-bl --workspace api work create "Publish order contract"
-bl --workspace ui reference add api API_TASK
-bl --workspace ui work create "Implement order form" --prerequisite LOCAL_REFERENCE
-bl --workspace ui work show UI_TASK
-bl --workspace ui work diagnose UI_TASK
+bl --workspace ui work link UI_TASK API_TASK --to-workspace api --relation depends-on
+bl --workspace ui work unlink UI_TASK API_TASK --to-workspace api --relation depends-on
+bl --workspace ui agent follow RUN_ID --from-workspace api
 ```
 
-`add WORKSPACE NODE` returns the local reference ID and observed facts. Use that ID with normal edges or Work links. Work accepts source-verified `work/task` and `work/group` prerequisites only; current plus closed is required. Agents must target the authoritative task in its owning lake, with an explicit working directory. Importing a run does not create local execution or custody.
+`--workspace` before the operation selects where the command runs. `--to-workspace` qualifies the linked endpoint; `--from-workspace` identifies the owner of an observed run. Agent execution and custody remain at the owner. Work links return the local endpoint ID and provenance; the local ID can also be used to unlink while the owner is unavailable.
 
-Core metadata carries the source lake UUID, workspace route, source node ID/revision, classification, observation time and current/stale/missing state. Source attributes, descriptions, prompts, histories and results remain remote. `node show` and topology summaries expose provenance. Generic updates, supersession and burn reject references; use `reference forget` to remove a local import. Local notes and relationships remain local.
+Obtain the lake-scoped instance during activation. Call `follow`, `lookup` and `refresh` from registered operation handlers after resource startup; they reject before startup and after shutdown:
 
-```sh
-bl reference list --limit 20
-bl reference list --lake-id LAKE_UUID --offset NEXT_OFFSET
-bl reference status
-bl reference refresh LOCAL_REFERENCE
-bl reference forget LOCAL_REFERENCE
-bl --workspace api reference source
+```ts
+import { defineOp, jsonSchema } from "@botlake/core";
+import { z } from "zod";
+
+// Inside the consuming extension's activate(ctx):
+const refs = shared.get(ctx);
+ctx.register(
+  defineOp({
+    name: "contract",
+    input: z.object({ workspace: z.string(), nodeId: z.string() }),
+    output: jsonSchema,
+    async handler(source, _ctx, request) {
+      const node = await refs.follow(source, request.signal, {
+        kinds: ["work/task", "work/group"],
+      });
+      return { id: node.id, reference: node.reference };
+    },
+  }),
+);
 ```
 
-List/status results include total and nextOffset; null means exhausted. Lists filter before reading records and perform no remote calls. Refresh waits for an observation covered by a live subscription. Forget deletes only the local reference and incident edges. An in-flight background refresh cannot recreate it. Removing the final reference retires its source subscription.
+`follow` checks requested projection kinds before importing. `lookup(address, signal)` resolves the workspace route and finds an existing local handle without reading the source; ambiguous retained owners require a local reference ID. `refresh(id, signal)` updates an exact retained handle. `list({ limit, offset, lakeId })` and `status(...)` include `total` and `nextOffset`; null means exhausted. Lists exclude source attributes and perform no remote calls. `forget(id)` removes only the local import and incident edges. An in-flight refresh cannot recreate a forgotten handle. Removing the final reference retires its subscription.
 
-Streams subscribe before snapshots, coalesce selected invalidations, and refetch on reconnect. Lost streams mark observations stale; restarting Core also invalidates persisted current observations, even when synchronization is no longer selected. Confirmed source deletion retains a missing reference. Source calls are cancellable and bounded; configuration supports `reconnectMs` (default 500) and `requestTimeoutMs` (default 5000).
+Source classifiers use only owned node fields and attributes. Edge predicates, query parameters and overlapping classifications fail explicitly. An unmatched source kind is null; Work prerequisites accept only `work/task` or `work/group`, and Agent follows accept only `agent/run`.
 
-A workspace route resolving to a new database cannot retarget an existing reference. A moved database retains its UUID: call add with its new route and original node ID to preserve local reference IDs and resume following that owner. Each UUID identifies one authoritative database; independently modifying database copies is unsupported.
+Core provenance contains the owner lake UUID, workspace route, source node ID/revision, classification, observation time and current/stale/missing status. Source attributes, descriptions, prompts, histories and results remain remote. Generic updates, supersession and deletion reject references; `forget` removes the local import. Local notes and relationships remain local.
 
-Readiness uses observed facts, not a transaction shared with another lake. A source can change after a dependent is claimed. Cross-lake cycles cannot be rejected atomically by local edge checks: `work diagnose TASK` returns representative cycle paths, unavailable owners and explicit completeness/limits. This does not install a dispatcher or automatically launch agents.
+Streams subscribe before snapshots, coalesce selected invalidations, and refetch on reconnect. Disconnection and restart make observations stale. Confirmed source deletion retains a missing reference. Source reads are cancellable and bounded; `reconnectMs` defaults to 500 and `requestTimeoutMs` to 5000.
+
+A new database at the same workspace route cannot retarget an existing reference. Following the same source at a moved route preserves its local ID and resumes synchronization. Each UUID identifies one authoritative database; independently modifying database copies is unsupported.
+
+Readiness uses observed facts, not a shared transaction. A source can change after a dependent is claimed. Cross-lake cycles cannot be rejected atomically: `work diagnose TASK` reports representative cycle paths, unavailable owners and explicit completeness/limits. This library does not install a dispatcher.

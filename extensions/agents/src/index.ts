@@ -23,6 +23,7 @@ export {
 export type { ActivityRead } from "./activity.ts";
 
 export { agentsChanged } from "./events.ts";
+export { agentReferenceProjections } from "./references.ts";
 export { resolveAssignmentRun, type AssignmentRun } from "./assignment-run.ts";
 export {
   agentLiveness,
@@ -55,7 +56,11 @@ export type {
 export function agents(options: AgentOptions = {}): Extension {
   return {
     name: "agents",
-    requires: ["identity", "flags"],
+    requires: [
+      "identity",
+      "flags",
+      ...(options.references === undefined ? [] : [options.references.name]),
+    ],
     activate(ctx) {
       registerAgentEvents(ctx);
       const service = new Agents(ctx, options);

@@ -1,8 +1,10 @@
 import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
+import type { ReferenceLibrary } from "@botlake/extension-references";
 import { z } from "zod";
 
 import { diagnoseWork, diagnosticLimitsSchema, workDependencies } from "./diagnostics.ts";
 import { registerWorkEvents } from "./events.ts";
+import { workLinks } from "./links.ts";
 import { workAttributes, workRelations } from "./node-model.ts";
 import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
@@ -18,6 +20,7 @@ export {
 } from "./node-model.ts";
 export type { StoredCriterion, WorkData, WorkLinkRelation } from "./node-model.ts";
 export { workStore } from "./store.ts";
+export { workLinks, type WorkLink, type WorkLinkResult } from "./links.ts";
 export { diagnoseWork, workDependencies } from "./diagnostics.ts";
 export type {
   WorkAddress,
@@ -54,6 +57,7 @@ const attribution = { by: text.optional() };
 const item = { id: text };
 const relation = z.enum([workRelations.dependsOn, workRelations.references]);
 const topologyInput = treeInput.extend({ format: z.enum(["json", "text"]).optional() });
+const linkInput = { from: text, to: text, relation, toWorkspace: text.optional() };
 const input = z.compile(
   z.discriminatedUnion("command", [
     z.discriminatedUnion("kind", [
@@ -108,8 +112,8 @@ const input = z.compile(
         (value) => value.root !== (value.parent !== undefined),
         "Supply either --parent GROUP or --root",
       ),
-    z.strictObject({ command: z.literal("link"), from: text, to: text, relation }),
-    z.strictObject({ command: z.literal("unlink"), from: text, to: text, relation }),
+    z.strictObject({ command: z.literal("link"), ...linkInput }),
+    z.strictObject({ command: z.literal("unlink"), ...linkInput }),
     z.strictObject({ command: z.literal("diagnose"), ...item, ...diagnosticLimitsSchema.shape }),
     z.strictObject({
       command: z.literal("dependencies"),
@@ -137,13 +141,22 @@ const input = z.compile(
   ]),
 );
 
-export function work(): Extension {
+export interface WorkOptions {
+  /** Shared library, explicitly selected alongside Work when cross-lake links are enabled. */
+  references?: ReferenceLibrary | undefined;
+}
+
+export function work(configuration: WorkOptions = {}): Extension {
   return {
     name: "work",
-    requires: ["identity"],
+    requires: [
+      "identity",
+      ...(configuration.references === undefined ? [] : [configuration.references.name]),
+    ],
     activate(ctx) {
       registerWorkEvents(ctx);
       const store = workStore(ctx);
+      const links = workLinks(ctx, configuration.references?.get(ctx));
       ctx.registerQuery("work-items", {
         where: q.eq(q.attr(workAttributes.item), true),
         description: "Tasks and context groups",
@@ -455,13 +468,21 @@ export function work(): Extension {
               },
               link: {
                 description:
-                  "Add a direct prerequisite or non-contextual reference; remote prerequisites require a source-verified task/group, while references accept any remote node",
-                examples: ["bl work link TASK BLOCKER --relation depends-on"],
+                  "Add a prerequisite or reference; --to-workspace imports the remote endpoint and returns its local ID and provenance",
+                examples: [
+                  "bl work link TASK BLOCKER --relation depends-on",
+                  "bl work link UI_TASK API_TASK --to-workspace api --relation depends-on",
+                ],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
                 ],
                 flags: {
+                  "to-workspace": {
+                    key: "toWorkspace",
+                    type: "string",
+                    description: "Owner of TO; omitted treats TO as a local ID",
+                  },
                   relation: {
                     type: "string",
                     required: true,
@@ -470,13 +491,19 @@ export function work(): Extension {
                 },
               },
               unlink: {
-                description: "Remove the specified prerequisite or reference",
+                description:
+                  "Remove a prerequisite or reference; remote endpoints use the retained local import without fetching source state",
                 examples: ["bl work unlink TASK BLOCKER --relation depends-on"],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
                 ],
                 flags: {
+                  "to-workspace": {
+                    key: "toWorkspace",
+                    type: "string",
+                    description: "Owner of TO; alternatively pass the returned local reference ID",
+                  },
                   relation: {
                     type: "string",
                     required: true,
@@ -591,11 +618,13 @@ export function work(): Extension {
                 return { id: value.id, parent };
               }
               case "link":
-                store.link(value.from, value.to, value.relation);
-                return { from: value.from, to: value.to, relation: value.relation, linked: true };
+                return links
+                  .link(value, invocation.signal)
+                  .then((result) => jsonSchema.parse(result));
               case "unlink":
-                store.unlink(value.from, value.to, value.relation);
-                return { from: value.from, to: value.to, relation: value.relation, linked: false };
+                return links
+                  .unlink(value, invocation.signal)
+                  .then((result) => jsonSchema.parse(result));
               case "criterion": {
                 if (value.operation === "add")
                   return jsonSchema.parse(store.addCriterion(value.id, value.condition, value.by));

@@ -53,16 +53,70 @@ interface Gate {
   release: PromiseWithResolvers<void>;
 }
 
+test("reference I/O is available only after resource startup and stops with its lifetime", async () => {
+  const touched: string[] = [];
+  const library = references();
+  const signal = new AbortController().signal;
+  const source = { workspace: "owner", nodeId: "source-node" };
+  const runtime = new Runtime({
+    database: ":memory:",
+    peers: {
+      async resolve() {
+        touched.push("resolve");
+        throw new Fault("reference-probe", "Reached the injected peer");
+      },
+      async call() {
+        touched.push("call");
+        throw new Fault("reference-probe", "Reached the injected peer");
+      },
+      watch() {
+        touched.push("watch");
+        throw new Fault("reference-probe", "Reached the injected peer");
+      },
+    },
+  });
+  const operations = [
+    () => library.get(runtime.context).follow(source, signal),
+    () => library.get(runtime.context).refresh("missing-local-handle", signal),
+    () => library.get(runtime.context).lookup(source, signal),
+  ];
+  try {
+    await runtime.start([
+      library,
+      {
+        name: "consumer",
+        requires: [library.name],
+        async activate(ctx) {
+          expect(library.get(ctx)).toBe(library.get(runtime.context));
+          for (const operation of operations)
+            expect(await rejected(operation())).toMatchObject({ code: "reference-lifecycle" });
+          expect(touched).toEqual([]);
+        },
+      },
+    ]);
+    for (const [index, operation] of operations.entries())
+      expect(await rejected(operation())).toMatchObject({
+        code: index === 1 ? "not-found" : "reference-probe",
+      });
+    expect(touched).toEqual(["resolve", "resolve"]);
+    await runtime.stop();
+    for (const operation of operations)
+      expect(await rejected(operation())).toMatchObject({ code: "reference-stopped" });
+    expect(touched).toEqual(["resolve", "resolve"]);
+  } finally {
+    await runtime.stop();
+  }
+});
+
 test("an import retries when a committed owner invalidation races its snapshot", async () => {
   const lakes = await pairedLakes();
   try {
     const task = await createTask(lakes.owner, "Publish source contract");
     const gate = lakes.hold("snapshot", lakes.ownerRoute, task.id);
-    const importing = lakes.consumer.invoke("reference", {
-      command: "add",
-      workspace: lakes.ownerRoute,
-      node: task.id,
-    });
+    const importing = lakes.refs.follow(
+      { workspace: lakes.ownerRoute, nodeId: task.id },
+      lakes.signal,
+    );
     await gate.reached.promise;
     const processed = lakes.afterEvent(task.id);
     await lakes.owner.invoke("work", { command: "close", id: task.id, by: "test" });
@@ -71,9 +125,7 @@ test("an import retries when a committed owner invalidation races its snapshot",
     const observed = acknowledgement.parse(await importing);
     expect(observed.state).toBe("closed");
     expect(lakes.reads.filter((read) => read.ids.includes(task.id))).toHaveLength(2);
-    expect(
-      referencePage.parse(await lakes.consumer.invoke("reference", { command: "list" })).total,
-    ).toBe(1);
+    expect(referencePage.parse(lakes.refs.list()).total).toBe(1);
     const dependent = identifier.parse(
       await lakes.consumer.invoke("work", {
         command: "create",
@@ -97,38 +149,25 @@ for (const operation of ["add", "refresh"] as const) {
       const first = await createTask(lakes.owner, "Already selected");
       const second = await createTask(lakes.owner, "Pending selection");
       const original = acknowledgement.parse(
-        await lakes.consumer.invoke("reference", {
-          command: "add",
-          workspace: lakes.ownerRoute,
-          node: first.id,
-        }),
+        await lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: first.id }, lakes.signal),
       );
       const heldNode = operation === "add" ? second.id : first.id;
       const gate = lakes.hold("snapshot", lakes.ownerRoute, heldNode, true);
       const pending = rejected(
-        lakes.consumer.invoke(
-          "reference",
-          operation === "add"
-            ? { command: "add", workspace: lakes.ownerRoute, node: heldNode }
-            : { command: "refresh", id: original.id },
-        ),
+        operation === "add"
+          ? lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: heldNode }, lakes.signal)
+          : lakes.refs.refresh(original.id, lakes.signal),
       );
       await gate.reached.promise;
       const relocated = acknowledgement.parse(
-        await lakes.consumer.invoke("reference", {
-          command: "add",
-          workspace: lakes.movedRoute,
-          node: first.id,
-        }),
+        await lakes.refs.follow({ workspace: lakes.movedRoute, nodeId: first.id }, lakes.signal),
       );
       expect(relocated.id).toBe(original.id);
       expect(relocated.reference.workspace).toBe(lakes.movedRoute);
       expect(gate.signal?.aborted).toBe(true);
       gate.release.resolve();
       expect((await pending).message).toContain("route");
-      const page = referencePage.parse(
-        await lakes.consumer.invoke("reference", { command: "list" }),
-      );
+      const page = referencePage.parse(lakes.refs.list());
       expect(page.total).toBe(1);
       expect(page.nodes[0]?.reference.workspace).toBe(lakes.movedRoute);
       expect(page.nodes[0]?.reference.status).toBe("current");
@@ -143,11 +182,7 @@ test("a background snapshot finishing after forget cannot recreate the local ref
   try {
     const task = await createTask(lakes.owner, "Source node");
     const imported = acknowledgement.parse(
-      await lakes.consumer.invoke("reference", {
-        command: "add",
-        workspace: lakes.ownerRoute,
-        node: task.id,
-      }),
+      await lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: task.id }, lakes.signal),
     );
     const gate = lakes.hold("snapshot", lakes.ownerRoute, task.id, true);
     const processed = lakes.afterEvent(task.id);
@@ -159,9 +194,7 @@ test("a background snapshot finishing after forget cannot recreate the local ref
     await processed;
     await lakes.clock.advanceNext(25);
     await gate.reached.promise;
-    expect(
-      await lakes.consumer.invoke("reference", { command: "forget", id: imported.id }),
-    ).toEqual({ id: imported.id, forgotten: true });
+    lakes.refs.forget(imported.id);
     await lakes.consumer.drain();
     gate.release.resolve();
     await lakes.consumer.stop();
@@ -172,8 +205,9 @@ test("a background snapshot finishing after forget cannot recreate the local ref
       peers: lakes.peers,
     });
     try {
-      await reopened.start([references()]);
-      expect(await reopened.invoke("reference", { command: "list" })).toMatchObject({
+      const library = references();
+      await reopened.start([library]);
+      expect(library.get(reopened.context).list()).toMatchObject({
         nodes: [],
         total: 0,
         nextOffset: null,
@@ -194,30 +228,20 @@ test("an old refresh cannot adopt a new local reference after forget and re-impo
   try {
     const task = await createTask(lakes.owner, "Source with a new selection");
     const original = acknowledgement.parse(
-      await lakes.consumer.invoke("reference", {
-        command: "add",
-        workspace: lakes.ownerRoute,
-        node: task.id,
-      }),
+      await lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: task.id }, lakes.signal),
     );
     const gate = lakes.hold("snapshot", lakes.ownerRoute, task.id);
-    const pending = rejected(
-      lakes.consumer.invoke("reference", { command: "refresh", id: original.id }),
-    );
+    const pending = rejected(lakes.refs.refresh(original.id, lakes.signal));
     await gate.reached.promise;
-    await lakes.consumer.invoke("reference", { command: "forget", id: original.id });
+    lakes.refs.forget(original.id);
     await lakes.consumer.drain();
     const selected = acknowledgement.parse(
-      await lakes.consumer.invoke("reference", {
-        command: "add",
-        workspace: lakes.ownerRoute,
-        node: task.id,
-      }),
+      await lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: task.id }, lakes.signal),
     );
     expect(selected.id).not.toBe(original.id);
     gate.release.resolve();
     expect((await pending).message).toContain("removed");
-    const page = referencePage.parse(await lakes.consumer.invoke("reference", { command: "list" }));
+    const page = referencePage.parse(lakes.refs.list());
     expect(page.total).toBe(1);
     expect(page.nodes[0]?.id).toBe(selected.id);
   } finally {
@@ -229,20 +253,17 @@ test("an import waiting through failed connections completes after clock-driven 
   const lakes = await pairedLakes(2);
   try {
     const task = await createTask(lakes.owner, "Source after recovery");
-    const pending = lakes.consumer.invoke("reference", {
-      command: "add",
-      workspace: lakes.ownerRoute,
-      node: task.id,
-    });
+    const pending = lakes.refs.follow(
+      { workspace: lakes.ownerRoute, nodeId: task.id },
+      lakes.signal,
+    );
     await lakes.clock.advanceNext(500);
     await lakes.clock.advanceNext(500);
     const observed = acknowledgement.parse(await pending);
     expect(observed.reference.status).toBe("current");
     expect(lakes.watchAttempts()).toBe(3);
     expect(lakes.reads.filter((read) => read.ids.includes(task.id))).toHaveLength(1);
-    expect(
-      referencePage.parse(await lakes.consumer.invoke("reference", { command: "list" })).total,
-    ).toBe(1);
+    expect(referencePage.parse(lakes.refs.list()).total).toBe(1);
   } finally {
     await lakes.close();
   }
@@ -256,21 +277,17 @@ for (const command of ["source", "snapshot"] as const) {
       const imported =
         command === "snapshot"
           ? acknowledgement.parse(
-              await lakes.consumer.invoke("reference", {
-                command: "add",
-                workspace: lakes.ownerRoute,
-                node: task.id,
-              }),
+              await lakes.refs.follow(
+                { workspace: lakes.ownerRoute, nodeId: task.id },
+                lakes.signal,
+              ),
             )
           : null;
       const gate = lakes.hold(command, lakes.ownerRoute, command === "snapshot" ? task.id : null);
       const pending = rejected(
-        lakes.consumer.invoke(
-          "reference",
-          imported === null
-            ? { command: "add", workspace: lakes.ownerRoute, node: task.id }
-            : { command: "refresh", id: imported.id },
-        ),
+        imported === null
+          ? lakes.refs.follow({ workspace: lakes.ownerRoute, nodeId: task.id }, lakes.signal)
+          : lakes.refs.refresh(imported.id, lakes.signal),
       );
       await gate.reached.promise;
       await lakes.consumer.stop();
@@ -296,12 +313,8 @@ async function pairedLakes(failedConnections = 0) {
     workspace: ownerRoute,
     clock: clock.clock,
   });
-  await owner.start([
-    batteries(),
-    identity(),
-    work(),
-    references({ projections: workReferenceProjections }),
-  ]);
+  const library = references({ projections: workReferenceProjections, reconnectMs: 500 });
+  await owner.start([batteries(), identity(), library, work({ references: library })]);
   const routes = new Map([
     [ownerRoute, owner],
     [movedRoute, owner],
@@ -367,15 +380,12 @@ async function pairedLakes(failedConnections = 0) {
     clock: clock.clock,
     peers,
   });
-  await consumer.start([
-    batteries(),
-    identity(),
-    work(),
-    references({ projections: workReferenceProjections, reconnectMs: 500 }),
-  ]);
+  await consumer.start([batteries(), identity(), library, work({ references: library })]);
   return {
     owner,
     consumer,
+    refs: library.get(consumer.context),
+    signal: new AbortController().signal,
     clock,
     peers,
     ownerRoute,

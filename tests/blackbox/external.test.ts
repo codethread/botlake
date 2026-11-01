@@ -20,7 +20,7 @@ const extensionSchema = z.compile(
 );
 const jsonValue = z.compile(z.json());
 
-test("external Bun package imports stay inert; worker deps, cleanup, wire streams, deadlines and peer links work", async () => {
+test("external Bun packages stay inert; JSON-only peers, cleanup, streams and deadlines work", async () => {
   const host = await system();
   try {
     const library = join(host.dir, "library");
@@ -87,11 +87,36 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       );
       await Bun.write(
         join(workspace, "deps.ts"),
-        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"relay",input:z.compile(z.object({value:z.string(),operation:z.string().default("echo")})),output:z.compile(z.string()),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
+        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"peer-echo",input:z.compile(z.object({value:z.string()})),output:z.compile(z.string().min(1)),handler:input=>input.value}));ctx.register(defineOp({name:"relay",input:z.compile(z.object({value:z.string(),operation:z.string().default("echo")})),output:z.compile(z.string()),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
       );
       await host.botlake(["lake", "start", "--workspace", workspace]);
       expect(await host.bl(name, "dep", {})).toBe(name);
     }
+    expect(await host.bl("beta", "peer-echo", { value: "direct JSON" })).toBe("direct JSON");
+    expect(await host.bl("alpha", "relay", { value: "peer JSON", operation: "peer-echo" })).toBe(
+      "peer JSON",
+    );
+    expect(await host.bl("beta", "peer-echo", { value: 1 }, false)).toContain(
+      "input schema validation failed",
+    );
+    expect(await host.bl("beta", "peer-echo", { value: "" }, false)).toContain(
+      "output schema validation failed",
+    );
+    const visible = z
+      .array(z.object({ name: z.string() }))
+      .parse(await host.bl("beta", "help", []));
+    expect(visible.map((op) => op.name)).toContain("relay");
+    expect(visible.map((op) => op.name)).not.toContain("peer-echo");
+    for (const tier of ["help", "about", "prime", "schema"])
+      expect(await host.cli(["--workspace", "beta", tier, "peer-echo"], false)).toContain(
+        "Unknown op: peer-echo",
+      );
+    expect(await host.cli(["--workspace", "beta", "peer-echo"], false)).toContain(
+      "accepts JSON input only",
+    );
+    expect(await host.cli(["--workspace", "beta", "peer-echo", "--help"], false)).toContain(
+      "Unknown op: peer-echo",
+    );
     expect(await host.botlake(["bin", "list", "--workspace", "alpha"])).toEqual({
       operation: "bins list",
       bins: [{ name: "say", description: "External executable" }],

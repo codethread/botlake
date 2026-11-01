@@ -1,6 +1,12 @@
 import { Fault, isFault, type Context, type Node, type ReferenceSource } from "@botlake/core";
 
-import { changedSchema, snapshotSchema, sourceSchema, type ReferenceOptions } from "./model.ts";
+import {
+  changedSchema,
+  snapshotSchema,
+  sourceSchema,
+  type ReferenceAddress,
+  type ReferenceOptions,
+} from "./model.ts";
 
 interface Follow {
   /** Persistent owner identity. */
@@ -36,6 +42,14 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
   const tasks = new Set<Promise<void>>();
   let started = false;
   let stopping = false;
+
+  function operationSignal(requestSignal: AbortSignal): AbortSignal {
+    const signal = AbortSignal.any([requestSignal, lifetime.signal]);
+    signal.throwIfAborted();
+    if (!started)
+      throw new Fault("reference-lifecycle", "Reference synchronization has not started");
+    return signal;
+  }
 
   function sourceOf(follow: Follow, nodeId: string): ReferenceSource {
     return { lakeId: follow.lakeId, workspace: follow.workspace, nodeId };
@@ -88,7 +102,7 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
     const snapshot = snapshotSchema.parse(
       await ctx.peers.call(
         follow.workspace,
-        "reference",
+        "references",
         { command: "snapshot", ids },
         { signal, timeoutMs: options.requestTimeoutMs },
       ),
@@ -216,6 +230,7 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
     nodeId: string,
     requestSignal: AbortSignal,
     expectedId: string | null,
+    kinds?: readonly string[],
   ): Promise<Node> {
     const signal = AbortSignal.any([requestSignal, follow.controller.signal]);
     follow.pending.set(nodeId, (follow.pending.get(nodeId) ?? 0) + 1);
@@ -241,6 +256,17 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
         const node = snapshot.nodes[0];
         if (node === undefined && existing === null)
           throw new Fault("reference-missing", "Source node is absent or is itself a reference");
+        const kind = node?.kind ?? null;
+        if (kinds !== undefined && (kind === null || !kinds.includes(kind)))
+          throw new Fault(
+            "reference-kind",
+            "Source node does not match the required projection kinds",
+            {
+              ...sourceOf(follow, nodeId),
+              expected: [...kinds],
+              actual: kind,
+            },
+          );
         const value =
           node === undefined
             ? null
@@ -302,9 +328,13 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
       }
       await Promise.all(tasks);
     },
-    async add(workspace: string, nodeId: string, requestSignal: AbortSignal) {
-      const signal = AbortSignal.any([requestSignal, lifetime.signal]);
-      signal.throwIfAborted();
+    async add(
+      workspace: string,
+      nodeId: string,
+      requestSignal: AbortSignal,
+      kinds?: readonly string[],
+    ) {
+      const signal = operationSignal(requestSignal);
       const route = await ctx.peers.resolve(workspace, {
         signal,
         timeoutMs: options.requestTimeoutMs,
@@ -312,7 +342,7 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
       const owner = sourceSchema.parse(
         await ctx.peers.call(
           route.path,
-          "reference",
+          "references",
           { command: "source" },
           { signal, timeoutMs: options.requestTimeoutMs },
         ),
@@ -321,11 +351,35 @@ export function referenceSync(ctx: Context, options: Required<ReferenceOptions>)
       if (owner.lakeId === ctx.graph.lakeId)
         throw new Fault("reference-local", "Use the locally owned node directly");
       const follow = followSource(owner.lakeId, route.path, true);
-      return observe(follow, nodeId, signal, null);
+      return observe(follow, nodeId, signal, null, kinds);
+    },
+    async lookup(source: ReferenceAddress, requestSignal: AbortSignal) {
+      const signal = operationSignal(requestSignal);
+      const route = await ctx.peers.resolve(source.workspace, {
+        signal,
+        timeoutMs: options.requestTimeoutMs,
+      });
+      signal.throwIfAborted();
+      const matches: Node[] = [];
+      let offset: number | null = 0;
+      while (offset !== null) {
+        const page = ctx.graph.references({ workspace: route.path, limit: 1000, offset });
+        matches.push(...page.nodes.filter((node) => node.reference?.nodeId === source.nodeId));
+        offset = page.nextOffset;
+      }
+      if (matches.length > 1)
+        throw new Fault(
+          "reference-ambiguous",
+          "Multiple recorded owners used this route and node ID; use the local reference ID",
+          {
+            ...source,
+            references: matches.map((node) => node.id),
+          },
+        );
+      return matches[0] ?? null;
     },
     async refresh(id: string, requestSignal: AbortSignal) {
-      const signal = AbortSignal.any([requestSignal, lifetime.signal]);
-      signal.throwIfAborted();
+      const signal = operationSignal(requestSignal);
       const node = ctx.graph.show(id);
       if (node.reference === null) throw new Fault("reference", "Expected a local reference node");
       const follow = followSource(node.reference.lakeId, node.reference.workspace);

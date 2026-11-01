@@ -107,7 +107,7 @@ export class Runtime {
         if (this.ops.has(op.name) || metaOps.has(op.name))
           throw new Fault("collision", `Duplicate op: ${op.name}`);
 
-        this.ops.set(op.name, { ...op, cli: validateCommand(op.cli) });
+        this.ops.set(op.name, op.cli === undefined ? op : { ...op, cli: validateCommand(op.cli) });
       },
       registerQuery: (name, query) => {
         this.collecting();
@@ -219,10 +219,18 @@ export class Runtime {
       throw new Fault("discovery", `${tier} requires an operation: bl ${tier} OP`);
     if (tier === "schema" && path.length > 0)
       throw new Fault("discovery", "Schemas describe an entire operation: bl schema OP");
+    const cliOps = [...this.ops.values()].filter(
+      (op): op is Op & { cli: Command } => op.cli !== undefined,
+    );
     const ops =
       name === undefined
-        ? [...this.ops.values()]
-        : [requireValue(this.ops.get(name), `Unknown op: ${name}`)];
+        ? cliOps
+        : [
+            requireValue(
+              cliOps.find((op) => op.name === name),
+              `Unknown op: ${name}`,
+            ),
+          ];
 
     return ops.map((op) => {
       let command = op.cli;
@@ -359,7 +367,11 @@ export class Runtime {
         (async () => {
           const payload =
             options.argv === true
-              ? await parseArgs(op.cli, zStringArray(input), options.payloads)
+              ? await parseArgs(
+                  requireValue(op.cli, `Operation ${name} accepts JSON input only`),
+                  zStringArray(input),
+                  options.payloads,
+                )
               : input;
           signal.throwIfAborted();
           return this.invocationEnv.run(env, () =>

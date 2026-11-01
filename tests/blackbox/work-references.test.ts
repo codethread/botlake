@@ -36,6 +36,115 @@ const workProjectionModule = `import { references } from "@botlake/extension-ref
 import { workReferenceProjections } from "@botlake/extension-work";
 export default references({ projections: workReferenceProjections });`;
 
+test("Work imports remote link endpoints, validates their source kind and unlinks by retained local ID during an outage", async () => {
+  const host = await system();
+  try {
+    const source = await board(host, "link-source");
+    const consumer = await board(host, "link-consumer");
+    for (const workspace of [source, consumer])
+      await host.botlake(["lake", "start", "--workspace", workspace]);
+    const remote = identifier.parse(
+      await host.bl(source, "work", { command: "create", title: "Publish contract" }),
+    );
+    const local = identifier.parse(
+      await host.bl(consumer, "work", { command: "create", title: "Consume contract" }),
+    );
+    const unrelated = identifier.parse(
+      await host.bl(source, "node", {
+        command: "add",
+        title: "Non-work artifact",
+        state: "closed",
+      }),
+    );
+    expect(
+      await failureCode(host, consumer, "work", {
+        command: "link",
+        from: local.id,
+        to: unrelated.id,
+        toWorkspace: source,
+        relation: "depends-on",
+      }),
+    ).toBe("reference-kind");
+    const imported = z
+      .object({ to: z.string(), linked: z.literal(true), reference: address })
+      .parse(
+        await host.bl(consumer, "work", {
+          command: "link",
+          from: local.id,
+          to: remote.id,
+          toWorkspace: source,
+          relation: "depends-on",
+        }),
+      );
+    expect(imported.to).not.toBe(remote.id);
+    expect(imported.reference).toMatchObject({ workspace: source, nodeId: remote.id });
+    expect(await host.bl(consumer, "work", { command: "show", id: local.id })).toMatchObject({
+      ready: false,
+      prerequisites: [{ id: imported.to, kind: "reference" }],
+    });
+    expect(
+      await host.bl(consumer, "work", {
+        command: "unlink",
+        from: local.id,
+        to: remote.id,
+        toWorkspace: source,
+        relation: "depends-on",
+      }),
+    ).toMatchObject({ to: imported.to, linked: false });
+    expect(await host.bl(consumer, "work", { command: "show", id: local.id })).toMatchObject({
+      ready: true,
+    });
+    expect(
+      await host.bl(consumer, "work", {
+        command: "link",
+        from: local.id,
+        to: remote.id,
+        toWorkspace: source,
+        relation: "depends-on",
+      }),
+    ).toMatchObject({ to: imported.to, linked: true });
+    await host.botlake(["lake", "stop", "--workspace", source]);
+    expect(
+      await host.cli([
+        "--workspace",
+        consumer,
+        "work",
+        "unlink",
+        local.id,
+        imported.to,
+        "--relation",
+        "depends-on",
+      ]),
+    ).toMatchObject({ to: imported.to, linked: false });
+    expect(await host.bl(consumer, "work", { command: "show", id: local.id })).toMatchObject({
+      ready: true,
+    });
+    expect(await host.bl(consumer, "node", { command: "show", id: imported.to })).toMatchObject({
+      reference: { nodeId: remote.id },
+    });
+
+    const localOnly = await host.workspace("local-only", [
+      "@botlake/extension-identity",
+      "@botlake/extension-work",
+    ]);
+    await host.botlake(["lake", "start", "--workspace", localOnly]);
+    const unconfigured = identifier.parse(
+      await host.bl(localOnly, "work", { command: "create", title: "Local work" }),
+    );
+    expect(
+      await failureCode(host, localOnly, "work", {
+        command: "link",
+        from: unconfigured.id,
+        to: remote.id,
+        toWorkspace: source,
+        relation: "depends-on",
+      }),
+    ).toBe("reference-library");
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
 test("packaged Work diagnoses live cross-lake cycles and reports bounded, offline and replaced-owner branches explicitly", async () => {
   const host = await system();
   try {
@@ -43,30 +152,40 @@ test("packaged Work diagnoses live cross-lake cycles and reports bounded, offlin
     const second = await board(host, "diagnostic-second");
     await host.botlake(["lake", "start", "--workspace", first]);
     await host.botlake(["lake", "start", "--workspace", second]);
-    const firstOwner = owner.parse(await host.bl(first, "reference", { command: "source" }));
-    const secondOwner = owner.parse(await host.bl(second, "reference", { command: "source" }));
+    const firstOwner = owner.parse(await host.bl(first, "references", { command: "source" }));
+    const secondOwner = owner.parse(await host.bl(second, "references", { command: "source" }));
     const firstTask = identifier.parse(
       await host.bl(first, "work", { command: "create", title: "Implement API" }),
     );
     const secondTask = identifier.parse(
       await host.bl(second, "work", { command: "create", title: "Implement UI" }),
     );
-    const observedSecond = identifier.parse(
-      await host.bl(first, "reference", { command: "add", workspace: second, node: secondTask.id }),
-    );
-    const observedFirst = identifier.parse(
-      await host.bl(second, "reference", { command: "add", workspace: first, node: firstTask.id }),
-    );
-    await host.bl(first, "work", {
-      command: "link",
-      from: firstTask.id,
-      to: observedSecond.id,
-      relation: "depends-on",
+    const observedSecond = z
+      .object({ to: z.string(), reference: address })
+      .parse(
+        await host.cli([
+          "--workspace",
+          first,
+          "work",
+          "link",
+          firstTask.id,
+          secondTask.id,
+          "--to-workspace",
+          second,
+          "--relation",
+          "depends-on",
+        ]),
+      );
+    expect(observedSecond.reference).toEqual({
+      lakeId: secondOwner.lakeId,
+      workspace: second,
+      nodeId: secondTask.id,
     });
     await host.bl(second, "work", {
       command: "link",
       from: secondTask.id,
-      to: observedFirst.id,
+      to: firstTask.id,
+      toWorkspace: first,
       relation: "depends-on",
     });
 
@@ -126,7 +245,7 @@ test("packaged Work diagnoses live cross-lake cycles and reports bounded, offlin
     });
     expect(disconnected.unavailable[0]?.reason).toContain("unknown workspace");
     await host.botlake(["lake", "start", "--workspace", second]);
-    await host.bl(first, "reference", { command: "refresh", id: observedSecond.id });
+    await host.bl(first, "reference-fixture", { command: "refresh", id: observedSecond.to });
     expect(
       diagnosis.parse(await host.bl(first, "work", { command: "diagnose", id: firstTask.id }))
         .complete,
@@ -136,7 +255,7 @@ test("packaged Work diagnoses live cross-lake cycles and reports bounded, offlin
     for (const suffix of ["", "-wal", "-shm"])
       await rm(join(second, `.botlake/world.db${suffix}`), { force: true });
     await host.botlake(["lake", "start", "--workspace", second]);
-    const replacement = owner.parse(await host.bl(second, "reference", { command: "source" }));
+    const replacement = owner.parse(await host.bl(second, "references", { command: "source" }));
     expect(replacement.lakeId).not.toBe(secondOwner.lakeId);
     const replaced = diagnosis.parse(
       await host.bl(first, "work", { command: "diagnose", id: firstTask.id }),
@@ -158,7 +277,7 @@ test("packaged Work prerequisite frontiers page a large fan-out without copying 
   try {
     const workspace = await board(host, "diagnostic-pages");
     await host.botlake(["lake", "start", "--workspace", workspace]);
-    const source = owner.parse(await host.bl(workspace, "reference", { command: "source" }));
+    const source = owner.parse(await host.bl(workspace, "references", { command: "source" }));
     const privateBrief = "private-brief-and-findings-".repeat(2500);
     const prerequisites: string[] = [];
     for (let index = 0; index < 105; index++) {
@@ -273,16 +392,21 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
       await host.bl(source, "work", { command: "create", title: "Completed source work" }),
     );
     await host.bl(source, "work", { command: "close", id: remote.id });
-    const imported = identifier.parse(
-      await host.bl(consumer, "reference", { command: "add", workspace: source, node: remote.id }),
-    );
     const target = identifier.parse(
-      await host.bl(consumer, "work", {
-        command: "create",
-        title: "Target task",
-        prerequisites: [imported.id],
-      }),
+      await host.bl(consumer, "work", { command: "create", title: "Target task" }),
     );
+    const imported = z
+      .object({ to: z.string() })
+      .transform(({ to }) => ({ id: to }))
+      .parse(
+        await host.bl(consumer, "work", {
+          command: "link",
+          from: target.id,
+          to: remote.id,
+          toWorkspace: source,
+          relation: "depends-on",
+        }),
+      );
     const linked = identifier.parse(
       await host.bl(consumer, "work", { command: "create", title: "Explicit link" }),
     );
@@ -364,7 +488,7 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
     );
     await host.botlake(["lake", "restart", "--workspace", source]);
     expect(
-      await host.bl(consumer, "reference", { command: "refresh", id: imported.id }),
+      await host.bl(consumer, "reference-fixture", { command: "refresh", id: imported.id }),
     ).toMatchObject({ state: "closed", reference: { kind: null, status: "current" } });
     expect(await host.bl(consumer, "work", { command: "show", id: target.id })).toMatchObject({
       ready: false,
@@ -395,7 +519,7 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
     await Bun.write(join(source, "references.ts"), workProjectionModule);
     await host.botlake(["lake", "restart", "--workspace", source]);
     expect(
-      await host.bl(consumer, "reference", { command: "refresh", id: imported.id }),
+      await host.bl(consumer, "reference-fixture", { command: "refresh", id: imported.id }),
     ).toMatchObject({ state: "closed", reference: { kind: "work/task", status: "current" } });
     expect(await host.bl(consumer, "work", { command: "show", id: target.id })).toMatchObject({
       ready: true,
@@ -433,10 +557,27 @@ async function board(host: Host, name: string, extra: string[] = []): Promise<st
     "@botlake/extension-batteries",
     "@botlake/extension-identity",
     ...extra,
-    "@botlake/extension-work",
+    "./work.ts",
     "./references.ts",
+    "./reference-fixture.ts",
   ]);
   await Bun.write(join(workspace, "references.ts"), workProjectionModule);
+  await Bun.write(
+    join(workspace, "work.ts"),
+    `import { work } from "@botlake/extension-work";
+import references from "./references.ts";
+export default work({references});`,
+  );
+  await Bun.write(
+    join(workspace, "reference-fixture.ts"),
+    `import {defineOp,jsonSchema} from "@botlake/core";
+import {z} from "zod";
+import references from "./references.ts";
+export default {name:"reference-fixture",requires:[references.name],activate(ctx){
+const refs=references.get(ctx);
+ctx.register(defineOp({name:"reference-fixture",input:z.object({command:z.literal("refresh"),id:z.string()}),output:jsonSchema,
+cli:{description:"Test-only library adapter"},async handler(input,_ctx,request){return jsonSchema.parse(await refs.refresh(input.id,request.signal));}}));}};`,
+  );
   return realpath(workspace);
 }
 

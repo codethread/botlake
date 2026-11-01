@@ -25,6 +25,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
       startSchema.extend({ command: z.literal("start") }),
       listSchema,
       z.strictObject({ command: z.literal("show"), id: text }),
+      z.strictObject({ command: z.literal("follow"), id: text, fromWorkspace: text }),
       z.discriminatedUnion("operation", [
         listActivity.extend(activityCommand),
         searchActivity.extend(activityCommand),
@@ -53,7 +54,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
     defineOp({
       name: "agent",
       about:
-        "Managed runs own process custody and an invocation-fenced lifecycle; settlement is independent of task completion. Native sessions and activity/output records are observations, not custody or proof of liveness. Retries and resumes retain accepted provider settings.",
+        "Managed runs own process custody and an invocation-fenced lifecycle; settlement is independent of task completion. Native sessions and activity/output records are observations, not custody or proof of liveness. Follow retains a source-owned run summary; full execution state and commands remain at its owner. Retries and resumes retain accepted provider settings.",
       primer:
         'Choose a seat with bl agent catalog [SEAT], start it with bl agent start --seat SEAT --cwd DIR --prompt TEXT, and keep the returned id. With Batteries selected, run bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied before bl agent show RUN_ID. Use activity peek for recent events or search for retained excerpts; the native transcript remains the full record. A wait timeout does not stop the run, and settlement itself does not close a served task.',
       input,
@@ -105,9 +106,24 @@ export function registerAgent(ctx: Context, service: Agents): void {
             examples: ["bl agent reconcile"],
           },
           show: {
-            description: "Show the full run record: prompt, settings, result, error and custody",
+            description:
+              "Show an owned run's full record, or a followed run's core summary and provenance",
             examples: ["bl agent show RUN_ID"],
             positionals: [{ name: "id", type: "string", required: true }],
+          },
+          follow: {
+            description:
+              "Observe a source-verified remote run; returns local ID, core state and provenance",
+            examples: ["bl agent follow RUN_ID --from-workspace OTHER_LAKE"],
+            positionals: [{ name: "id", type: "string", required: true }],
+            flags: {
+              "from-workspace": {
+                key: "fromWorkspace",
+                type: "string",
+                required: true,
+                description: "Owning lake of RUN_ID; the shared reference library must be selected",
+              },
+            },
           },
           activity: {
             description: "Read plugin-observed events, not a full transcript or liveness proof",
@@ -330,7 +346,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
           },
         },
       },
-      async handler(value) {
+      async handler(value, _ctx, invocation) {
         const result = await match(value)
           .with({ command: "start" }, async (commandInput) => {
             const { command: _, ...request } = commandInput;
@@ -341,6 +357,13 @@ export function registerAgent(ctx: Context, service: Agents): void {
           })
           .with({ command: "list" }, (request) => listRuns(ctx, request))
           .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
+          .with({ command: "follow" }, async ({ id, fromWorkspace }) => {
+            const node = await service.follow(
+              { workspace: fromWorkspace, nodeId: id },
+              invocation.signal,
+            );
+            return { id: node.id, title: node.title, state: node.state, reference: node.reference };
+          })
           .with({ command: "activity" }, (request) => service.readActivity(request))
           .with({ command: "catalog" }, ({ name, all }) => service.catalog(name, all))
           .with({ command: "reconcile" }, async () => {

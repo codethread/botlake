@@ -10,6 +10,7 @@ import { work } from "@botlake/extension-work";
 import { z } from "zod";
 
 import { rejected } from "./assert.ts";
+import { referenceBoard as board, referenceFixtureModule } from "./fixtures/references.ts";
 import { system } from "./fixtures/system.ts";
 
 type Host = Awaited<ReturnType<typeof system>>;
@@ -55,7 +56,7 @@ test("packaged references keep source facts read-only and gate Work through disc
     const consumer = await board(host, "consumer");
     await host.botlake(["lake", "start", "--workspace", owner]);
     await host.botlake(["lake", "start", "--workspace", consumer]);
-    const ownerInfo = sourceInfo.parse(await host.bl(owner, "reference", { command: "source" }));
+    const ownerInfo = sourceInfo.parse(await host.bl(owner, "references", { command: "source" }));
     const remote = identifier.parse(
       await host.bl(owner, "work", {
         command: "create",
@@ -64,7 +65,7 @@ test("packaged references keep source facts read-only and gate Work through disc
       }),
     );
     const imported = acknowledgement.parse(
-      await host.bl(consumer, "reference", {
+      await host.bl(consumer, "reference-fixture", {
         command: "add",
         workspace: owner,
         node: remote.id,
@@ -79,7 +80,7 @@ test("packaged references keep source facts read-only and gate Work through disc
     });
     expect(
       acknowledgement.parse(
-        await host.bl(consumer, "reference", {
+        await host.bl(consumer, "reference-fixture", {
           command: "add",
           workspace: owner,
           node: remote.id,
@@ -208,7 +209,7 @@ test("packaged references keep source facts read-only and gate Work through disc
     );
     await host.botlake(["lake", "start", "--workspace", owner]);
     await untilObserved(host, consumer, imported.id, "current", "closed", events);
-    expect(sourceInfo.parse(await host.bl(owner, "reference", { command: "source" })).lakeId).toBe(
+    expect(sourceInfo.parse(await host.bl(owner, "references", { command: "source" })).lakeId).toBe(
       ownerInfo.lakeId,
     );
     expect(
@@ -223,7 +224,11 @@ test("packaged references keep source facts read-only and gate Work through disc
       }),
     );
     const generic = acknowledgement.parse(
-      await host.bl(consumer, "reference", { command: "add", workspace: owner, node: artifact.id }),
+      await host.bl(consumer, "reference-fixture", {
+        command: "add",
+        workspace: owner,
+        node: artifact.id,
+      }),
     );
     expect(generic.reference.kind).toBeNull();
     expect(
@@ -254,7 +259,7 @@ test("packaged references keep source facts read-only and gate Work through disc
     });
     await host.bl(owner, "node", { command: "burn", ids: [artifact.id] });
     const missing = acknowledgement.parse(
-      await host.bl(consumer, "reference", { command: "refresh", id: generic.id }),
+      await host.bl(consumer, "reference-fixture", { command: "refresh", id: generic.id }),
     );
     expect(missing.reference).toMatchObject({
       lakeId: ownerInfo.lakeId,
@@ -265,7 +270,9 @@ test("packaged references keep source facts read-only and gate Work through disc
       observedNode.parse(await host.bl(consumer, "node", { command: "show", id: generic.id }))
         .title,
     ).toBe("Ephemeral source artifact");
-    expect(await host.bl(consumer, "reference", { command: "forget", id: generic.id })).toEqual({
+    expect(
+      await host.bl(consumer, "reference-fixture", { command: "forget", id: generic.id }),
+    ).toEqual({
       id: generic.id,
       forgotten: true,
     });
@@ -292,8 +299,8 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     const consumer = await board(host, "page-consumer");
     for (const workspace of [owner, other, consumer])
       await host.botlake(["lake", "start", "--workspace", workspace]);
-    const ownerInfo = sourceInfo.parse(await host.bl(owner, "reference", { command: "source" }));
-    const otherInfo = sourceInfo.parse(await host.bl(other, "reference", { command: "source" }));
+    const ownerInfo = sourceInfo.parse(await host.bl(owner, "references", { command: "source" }));
+    const otherInfo = sourceInfo.parse(await host.bl(other, "references", { command: "source" }));
     expect(otherInfo.lakeId).not.toBe(ownerInfo.lakeId);
     const longPrompt = "source-only-private-instructions-".repeat(2000);
     const imported: z.output<typeof acknowledgement>[] = [];
@@ -309,7 +316,11 @@ test("packaged reference pages exclude source payloads and durable owners surviv
       sourceIds.push(node.id);
       imported.push(
         acknowledgement.parse(
-          await host.bl(consumer, "reference", { command: "add", workspace: owner, node: node.id }),
+          await host.bl(consumer, "reference-fixture", {
+            command: "add",
+            workspace: owner,
+            node: node.id,
+          }),
         ),
       );
     }
@@ -321,17 +332,21 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     const foreign = identifier.parse(
       await host.bl(other, "node", { command: "add", title: "Other owner" }),
     );
-    await host.bl(consumer, "reference", { command: "add", workspace: other, node: foreign.id });
+    await host.bl(consumer, "reference-fixture", {
+      command: "add",
+      workspace: other,
+      node: foreign.id,
+    });
     expect(
       (
-        await failure(host, consumer, "reference", {
+        await failure(host, consumer, "reference-fixture", {
           command: "add",
           workspace: other,
           node: firstSource,
         })
       ).code,
     ).toBe("reference-missing");
-    const defaultPageRaw = await host.bl(consumer, "reference", { command: "list" });
+    const defaultPageRaw = await host.bl(consumer, "reference-fixture", { command: "list" });
     const defaultPage = referencePage.parse(defaultPageRaw);
     expect(defaultPage.nodes).toHaveLength(20);
     expect(defaultPage.total).toBe(46);
@@ -345,7 +360,7 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     let offset: number | null = 0;
     while (offset !== null) {
       const page = referencePage.parse(
-        await host.bl(consumer, "reference", {
+        await host.bl(consumer, "reference-fixture", {
           command: "list",
           lakeId: ownerInfo.lakeId,
           limit: 17,
@@ -362,18 +377,21 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     expect(found.size).toBe(45);
     expect(
       referencePage.parse(
-        await host.bl(consumer, "reference", {
+        await host.bl(consumer, "reference-fixture", {
           command: "list",
           lakeId: ownerInfo.lakeId,
           offset: 1000,
         }),
       ),
     ).toMatchObject({ nodes: [], total: 45, nextOffset: null });
-    const snapshot = await host.bl(owner, "reference", { command: "snapshot", ids: [firstSource] });
+    const snapshot = await host.bl(owner, "references", {
+      command: "snapshot",
+      ids: [firstSource],
+    });
     expect(JSON.stringify(snapshot)).not.toContain(longPrompt);
     expect(JSON.stringify(snapshot)).not.toContain("attributes");
     expect(
-      await host.bl(consumer, "reference", { command: "snapshot", ids: [first.id] }),
+      await host.bl(consumer, "references", { command: "snapshot", ids: [first.id] }),
     ).toMatchObject({ nodes: [], missing: [first.id] });
     const status = z
       .object({
@@ -382,7 +400,7 @@ test("packaged reference pages exclude source payloads and durable owners surviv
         nextOffset: z.number().nullable(),
       })
       .parse(
-        await host.bl(consumer, "reference", {
+        await host.bl(consumer, "reference-fixture", {
           command: "status",
           lakeId: ownerInfo.lakeId,
           limit: 1,
@@ -400,10 +418,10 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     const newRoute = await realpath(relocated);
     await host.botlake(["lake", "start", "--workspace", newRoute]);
     expect(
-      sourceInfo.parse(await host.bl(newRoute, "reference", { command: "source" })).lakeId,
+      sourceInfo.parse(await host.bl(newRoute, "references", { command: "source" })).lakeId,
     ).toBe(ownerInfo.lakeId);
     const moved = acknowledgement.parse(
-      await host.bl(consumer, "reference", {
+      await host.bl(consumer, "reference-fixture", {
         command: "add",
         workspace: newRoute,
         node: firstSource,
@@ -413,12 +431,12 @@ test("packaged reference pages exclude source payloads and durable owners surviv
     expect(moved.reference.workspace).toBe(newRoute);
     expect(
       acknowledgement.parse(
-        await host.bl(consumer, "reference", { command: "refresh", id: second.id }),
+        await host.bl(consumer, "reference-fixture", { command: "refresh", id: second.id }),
       ).reference.workspace,
     ).toBe(newRoute);
     expect(
       referencePage.parse(
-        await host.bl(consumer, "reference", { command: "list", lakeId: ownerInfo.lakeId }),
+        await host.bl(consumer, "reference-fixture", { command: "list", lakeId: ownerInfo.lakeId }),
       ).total,
     ).toBe(45);
 
@@ -427,11 +445,12 @@ test("packaged reference pages exclude source payloads and durable owners surviv
       await rm(join(newRoute, `.botlake/world.db${suffix}`), { force: true });
     await host.botlake(["lake", "start", "--workspace", newRoute]);
     const replacement = sourceInfo.parse(
-      await host.bl(newRoute, "reference", { command: "source" }),
+      await host.bl(newRoute, "references", { command: "source" }),
     );
     expect(replacement.lakeId).not.toBe(ownerInfo.lakeId);
     expect(
-      (await failure(host, consumer, "reference", { command: "refresh", id: first.id })).code,
+      (await failure(host, consumer, "reference-fixture", { command: "refresh", id: first.id }))
+        .code,
     ).toBe("reference-owner-changed");
     const retained = observedNode.parse(
       await host.bl(consumer, "node", { command: "show", id: first.id }),
@@ -482,37 +501,54 @@ await runtime.stop();`,
       nodes: 0,
     });
     await host.botlake(["lake", "start", "--workspace", bare]);
-    expect((await failure(host, bare, "reference", { command: "list" })).code).toBe("not-found");
+    expect((await failure(host, bare, "reference-fixture", { command: "list" })).code).toBe(
+      "not-found",
+    );
 
-    const selected = await host.workspace("references-only", ["@botlake/extension-references"]);
+    const selected = await host.workspace("references-only", ["./references.ts"]);
+    await Bun.write(
+      join(selected, "references.ts"),
+      `import { references } from "@botlake/extension-references"; export default references();`,
+    );
     await host.botlake(["lake", "start", "--workspace", selected]);
     expect(
-      sourceInfo.parse(await host.bl(selected, "reference", { command: "source" })).projections,
+      sourceInfo.parse(await host.bl(selected, "references", { command: "source" })).projections,
     ).toEqual([]);
     const selectedCatalog = z
       .array(z.object({ name: z.string() }))
       .parse(await host.bl(selected, "help", {}))
       .map((operation) => operation.name);
-    expect(selectedCatalog).toEqual(["bins", "events", "reference"]);
+    expect(selectedCatalog).toEqual(["bins", "events"]);
 
     const owner = await host.workspace("generic-owner", [
       "@botlake/extension-batteries",
-      "@botlake/extension-references",
+      "./references.ts",
     ]);
     const agentBoard = await host.workspace("agent-board", [
       "@botlake/extension-batteries",
       "@botlake/extension-identity",
       "@botlake/extension-flags",
       "@botlake/extension-agents",
-      "@botlake/extension-references",
+      "./references.ts",
+      "./reference-fixture.ts",
     ]);
+    for (const workspace of [owner, agentBoard])
+      await Bun.write(
+        join(workspace, "references.ts"),
+        `import { references } from "@botlake/extension-references"; export default references();`,
+      );
+    await Bun.write(join(agentBoard, "reference-fixture.ts"), referenceFixtureModule);
     await host.botlake(["lake", "start", "--workspace", owner]);
     await host.botlake(["lake", "start", "--workspace", agentBoard]);
     const remote = identifier.parse(
       await host.bl(owner, "node", { command: "add", title: "A remote active record" }),
     );
     const imported = acknowledgement.parse(
-      await host.bl(agentBoard, "reference", { command: "add", workspace: owner, node: remote.id }),
+      await host.bl(agentBoard, "reference-fixture", {
+        command: "add",
+        workspace: owner,
+        node: remote.id,
+      }),
     );
     expect(
       (
@@ -709,22 +745,6 @@ test("generic readiness honors declared reference kinds while leaving local and 
 });
 
 // -- Private helpers --
-
-async function board(host: Host, name: string): Promise<string> {
-  const workspace = await host.workspace(name, [
-    "@botlake/extension-batteries",
-    "@botlake/extension-identity",
-    "@botlake/extension-work",
-    "./references.ts",
-  ]);
-  await Bun.write(
-    join(workspace, "references.ts"),
-    `import { references } from "@botlake/extension-references";
-import { workReferenceProjections } from "@botlake/extension-work";
-export default references({ projections: workReferenceProjections });`,
-  );
-  return realpath(workspace);
-}
 
 async function failure(host: Host, workspace: string, operation: string, input: unknown) {
   const output = await host.cli(
