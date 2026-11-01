@@ -22,7 +22,7 @@ type presentation struct {
 }
 
 func isDiscovery(name string) bool {
-	return name == "help" || name == "about" || name == "prime"
+	return name == "help" || name == "about" || name == "prime" || name == "schema"
 }
 
 func terminalWidth(file *os.File) int {
@@ -199,7 +199,7 @@ func renderResultContent(raw json.RawMessage, contentType string, view presentat
 		return 0
 	}
 
-	if view.json || !term.IsTerminal(int(os.Stdout.Fd())) {
+	if view.json || view.tier == "schema" || !term.IsTerminal(int(os.Stdout.Fd())) {
 		fmt.Fprintln(os.Stdout, string(raw))
 
 		return 0
@@ -358,7 +358,7 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 		}
 
 		fmt.Fprintln(os.Stdout)
-		p.body("Use bl help OP for arguments and its machine-readable contract, bl about OP for concepts, or bl prime OP for a runbook.", "")
+		p.body("Use bl help OP [SUBCOMMAND...] for syntax, bl prime OP for a runbook, bl about OP for concepts, or bl schema OP for declared JSON schemas.", "")
 
 		return nil
 	}
@@ -446,11 +446,16 @@ func renderDiscovery(raw json.RawMessage, view presentation) error {
 
 		if op.Stream {
 			fmt.Fprintln(os.Stdout)
-			p.body("Streams one validated JSON value per line.", "")
+			p.body("Streaming results use JSONL (one JSON value per line).", "")
+		}
+
+		if len(op.CLI.Commands) > 0 {
+			fmt.Fprintln(os.Stdout)
+			p.body("Use bl help "+strings.Join(view.path, " ")+" SUBCOMMAND for its arguments.", "")
 		}
 
 		fmt.Fprintln(os.Stdout)
-		p.body("Use --json before the operation for machine-readable output. Use bl --help for stdin, payload and other global flags.", "")
+		p.body("Use bl schema "+op.Name+" for declared JSON schemas. Use bl --help for shared input, output and flag conventions.", "")
 	}
 
 	return nil

@@ -16,6 +16,7 @@ test("native providers preserve complete evidence on interrupted output and requ
   const host = await system();
   try {
     const workspace = await host.workspace("providers", [
+      "@botlake/extension-batteries",
       "@botlake/extension-identity",
       "./flags.ts",
       "./providers.ts",
@@ -70,12 +71,17 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await host.bl("providers", "agent", { command: "reconcile" });
-        const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
-        if (run.attributes[agentAttributes.settled] === true) return run;
-      }
-      throw new Error(`Provider did not settle: ${id}`);
+      const observation = await host.bl("providers", "await", {
+        query: "agent-run-settled",
+        params: { runId: id },
+        minCount: 1,
+        timeoutSecs: 10,
+      });
+      const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
+      expect(observation, `Provider did not settle: ${JSON.stringify(run)}`).toMatchObject({
+        reason: "satisfied",
+      });
+      return run;
     }
     for (const name of ["codex", "pi", "claude"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {

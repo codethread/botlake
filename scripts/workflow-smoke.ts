@@ -284,13 +284,13 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
       nested: { value: null },
     },
   );
-  const matching = z.array(idResult).parse(
+  const matching = z.object({ nodes: z.array(idResult) }).parse(
     await host.bl(workspace, "node", {
       command: "list",
       where: q.eq(q.attr(workflowAttributes.meta, "evidence", "label"), "native"),
     }),
   );
-  assert.ok(matching.some(({ id }) => id === nativeTask));
+  assert.ok(matching.nodes.some(({ id }) => id === nativeTask));
   const result = { nullable: null, nested: { value: null } };
   const completed = await cli([
     "workflow",

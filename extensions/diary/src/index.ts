@@ -66,9 +66,7 @@ export function diary(): Extension {
         z.discriminatedUnion("command", [
           z.strictObject({
             command: z.literal("add"),
-            text: z
-              .string()
-              .refine((value) => value.trim().length > 0, "Entry text must not be blank"),
+            text: z.string().regex(/\S/u, "Entry text must not be blank"),
             identity: text.optional(),
           }),
           z.strictObject({
@@ -85,33 +83,60 @@ export function diary(): Extension {
           name: "diary",
           input: commandSchema,
           output: jsonSchema,
+          jsonSchema: { input: commandSchema, output: jsonSchema },
           about:
-            "Each registered identity has an implicit diary across tasks. Add/list default to caller BL_ACTOR. List returns oldest-first previews; pass next as --after until null, then show an entry for full text. Pages are not a shared snapshot. Entries are immutable; corrections are new entries.",
+            "Each registered identity has an implicit diary across tasks. Add/list default to caller BL_ACTOR. List returns oldest-first previews; pass nextCursor as --after until null, then show an entry for full text. Pages are not a shared snapshot. Entries are immutable; corrections are new entries.",
           primer:
             "Record useful experiments, intermediate findings and working history selectively. Promote conclusions into the task's current summary at handoff/completion. A diary is optional, not an automatic transcript or automatically evidence for every task its author touched.",
           cli: {
-            description: "Immutable identity diary entries",
+            description: "Immutable working notes owned by native identity",
             examples: [
-              'bl diary add "Investigated boundary" --identity IDENTITY',
-              "bl diary list IDENTITY --limit 20",
+              'bl diary add "Investigated boundary"',
+              "bl diary list --limit 20",
+              "bl diary list IDENTITY --after ENTRY_ID",
               "bl diary show ENTRY_ID",
             ],
             commands: {
               add: {
-                description: "Add an immutable entry (identity defaults to BL_ACTOR)",
+                description: "Add nonblank immutable text; returns entry id, identity and time",
+                examples: [
+                  'bl diary add "Investigated boundary"',
+                  'bl diary add "Result belongs to reviewer" --identity IDENTITY',
+                ],
                 positionals: [{ name: "text", type: "string", required: true }],
-                flags: { identity: { type: "string" } },
+                flags: {
+                  identity: {
+                    type: "string",
+                    description: "Registered identity (defaults to caller BL_ACTOR)",
+                  },
+                },
               },
               list: {
-                description: "List oldest entries (identity defaults to BL_ACTOR)",
-                positionals: [{ name: "identity", type: "string" }],
+                description:
+                  "List oldest-first entries (id, at, preview); long previews are truncated. Continue at nextCursor via --after",
+                examples: [
+                  "bl diary list",
+                  "bl diary list IDENTITY --limit 20",
+                  "bl diary list IDENTITY --after ENTRY_ID",
+                ],
+                positionals: [
+                  {
+                    name: "identity",
+                    type: "string",
+                    description: "Optional registered identity (defaults to caller BL_ACTOR)",
+                  },
+                ],
                 flags: {
-                  after: { type: "string", description: "Continue after an entry" },
-                  limit: { type: "number", description: "Page size (default 20, max 100)" },
+                  after: {
+                    type: "string",
+                    description: "Entry ID cursor from prior nextCursor; omit for first page",
+                  },
+                  limit: { type: "number", description: "Page size (default 20; range 1–100)" },
                 },
               },
               show: {
-                description: "Show full entry",
+                description: "Show one full entry, including its text",
+                examples: ["bl diary show ENTRY_ID"],
                 positionals: [{ name: "id", type: "string", required: true }],
               },
             },
@@ -163,7 +188,7 @@ function listEntries(
 ): {
   identity: string;
   entries: { id: string; at: string; preview: string }[];
-  next: string | null;
+  nextCursor: string | null;
 } {
   const identity = selectedIdentity(ctx, requestedIdentity);
   requireValue(resolveIdentity(ctx.graph, identity), "Unknown identity");
@@ -198,7 +223,7 @@ function listEntries(
       at: entryAt(record),
       preview: rawText.parse(record.attributes[noteAttributes.text]).slice(0, 120),
     })),
-    next: records.length > pageSize ? (page.at(-1)?.id ?? null) : null,
+    nextCursor: records.length > pageSize ? (page.at(-1)?.id ?? null) : null,
   };
 }
 

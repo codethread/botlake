@@ -343,13 +343,13 @@ try {
   assert.equal(raw.attributes[workAttributes.kind], "task");
   assert.equal(raw.attributes[workAttributes.priority], "P0");
   assert.ok(Array.isArray(raw.attributes[workAttributes.assignments]));
-  const urgent = z.array(identifier).parse(
+  const urgent = z.object({ nodes: z.array(identifier) }).parse(
     await host.bl(workspace, "node", {
       command: "list",
       where: q.eq(q.attr(workAttributes.priority), "P0"),
     }),
   );
-  assert.ok(urgent.some(({ id }) => id === planned));
+  assert.ok(urgent.nodes.some(({ id }) => id === planned));
   evidence.push("native Work attributes and queryable task facts");
 
   const humanQueue = ids(await list({ view: "human", assignee: "human" }));

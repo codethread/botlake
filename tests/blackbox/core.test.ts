@@ -21,7 +21,13 @@ import { z } from "zod";
 import { rejected } from "./assert.ts";
 
 const text = z.compile(z.string());
-const titledRows = z.compile(z.array(z.object({ title: z.string() })));
+const nodePage = z.compile(
+  z.object({
+    nodes: z.array(z.object({ title: z.string() })),
+    total: z.number(),
+    nextOffset: z.number().nullable(),
+  }),
+);
 
 test("graph mutations, archive selection, stale writes and atomic rollback through public ops", async () => {
   await disposable(async (runtime) => {
@@ -165,9 +171,9 @@ test("query negation requires present hot values and composes across named queri
       const archived = graph.add({ title: "archived", attributes: { a: 1, doc: { value: 3 } } });
       graph.archive(archived.id, ["doc"]);
       const titles = (result: unknown): string[] =>
-        titledRows
+        nodePage
           .parse(result)
-          .map((row) => row.title)
+          .nodes.map((row) => row.title)
           .toSorted();
       const select = async (where: Predicate): Promise<string[]> =>
         titles(await runtime.invoke("node", { command: "list", where }));

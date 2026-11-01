@@ -189,8 +189,11 @@ export function identity(): Extension {
         for (const change of changes) {
           if (
             change.kind === "node" &&
-            (change.before?.attributes[identityAttributes.id] !== undefined ||
-              change.after?.attributes[identityAttributes.id] !== undefined)
+            [identityAttributes.id, identityAttributes.session].some(
+              (key) =>
+                change.before?.attributes[key] !== undefined ||
+                change.after?.attributes[key] !== undefined,
+            )
           )
             throw new Fault("identity-guard", "Identity records require the Identity API");
           if (
@@ -208,26 +211,55 @@ export function identity(): Extension {
         z.discriminatedUnion("command", [
           startupSchema.extend({ command: z.literal("startup") }),
           z.strictObject({ command: z.literal("show"), identity: text.optional() }),
-          z.strictObject({ command: z.literal("list") }),
+          z.strictObject({
+            command: z.literal("list"),
+            limit: z.number().int().min(1).max(100).default(20),
+            offset: z.number().int().nonnegative().default(0),
+          }),
         ]),
       );
       ctx.register(
         defineOp({
           name: "identity",
+          about:
+            "Identity names are deterministic labels for provider-scoped native sessions. Records retain attribution and last-reported metadata; they do not grant process custody, prove liveness or complete tasks.",
           primer:
-            "Native sessions derive deterministic identities from provider and native session id. Show defaults to the caller's BL_ACTOR. Startup defaults agent seat, model and thinking level from BL_AGENT_SEAT, BL_MODEL and BL_EFFORT; explicit input wins. Show includes the last reported activity and metadata, not a liveness guarantee. Identity grants no process custody or task completion authority.",
+            "Use startup to register or recover a native session, show to inspect one identity (defaults to BL_ACTOR), and list to find registered identities. Omitted startup seat/model/effort use BL_AGENT_SEAT, BL_MODEL and BL_EFFORT from the caller environment; explicit values win.",
           input: commandSchema,
           output: jsonSchema,
+          jsonSchema: { input: commandSchema, output: jsonSchema },
           cli: {
             description: "Native session identities and observations",
-            examples: ["bl identity list", "bl identity show IDENTITY"],
+            examples: [
+              "bl identity startup --provider pi --native-session-id SESSION_ID",
+              "bl identity show",
+              "bl identity list",
+            ],
             commands: {
               startup: {
-                description: "Register a native identity without process ownership",
+                description:
+                  "Register or recover a deterministic native identity; returns identity, nodeId, result and instruction",
+                examples: [
+                  "bl identity startup --provider pi --native-session-id SESSION_ID",
+                  "bl identity startup --provider claude --native-session-id SESSION_ID --agent-seat reviewer",
+                ],
                 flags: {
-                  provider: { type: "string", required: true },
-                  "native-session-id": { key: "nativeSessionId", type: "string", required: true },
-                  "parent-native-session-id": { key: "parentNativeSessionId", type: "string" },
+                  provider: {
+                    type: "string",
+                    required: true,
+                    description: "Provider: codex, pi or claude",
+                  },
+                  "native-session-id": {
+                    key: "nativeSessionId",
+                    type: "string",
+                    required: true,
+                    description: "Provider-scoped native session ID",
+                  },
+                  "parent-native-session-id": {
+                    key: "parentNativeSessionId",
+                    type: "string",
+                    description: "Optional parent session ID; records a spawned relationship",
+                  },
                   "agent-seat": {
                     key: "agentSeat",
                     type: "string",
@@ -242,10 +274,34 @@ export function identity(): Extension {
                 },
               },
               show: {
-                description: "Identity and last reported native activity (defaults to BL_ACTOR)",
-                positionals: [{ name: "identity", type: "string" }],
+                description:
+                  "Show one full identity record and last observation (defaults to BL_ACTOR)",
+                examples: ["bl identity show", "bl identity show IDENTITY"],
+                positionals: [
+                  {
+                    name: "identity",
+                    type: "string",
+                    description: "Identity name (defaults to caller BL_ACTOR)",
+                  },
+                ],
               },
-              list: { description: "List native identities" },
+              list: {
+                description:
+                  "Page { identities, total, nextOffset } summaries; use show IDENTITY for full metadata",
+                examples: [
+                  "bl identity list",
+                  "bl identity list --limit 20",
+                  "bl identity list --limit 20 --offset NEXT_OFFSET",
+                ],
+                flags: {
+                  limit: { type: "number", description: "Page size (default 20; range 1–100)" },
+                  offset: {
+                    type: "number",
+                    description:
+                      "Start index (default 0; minimum 0); continue with nextOffset until null",
+                  },
+                },
+              },
             },
           },
           handler(input) {
@@ -267,8 +323,23 @@ export function identity(): Extension {
                   requireValue(resolveIdentity(ctx.graph, name), "Unknown identity"),
                 );
               }
-              case "list":
-                return jsonSchema.parse(identityRecords(ctx.graph));
+              case "list": {
+                const where = q.eq(q.attr(identityAttributes.session), true);
+                const records = ctx.graph.list({ where, limit: input.limit, offset: input.offset });
+                const total = ctx.graph.count({ where });
+                return jsonSchema.parse({
+                  identities: records.map((record) => ({
+                    identity: record.attributes[identityAttributes.id],
+                    nodeId: record.id,
+                    provider: record.attributes[identityAttributes.provider],
+                    activity: record.attributes[identityAttributes.activity],
+                    observedAt: record.attributes[identityAttributes.observedAt] ?? null,
+                  })),
+                  total,
+                  nextOffset:
+                    input.offset + records.length < total ? input.offset + records.length : null,
+                });
+              }
             }
           },
         }),

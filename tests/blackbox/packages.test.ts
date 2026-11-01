@@ -50,9 +50,11 @@ test("packed core runs alone; installed extensions require explicit selection an
     expect(
       await host.cli(["--workspace", "bare", "node", "add", "Configuration-local dependency"]),
     ).toMatchObject({ title: "Configuration-local dependency" });
-    expect(await host.bl("bare", "node", { command: "list" })).toMatchObject([
-      { title: "Configuration-local dependency" },
-    ]);
+    expect(await host.bl("bare", "node", { command: "list" })).toMatchObject({
+      nodes: [{ title: "Configuration-local dependency" }],
+      total: 1,
+      nextOffset: null,
+    });
 
     const board = await host.workspace("board", ["@botlake/extension-work"]);
     expect(await host.botlake(["lake", "start", "--workspace", board], false)).toContain(
@@ -146,7 +148,11 @@ export default workAgents({ checkIntervalMs: 60000 });`,
     expect(
       providers.parse(await host.bl("configured", "agent", { command: "catalog" })).providers,
     ).toEqual(["codex", "pi", "claude"]);
-    expect(await host.bl("configured", "cron", { command: "status" })).toEqual([]);
+    expect(await host.bl("configured", "cron", { command: "status" })).toEqual({
+      items: [],
+      total: 0,
+      nextOffset: null,
+    });
 
     const shorthand = await host.workspace("shorthand", ["batteries"]);
     expect(await host.botlake(["lake", "start", "--workspace", shorthand], false)).toContain(

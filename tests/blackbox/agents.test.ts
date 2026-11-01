@@ -22,7 +22,13 @@ const row = z.compile(
     attributes: z.record(z.string(), z.json()),
   }),
 );
-const performed = z.compile(z.array(z.object({ relation: z.string() })));
+const performed = z.compile(
+  z.object({
+    edges: z.array(z.object({ relation: z.string() })),
+    total: z.number(),
+    nextOffset: z.number().nullable(),
+  }),
+);
 const nativeRun = z.compile(z.object({ runId: z.string() }));
 const workItem = z.compile(
   z.object({ id: z.string(), kind: z.enum(["task", "group"]), state: z.string() }),
@@ -264,7 +270,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
             id: cancellable.id,
             relation: "performed",
           }),
-        ).length > 0;
+        ).edges.length > 0;
     expect(bound).toBe(true);
     const beforeRestart = row.parse(
       await host.bl("agents", "agent", { command: "show", id: cancellable.id }),

@@ -126,11 +126,9 @@ Only zsh is supported. The generated script registers completion for both `botla
 
 ## Operate
 
-Use `help` for commands, `prime` for the runbook, and `about` for wider context and configuration that specialists may need beyond day-to-day operation.
+Start with `bl --help` for shared input/output and paging conventions (no running lake needed). With a lake running, `bl help` lists selected operations and `bl help OP [SUBCOMMAND...]` reveals one level at a time. Use `bl prime OP` for an execution runbook, `bl about OP` for concepts, and `bl schema OP` for declared JSON input/output schemas (`null` when unavailable). Schemas never accompany routine help. `--json` forces machine-readable help; redirected help is already JSON.
 
-Discovery is progressive: `bl help` lists operation names and descriptions, while `bl help OP [SUBCOMMAND...]` shows only that level's syntax and immediate children. Machine-readable `bl help --json OP` also includes the operation's declared input/output schemas, or `null` when none were declared; root and subcommand help omit them. `about` and `prime` require an operation and report unavailable command-scoped guidance explicitly. Redirected output remains machine-readable JSON/NDJSON, `--json` forces it, and `NO_COLOR` disables terminal color. `bl --help` lists global flags without a running workspace.
-
-Put global flags before the operation: `--stdin` attaches text referenced as `:stdin`; repeatable `--payload NAME=PATH` attaches files referenced as `:payload/NAME`. `--input JSON|@FILE|-` supplies the entire JSON input (`-` reads stdin). Operation arguments also accept `@file`, resolved from the caller's directory. `--timeout 5s` overrides the operation deadline (normally 30s); `--dry-run` prints the request. Batteries `await` owns its wait budget instead: `--timeout-secs` defaults to 1800 and returns `reason: "timeout"` on expiry, while an explicit global `--timeout` remains a hard error deadline. `--cwd` sets invocation context and the Git discovery directory. `--worktree-root` and `--git-common-dir` override invocation context only, not workspace selection. After the operation, flags belong to the extension; `--` ends its flag parsing.
+Global flags precede the operation; domain flags follow it. `bl --help` is the reference for payloads, whole-JSON input, deadlines and workspace context. Batteries `await` owns its wait budget: `reason: "timeout"` is a successful observation, not a hard request failure or cancellation of the observed work.
 
 `botlake init [--workspace DIR] [--name NAME]` adds an empty `botlake` field to `.botlake/package.json`, creating a private module package if missing, without installing or selecting extensions. Without `--workspace`, it initializes the main Git checkout, even from a linked worktree or subdirectory. Existing package fields and selected configuration are preserved. `botlake --version` reports the CLI/build/protocol versions.
 
@@ -144,7 +142,7 @@ Extensions read the environment supplied to `botlake lake start|restart` through
 
 Extensions declare typed handles in `events.ts` with `defineEvent({ name, phase, schema })`, register them during activation with `ctx.registerEvent`, and use `ctx.on` / `ctx.emit`. Transactional handlers are synchronous, return no value and join the current `graph.atomic`; errors roll it back. After-commit observers may be asynchronous; their failures are recorded in `Runtime.errors`. Subscriptions belong to one lake and return an unsubscribe function.
 
-`bl events list` shows registered payload contracts. `bl events stream [--event NAME ...]` emits committed notifications as JSONL. Wait for `ready` before loading snapshots, invalidate reads on changes, and refetch on reconnect. The stream has bounded buffering and no replay; transactional hooks stay in-process. Work publishes changed IDs, while Agents publishes run IDs and liveness evidence.
+`bl events list` summarizes registered names and phases; `bl events show NAME` expands one payload contract. `bl events stream [--event NAME ...]` emits committed notifications as JSONL. Wait for `ready` before loading snapshots, invalidate reads on changes, and refetch on reconnect. The stream has bounded buffering and no replay; transactional hooks stay in-process. Work publishes changed IDs, while Agents publishes run IDs and liveness evidence.
 
 Agents supports Codex, Pi and Claude. Native agents own session IDs; [native adapters](plugins/identity/README.md) observe identity and supported activity through the shared `@botlake/native-session` protocol. Missing hooks degrade managed tracking to native output evidence, not fabricated lifecycle data. Nothing installs plugins into user profiles automatically. Identity, activity, process custody and task completion remain distinct.
 
@@ -154,7 +152,7 @@ Use `bl node list|ready --query NAME --params JSON` for named queries. For ad ho
 
 ```sh
 botlake lake eval --workspace work - <<'JS'
-const runs = await api.call("node", {
+const page = await api.call("node", {
   command: "list",
   where: q.and(
     q.eq(q.attr("agent/run"), true),
@@ -162,7 +160,7 @@ const runs = await api.call("node", {
   ),
   limit: 20,
 });
-return runs.map(({ id, title }) => ({ id, title }));
+return page.nodes.map(({ id, title }) => ({ id, title }));
 JS
 ```
 
@@ -170,7 +168,7 @@ JS
 
 Evaluation runs in a separate local Bun process, never inside the lake. Script output goes to stderr; only the returned JSON goes to stdout. Errors exit nonzero. The default 30s deadline covers execution and all calls, including synchronous loops. Workspace discovery and relative paths use the caller’s directory or `--cwd`; `BL_CORE` selects the evaluator package too.
 
-This is trusted scripting, not a sandbox or read-only access. Scripts have the caller’s OS permissions; operations may mutate data, and completed mutations are not rolled back on error or timeout. Calls are not a shared snapshot. List/ready still default to 100 results (maximum 10,000); do not mistake limited selections for complete join inputs. Their shell flags omit `--where`; programmatic input and `bl --input` still accept predicates.
+This is trusted scripting, not a sandbox or read-only access. Scripts have the caller’s OS permissions; operations may mutate data, and completed mutations are not rolled back on error or timeout. Calls are not a shared snapshot. Node list/ready return summary pages with `nodes`, `total` and `nextOffset`; follow offsets until `null` for complete join inputs. Use `lean: false` to expand attributes. Their shell flags omit `--where`; programmatic input and `bl --input` still accept predicates.
 
 ## Verify
 
@@ -180,6 +178,7 @@ bun run check:go
 bun test tests/blackbox
 bun scripts/schema.ts workspace
 bun scripts/benchmark.ts 24
+bun scripts/cli-smoke.ts # Fresh lake + read-only snapshot clone of this checkout
 bun scripts/work-smoke.ts
 bun scripts/workflow-smoke.ts
 bun scripts/work-agent-smoke.ts

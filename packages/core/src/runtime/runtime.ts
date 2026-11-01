@@ -28,7 +28,7 @@ const unavailable: Processes = {
   acknowledge: () => Promise.reject(new Fault("process", "Botlake custody is unavailable")),
 };
 
-const metaOps = new Set(["help", "about", "prime"]);
+const metaOps = new Set(["help", "about", "prime", "schema"]);
 
 export function isStream(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
@@ -204,6 +204,8 @@ export class Runtime {
   discovery(name?: string, tier = "help", path: string[] = []): unknown {
     if (tier !== "help" && name === undefined)
       throw new Fault("discovery", `${tier} requires an operation: bl ${tier} OP`);
+    if (tier === "schema" && path.length > 0)
+      throw new Fault("discovery", "Schemas describe an entire operation: bl schema OP");
     const ops =
       name === undefined
         ? [...this.ops.values()]
@@ -223,10 +225,9 @@ export class Runtime {
               name === undefined ? { description: command.description } : discloseCommand(command),
             stream: op.stream,
             deadline: op.deadline,
-            ...(name !== undefined && path.length === 0
-              ? { jsonSchema: op.jsonSchema?.() ?? null }
-              : {}),
           };
+        case "schema":
+          return { ...scope, jsonSchema: op.jsonSchema?.() ?? null };
         case "about":
           return {
             ...scope,

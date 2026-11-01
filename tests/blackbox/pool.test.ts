@@ -6,7 +6,13 @@ import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
 
-const titles = z.compile(z.array(z.object({ title: z.string() })));
+const nodePage = z.compile(
+  z.object({
+    nodes: z.array(z.object({ title: z.string() })),
+    total: z.number(),
+    nextOffset: z.number().nullable(),
+  }),
+);
 const handleRow = z.compile(z.object({ handle: z.string() }));
 const handleRows = z.compile(z.array(z.object({ handle: z.string() })));
 const hostStatus = z.compile(z.object({ hostPid: z.number(), hostReady: z.boolean() }));
@@ -25,9 +31,15 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
     }
     await host.cli(["--workspace", "./alpha", "node", "add", "A"]);
     expect(
-      titles.parse(await host.bl("alpha", "node", { command: "list" })).map((row) => row.title),
+      nodePage
+        .parse(await host.bl("alpha", "node", { command: "list" }))
+        .nodes.map((row) => row.title),
     ).toEqual(["A"]);
-    expect(await host.bl("beta", "node", { command: "list" })).toEqual([]);
+    expect(await host.bl("beta", "node", { command: "list" })).toEqual({
+      nodes: [],
+      total: 0,
+      nextOffset: null,
+    });
     const before = handleRow.parse(await host.bl("alpha", "process", { command: "launch" }));
     await host.botlake(["lake", "restart", "--workspace", "alpha"]);
     expect(
@@ -65,7 +77,7 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
         host.bl("alpha", "load", {}),
         host.bl("beta", "node", { command: "list" }),
       ]),
-    ).toEqual([10000, []]);
+    ).toEqual([10000, { nodes: [], total: 0, nextOffset: null }]);
     await host.bl("unknown", "node", { command: "list" }, false);
     await mkdir(join(host.dir, "duplicate/.botlake"), { recursive: true });
     await Bun.write(
@@ -114,11 +126,19 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     // Published names win for bare selections; explicit paths still select paths.
     await configure(beta, "alpha");
     await host.botlake(["lake", "restart", "--workspace", beta]);
-    expect(await host.bl("alpha", "node", { command: "list" })).toEqual([]);
-    expect(await host.bl("./alpha", "node", { command: "list" })).toHaveLength(1);
+    expect(await host.bl("alpha", "node", { command: "list" })).toEqual({
+      nodes: [],
+      total: 0,
+      nextOffset: null,
+    });
+    expect(
+      nodePage.parse(await host.bl("./alpha", "node", { command: "list" })).nodes,
+    ).toHaveLength(1);
     await configure(alpha, "next");
     await host.botlake(["restart-host"]);
-    expect(await host.bl("next", "node", { command: "list" })).toHaveLength(1);
+    expect(nodePage.parse(await host.bl("next", "node", { command: "list" })).nodes).toHaveLength(
+      1,
+    );
     expect(await host.bl("renamed", "node", { command: "list" }, false)).toContain(
       "unknown workspace",
     );
@@ -128,7 +148,11 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     expect(await host.botlake(["lake", "restart", "--workspace", beta], false)).toContain(
       "duplicate workspace name",
     );
-    expect(await host.bl("alpha", "node", { command: "list" })).toEqual([]);
+    expect(await host.bl("alpha", "node", { command: "list" })).toEqual({
+      nodes: [],
+      total: 0,
+      nextOffset: null,
+    });
 
     // Pool recovery rejects every ambiguous name, without disrupting healthy peers.
     expect(await host.botlake(["restart-host"], false)).toContain("duplicate workspace name");
@@ -138,7 +162,11 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     expect(await host.bl("next", "node", { command: "list" }, false)).toContain(
       "unknown workspace",
     );
-    expect(await host.bl("healthy", "node", { command: "list" })).toEqual([]);
+    expect(await host.bl("healthy", "node", { command: "list" })).toEqual({
+      nodes: [],
+      total: 0,
+      nextOffset: null,
+    });
     await configure(alpha);
     await host.botlake(["lake", "start", "--workspace", alpha]);
     await host.botlake(["lake", "stop", "--workspace", alpha]);

@@ -322,14 +322,25 @@ Workspace operations:
   bl OP [SUBCOMMAND...] --help    Discover the same command
   bl about OP                    Read its conceptual explanation
   bl prime OP                    Read its execution runbook
-  bl help --json OP              Print machine-readable help and declared schemas
+  bl schema OP                   Print declared JSON input/output schemas (or null)
+  bl --json help OP              Force machine-readable help without schemas
 
 Examples (with Batteries selected):
-  printf 'notes' | bl --stdin note NODE_ID :stdin
-  bl --payload attrs=attrs.json add "Title" --attributes :payload/attrs
-  printf '{"title":"Title"}' | bl --input - add
+  printf 'notes' | bl --stdin node note NODE_ID :stdin
+  bl --payload attrs=attrs.json node add "Title" --attributes :payload/attrs
+  printf '{"command":"add","title":"Title"}' | bl --input - node
 
-Help is formatted for a terminal. Redirected output remains JSON/NDJSON.
-Operation arguments belong to the selected extension; -- ends its flag parsing.
-NO_COLOR disables color. BL_ERROR_FORMAT selects plain|pretty|json errors.
+Shared conventions:
+  Help shows one level at a time; schema is a separate, machine-readable expansion.
+  Lists summarize; show/plan/name expands one item. Read leaf help for exceptions.
+  Paged results expose nextOffset or nextCursor; null means exhausted.
+  Pages are not snapshots. Read each command's default filters and limits.
+  Boolean flags enable with --flag; use --flag=false to disable. Repeat only
+  repeatable flags. JSON arguments accept inline JSON, @FILE or attached payloads.
+  -- ends operation flag parsing; global flags must precede the operation.
+
+Help is formatted for a terminal; redirected help and data remain JSON/NDJSON.
+--json forces JSON, including errors on stderr; failures exit nonzero.
+Text-rendering operations declare exceptions in their help. NO_COLOR disables
+color. BL_ERROR_FORMAT selects plain|pretty|json errors.
 `

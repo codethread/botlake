@@ -53,18 +53,17 @@ export function registerAgent(ctx: Context, service: Agents): void {
     defineOp({
       name: "agent",
       about:
-        "Managed runs own process custody and an invocation-fenced lifecycle. Settlement includes failure and cancellation, independently of task completion. External native sessions supply observations without stop authority; activity and output observations do not prove process liveness. Retries and resumes retain accepted provider settings.",
+        "Managed runs own process custody and an invocation-fenced lifecycle; settlement is independent of task completion. Native sessions and activity/output records are observations, not custody or proof of liveness. Retries and resumes retain accepted provider settings.",
       primer:
-        'Select a seat with bl agent catalog, then bl agent start --seat SEAT --cwd DIR --prompt TEXT. Keep the returned id. With Batteries selected, wait using bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied, then bl agent show RUN_ID for the result or error. Wait timeout does not stop the agent. Use bl agent activity peek RUN_ID for recent observations or bl agent activity search QUERY for retained excerpts; follow the native transcript reference for the complete record. Completing the process does not close its task.',
+        'Choose a seat with bl agent catalog [SEAT], start it with bl agent start --seat SEAT --cwd DIR --prompt TEXT, and keep the returned id. With Batteries selected, run bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied before bl agent show RUN_ID. Use activity peek for recent events or search for retained excerpts; the native transcript remains the full record. A wait timeout does not stop the run, and settlement itself does not close a served task.',
       input,
       output: jsonSchema,
       jsonSchema: { input, output: jsonSchema },
       cli: {
-        description: "Tracked agent runs and native registration",
+        description: "Managed agent runs and native session observations",
         examples: [
           "bl agent catalog",
-          "bl agent catalog --all",
-          "bl agent catalog reviewer",
+          `bl agent start --seat reviewer --cwd "$PWD" --prompt 'Review the change'`,
           "bl agent list",
           "bl agent show RUN_ID",
           "bl agent activity peek RUN_ID",
@@ -72,106 +71,212 @@ export function registerAgent(ctx: Context, service: Agents): void {
         ],
         commands: {
           list: {
-            description: "Paged run summaries; use show ID for full details",
+            description:
+              "Return { runs, total, nextOffset } summaries; use show RUN_ID for the full record",
+            examples: ["bl agent list", "bl agent list --state failed --limit 10"],
             flags: {
               state: {
                 type: "string",
-                description: "Agent state: ready, running, stopped, failed or external",
+                description: "Filter: ready, running, stopped, failed or external",
               },
-              limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+              limit: { type: "number", description: "Page size (default 20; range 1–100)" },
               offset: {
                 type: "number",
-                description: "Continue at nextOffset; pages are not a snapshot",
+                description:
+                  "Start index (default 0; minimum 0); continue with nextOffset until null; pages are not snapshots",
               },
             },
           },
           catalog: {
             description:
-              "Available seats; name expands candidates, settings and unavailability reasons",
-            positionals: [{ name: "name", type: "string" }],
+              "List available seats; pass NAME to inspect candidates, settings and reasons",
+            examples: ["bl agent catalog", "bl agent catalog reviewer", "bl agent catalog --all"],
+            positionals: [{ name: "name", type: "string", description: "Optional seat to expand" }],
             flags: {
-              all: { type: "boolean", description: "Include unavailable seats" },
+              all: {
+                type: "boolean",
+                description: "For a list, include unavailable seats and reasons",
+              },
             },
           },
-          reconcile: { description: "Reconcile custody; acknowledge the pass, not run settlement" },
+          reconcile: {
+            description:
+              "Reconcile process custody; returns { reconciled: true }, not run settlement",
+            examples: ["bl agent reconcile"],
+          },
           show: {
-            description: "Full run record, including prompts, settings, result and custody",
+            description: "Show the full run record: prompt, settings, result, error and custody",
+            examples: ["bl agent show RUN_ID"],
             positionals: [{ name: "id", type: "string", required: true }],
           },
           activity: {
-            description: "List, search or inspect plugin-observed run activity",
+            description: "Read plugin-observed events, not a full transcript or liveness proof",
             selector: "operation",
             commands: {
               list: {
-                description: "Page retained events for a target, or all streams",
-                positionals: [{ name: "target", key: "id", type: "string" }],
+                description:
+                  "Page retained events; returns the stream, events and nextCursor (null when exhausted)",
+                examples: [
+                  "bl agent activity list RUN_ID",
+                  "bl agent activity list HANDLE --after NEXT_CURSOR",
+                ],
+                positionals: [
+                  {
+                    name: "target",
+                    key: "id",
+                    type: "string",
+                    description:
+                      "Optional run ID, identity or activity handle; omit for all streams",
+                  },
+                ],
                 flags: {
-                  after: { type: "number", description: "Continue at nextCursor" },
-                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  after: {
+                    type: "number",
+                    description: "Exclusive cursor; continue at nextCursor (default 0; minimum 0)",
+                  },
+                  limit: { type: "number", description: "Page size (default 20; range 1–100)" },
                 },
               },
               search: {
-                description: "Search an excerpt phrase across all streams or one target",
+                description:
+                  "Search retained message/tool excerpts as a phrase; returns stream, events and nextCursor (null when exhausted)",
+                examples: [
+                  "bl agent activity search 'VPN access'",
+                  "bl agent activity search access --target RUN_ID",
+                ],
                 positionals: [{ name: "query", type: "string", required: true }],
                 flags: {
                   target: {
                     key: "id",
                     type: "string",
-                    description: "Run, identity or activity handle",
+                    description:
+                      "Limit to a run ID, identity or activity handle; omit for all streams",
                   },
-                  after: { type: "number", description: "Continue at nextCursor" },
-                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  after: {
+                    type: "number",
+                    description: "Exclusive cursor; continue at nextCursor (default 0; minimum 0)",
+                  },
+                  limit: { type: "number", description: "Page size (default 20; range 1–100)" },
                 },
               },
               peek: {
-                description: "Inspect recent events, outstanding tools and latest usage",
-                positionals: [{ name: "target", key: "id", type: "string", required: true }],
+                description:
+                  "Show a bounded observational snapshot of recent events, outstanding tools and usage; not an exhaustive tool set or liveness proof",
+                examples: ["bl agent activity peek RUN_ID", "bl agent activity peek IDENTITY"],
+                positionals: [
+                  {
+                    name: "target",
+                    key: "id",
+                    type: "string",
+                    required: true,
+                    description: "Run ID, identity or activity handle",
+                  },
+                ],
                 flags: {
                   limit: {
                     type: "number",
-                    description: "Recent events/tools (default 20, maximum 100)",
+                    description:
+                      "Each of recent events and outstanding tool starts (default 20; 1–100)",
                   },
                 },
               },
             },
           },
           cancel: {
-            description: "Cancel owned process; return run status",
+            description:
+              "Cancel a managed run (pending runs are abandoned); returns { id, state, substatus, settled }",
+            examples: ["bl agent cancel RUN_ID"],
             positionals: [{ name: "id", type: "string", required: true }],
           },
           retry: {
-            description: "Retry settled failure; return current run status",
+            description:
+              "Retry a settled managed failure with no served target or request binding; returns { id, state, substatus, settled }",
+            examples: ["bl agent retry RUN_ID"],
             positionals: [{ name: "id", type: "string", required: true }],
           },
           acknowledge: {
-            description: "Release retained process evidence; return id and acknowledged",
+            description:
+              "Acknowledge custody evidence for a settled managed run; returns id and acknowledged",
+            examples: ["bl agent acknowledge RUN_ID"],
             positionals: [{ name: "id", type: "string", required: true }],
           },
           resume: {
-            description: "Resume verified session; return new run status",
+            description:
+              "Create a run from a verified settled session; returns { id, state, substatus, settled }",
+            examples: ["bl agent resume RUN_ID 'Continue with the next step'"],
             positionals: [
               { name: "id", type: "string", required: true },
               { name: "prompt", type: "string", required: true },
             ],
-            flags: { "request-id": { key: "requestId", type: "string" } },
+            flags: {
+              "request-id": {
+                key: "requestId",
+                type: "string",
+                description: "Optional idempotency key for the continuation",
+              },
+            },
           },
           native: {
-            description: "Observe native session activity; optionally link a managed invocation",
+            description:
+              "Record native session activity; run-id and invocation must be paired. Returns identity, nodeId, instruction, runId, external and systemPrompt",
+            examples: [
+              'bl agent native --provider pi --native-session-id SESSION_ID --cwd "$PWD" --event agent-end',
+              'bl agent native --provider codex --native-session-id SESSION_ID --cwd "$PWD" --run-id RUN_ID --invocation INVOCATION',
+            ],
             flags: {
-              provider: { type: "string", required: true },
-              "native-session-id": { key: "nativeSessionId", type: "string", required: true },
-              cwd: { type: "string", required: true },
-              "run-id": { key: "runId", type: "string" },
-              invocation: { type: "string" },
-              "parent-native-session-id": { key: "parentNativeSessionId", type: "string" },
+              provider: {
+                type: "string",
+                required: true,
+                description: "Provider: codex, pi or claude",
+              },
+              "native-session-id": {
+                key: "nativeSessionId",
+                type: "string",
+                required: true,
+                description: "Provider-scoped native session ID",
+              },
+              cwd: {
+                type: "string",
+                required: true,
+                description: 'Session directory; pass an absolute path such as "$PWD"',
+              },
+              "run-id": {
+                key: "runId",
+                type: "string",
+                description: "Managed run ID; requires --invocation",
+              },
+              invocation: { type: "string", description: "Invocation fence; requires --run-id" },
+              "parent-native-session-id": {
+                key: "parentNativeSessionId",
+                type: "string",
+                description: "Optional native parent session ID",
+              },
               audience: {
                 type: "string",
-                description: "Intended recipient (human, agent or unknown)",
+                description:
+                  "Recipient: human, agent or unknown; omission uses BL_AUDIENCE (human/agent) or unknown; managed runs use agent",
               },
-              event: { type: "string" },
-              "native-event": { key: "nativeEvent", type: "string" },
-              "session-path": { key: "sessionPath", type: "string" },
-              capabilities: { type: "string", multiple: true },
+              event: {
+                type: "string",
+                description:
+                  "Event: session-start, agent-start, agent-end, session-end or metadata (default session-start)",
+              },
+              "native-event": {
+                key: "nativeEvent",
+                type: "string",
+                description: "Provider-specific event name",
+              },
+              "session-path": {
+                key: "sessionPath",
+                type: "string",
+                description: "Native transcript path, if known",
+              },
+              capabilities: {
+                type: "string",
+                multiple: true,
+                description:
+                  "activity, tools, messages, usage, model, effort, session-end or parent",
+              },
               "agent-seat": {
                 key: "agentSeat",
                 type: "string",
@@ -183,16 +288,44 @@ export function registerAgent(ctx: Context, service: Agents): void {
                 type: "string",
                 description: "Effort (defaults to BL_EFFORT)",
               },
+              "turn-id": {
+                key: "turnId",
+                type: "string",
+                description: "Provider-reported turn ID",
+              },
+              activity: {
+                type: "json",
+                description:
+                  "JSON array (max 10); kind: tool-started, tool-ended, message or usage; summaries max 2048 chars",
+              },
             },
           },
           start: {
-            description: "Create run; return id, state, substatus and settled",
+            description: "Start a managed run; returns { id, state, substatus, settled }",
+            examples: [`bl agent start --seat reviewer --cwd "$PWD" --prompt 'Review the change'`],
             flags: {
-              seat: { type: "string", required: true },
-              cwd: { type: "string", required: true },
-              prompt: { type: "string", required: true },
-              target: { type: "string" },
-              "request-id": { key: "requestId", type: "string" },
+              seat: { type: "string", required: true, description: "Available catalog seat" },
+              cwd: {
+                type: "string",
+                required: true,
+                description: 'Existing directory; pass an absolute path such as "$PWD"',
+              },
+              prompt: { type: "string", required: true, description: "Instructions for this run" },
+              target: { type: "string", description: "Optional task or node ID served by the run" },
+              "request-id": {
+                key: "requestId",
+                type: "string",
+                description: "Optional idempotency key for admission",
+              },
+              policy: {
+                type: "string",
+                description:
+                  "For a target: stop-on-complete (default; report only) or close-on-complete (agent closes it when satisfied)",
+              },
+              context: {
+                type: "json",
+                description: "JSON object of caller-supplied context (default {})",
+              },
             },
           },
         },

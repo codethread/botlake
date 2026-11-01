@@ -23,6 +23,25 @@ export { jobSchema, scheduleSchema, type Job } from "./node-model.ts";
 
 const wakeSchema = z.compile(z.object({ job: z.string() }));
 const retrySchema = z.compile(z.object({ at: z.number().nullable() }));
+const pageOptions = {
+  limit: z.number().int().min(1).max(100).default(20),
+  offset: z.number().int().nonnegative().default(0),
+};
+const detailOptions = { ...pageOptions, details: z.boolean().default(false) };
+const statusOptionsSchema = z.compile(z.strictObject(detailOptions));
+const historyOptions = {
+  job: z.string().trim().min(1).optional(),
+  ...detailOptions,
+};
+const historyOptionsSchema = z.compile(z.strictObject(historyOptions));
+const statusRowSchema = z.strictObject({
+  id: z.string(),
+  next_at: z.number().int(),
+  enabled: z.union([z.literal(0), z.literal(1)]),
+});
+const statusRowsSchema = z.compile(z.array(statusRowSchema));
+const statusDetailRowsSchema = z.compile(z.array(statusRowSchema.extend({ spec: z.string() })));
+const totalSchema = z.compile(z.strictObject({ total: z.number().int().nonnegative() }));
 
 export interface Occurrence {
   /** Stable identifier for deduplicating external effects. */
@@ -205,6 +224,85 @@ export class Cron {
       .all(job ?? null, job ?? null);
   }
 
+  statusPage(options: z.input<typeof statusOptionsSchema> = {}) {
+    const page = statusOptionsSchema.parse(options);
+    const rows = this.ctx.graph.db
+      .query(sql`
+        SELECT id, next_at, enabled${page.details ? sql`, spec` : ""}
+        FROM cron_jobs
+        ORDER BY id
+        LIMIT ? OFFSET ?
+      `)
+      .all(page.limit, page.offset);
+    const total = totalSchema.parse(
+      this.ctx.graph.db
+        .query(sql`
+          SELECT count(*) AS total
+          FROM cron_jobs
+        `)
+        .get(),
+    );
+    return {
+      items: page.details
+        ? statusDetailRowsSchema.parse(rows).map((row) => ({
+            id: row.id,
+            nextAt: row.next_at,
+            enabled: row.enabled === 1,
+            definition: jsonSchema.parse(JSON.parse(row.spec)),
+          }))
+        : statusRowsSchema.parse(rows).map((row) => ({
+            id: row.id,
+            nextAt: row.next_at,
+            enabled: row.enabled === 1,
+          })),
+      total: total.total,
+      nextOffset: page.offset + page.limit < total.total ? page.offset + page.limit : null,
+    };
+  }
+
+  historyPage(options: z.input<typeof historyOptionsSchema> = {}) {
+    const input = historyOptionsSchema.parse(options);
+    const rows = occurrencesSchema.parse(
+      this.ctx.graph.db
+        .query(sql`
+          SELECT id, job, scheduled_at, status, attempt, retry_at,
+                 ${input.details ? sql`result, error` : sql`NULL AS result, NULL AS error`}
+          FROM cron_occurrences
+          WHERE (? IS NULL OR job = ?)
+          ORDER BY scheduled_at, id
+          LIMIT ? OFFSET ?
+        `)
+        .all(input.job ?? null, input.job ?? null, input.limit, input.offset),
+    );
+    const total = totalSchema.parse(
+      this.ctx.graph.db
+        .query(sql`
+          SELECT count(*) AS total
+          FROM cron_occurrences
+          WHERE (? IS NULL OR job = ?)
+        `)
+        .get(input.job ?? null, input.job ?? null),
+    );
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        job: row.job,
+        scheduledAt: row.scheduled_at,
+        status: row.status,
+        attempt: row.attempt,
+        retryAt: row.retry_at,
+        ...(input.details
+          ? {
+              result: row.result === null ? null : jsonSchema.parse(JSON.parse(row.result)),
+              error: row.error,
+            }
+          : {}),
+      })),
+      total: total.total,
+      nextOffset: input.offset + input.limit < total.total ? input.offset + input.limit : null,
+    };
+  }
+
   async drain(): Promise<void> {
     while (this.active.size > 0) await Promise.all(this.active.values());
   }
@@ -383,30 +481,76 @@ export function cron(options: { jobs: Job[]; actions: Record<string, Action> }):
     activate(ctx) {
       const service = new Cron(ctx, options.jobs, options.actions);
       ctx.resource(service);
+      const commandSchema = z.compile(
+        z.discriminatedUnion("command", [
+          z.strictObject({ command: z.literal("status"), ...detailOptions }),
+          z.strictObject({ command: z.literal("history"), ...historyOptions }),
+        ]),
+      );
       ctx.register(
         defineOp({
           name: "cron",
+          about: "Durable calendar and interval schedules with retained occurrence outcomes.",
           primer:
-            "Select a local module exporting cron({jobs, actions}); define inert jobs with defineJob. Inspect status for the next fire and history for occurrence outcomes. Unchanged definitions retain cadence. Crash recovery is at least once: deduplicate external effects using the occurrence id.",
-          input: z.compile(
-            z.discriminatedUnion("command", [
-              z.strictObject({ command: z.literal("status") }),
-              z.strictObject({ command: z.literal("history"), job: z.string().optional() }),
-            ]),
-          ),
+            "Select a local module exporting cron({jobs, actions}); define inert jobs with defineJob. Status reports persisted schedules, and history reports occurrence outcomes and accumulated attempt counts. Unchanged definitions retain cadence. Recovery is at least once: deduplicate external effects using the occurrence id.",
+          input: commandSchema,
+          jsonSchema: { input: commandSchema, output: jsonSchema },
           output: jsonSchema,
           cli: {
-            description: "Durable schedules and occurrence history",
-            examples: ["bl cron status", "bl cron history --job JOB_ID"],
+            description: "Inspect persisted schedules and occurrence outcomes",
+            examples: ["bl cron status", "bl cron history --job JOB_ID --limit 20"],
             commands: {
-              status: { description: "Schedules" },
-              history: { description: "Occurrences", flags: { job: { type: "string" } } },
+              status: {
+                description:
+                  "Page persisted schedules by ID; returns items, total and nextOffset (null when exhausted). Times are Unix ms; disabled nextAt is retained. --details expands definitions",
+                examples: ["bl cron status --limit 20", "bl cron status --details"],
+                flags: {
+                  details: {
+                    type: "boolean",
+                    description:
+                      "Include decoded persisted definition, possibly large/sensitive (default false)",
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Page size: integer, default 20, min 1, max 100",
+                  },
+                  offset: {
+                    type: "number",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at nextOffset",
+                  },
+                },
+              },
+              history: {
+                description:
+                  "Page occurrences by scheduledAt/ID; returns items, total and nextOffset (null when exhausted). Timestamps are Unix ms; result/error require --details",
+                examples: ["bl cron history --limit 20", "bl cron history --job tick --details"],
+                flags: {
+                  job: { type: "string", description: "Filter to one job before paging" },
+                  limit: {
+                    type: "number",
+                    description: "Page size: integer, default 20, min 1, max 100",
+                  },
+                  offset: {
+                    type: "number",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at nextOffset",
+                  },
+                  details: {
+                    type: "boolean",
+                    description:
+                      "Include decoded result and error fields; may be large (default false)",
+                  },
+                },
+              },
             },
           },
-          handler: (input) =>
-            jsonSchema.parse(
-              input.command === "status" ? service.status() : service.history(input.job),
-            ),
+          handler(input) {
+            const { command, ...request } = input;
+            return jsonSchema.parse(
+              command === "status" ? service.statusPage(request) : service.historyPage(request),
+            );
+          },
         }),
       );
     },

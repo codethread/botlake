@@ -1,5 +1,4 @@
 import {
-  jsonSchema,
   Fault,
   sql,
   defineOp,
@@ -17,6 +16,22 @@ export { flagSchema, storedFlagSchema, type Flag } from "./node-model.ts";
 const nameSchema = z.compile(z.string().trim().min(1));
 
 const flagUpdateSchema = z.compile(flagSchema.partial({ description: true }));
+
+const flagStateSchema = z.strictObject({
+  current: flagSchema.nullable(),
+  default: flagSchema.nullable(),
+  overridden: z.boolean(),
+});
+const outputSchema = z.compile(
+  z.union([
+    z.record(nameSchema, flagStateSchema),
+    flagStateSchema.extend({ name: nameSchema }),
+    flagSchema.extend({ name: nameSchema }),
+    z.strictObject({ name: nameSchema, removed: z.boolean() }),
+    flagStateSchema.extend({ name: nameSchema, reset: z.boolean() }),
+    z.strictObject({ reset: z.number().int().nonnegative() }),
+  ]),
+);
 
 const definitionSchema = z.compile(
   z
@@ -220,31 +235,28 @@ export function configureFlags(settings: readonly FlagSetting[]): Extension {
           defaultsByContext.delete(ctx);
         },
       });
+      const commandSchema = z.compile(
+        z.union([
+          z.strictObject({ command: z.literal("list") }),
+          z.strictObject({ command: z.literal("get"), name: nameSchema }),
+          flagUpdateSchema.extend({ command: z.literal("set"), name: nameSchema }),
+          z.strictObject({ command: z.literal("unset"), name: nameSchema }),
+          z.strictObject({ command: z.literal("reset"), name: nameSchema }),
+          z.strictObject({ command: z.literal("reset"), all: z.literal(true) }),
+        ]),
+      );
       ctx.register(
         defineOp({
           name: "flag",
+          about:
+            "Flags are workspace-local described booleans. Selected extensions configure defaults; persistent database overrides take precedence. The consuming extension defines each flag's meaning and when changes take effect.",
           primer:
-            "Flags are workspace-local described booleans shared by selected extensions. List and get show current and configured default records (null when absent), plus overridden to identify database overrides, including persistent unsets. Set preserves an existing description; new or unset flags require --description. Set and unset persist across restarts. Reset NAME deletes one override; reset --all deletes all overrides, restoring configured defaults and removing database-only flags. Configuration changes affect flags without overrides. Flag meanings and effects belong to consumers, not Flags.",
-          input: z.compile(
-            z.discriminatedUnion("command", [
-              z.strictObject({ command: z.literal("list") }),
-              z.strictObject({ command: z.literal("get"), name: nameSchema }),
-              flagUpdateSchema.extend({ command: z.literal("set"), name: nameSchema }),
-              z.strictObject({ command: z.literal("unset"), name: nameSchema }),
-              z
-                .strictObject({
-                  command: z.literal("reset"),
-                  name: nameSchema.optional(),
-                  all: z.literal(true).optional(),
-                })
-                .refine(({ name, all }) => (name !== undefined) !== (all === true), {
-                  message: "Provide a flag name or --all, not both",
-                }),
-            ]),
-          ),
-          output: jsonSchema,
+            "Use bl flag list or get to inspect current/default values and overrides. Set a value, persistently unset it, or reset an override to its configured default (database-only flags disappear). New or unset flags need --description; reset --all removes every override and unset.",
+          input: commandSchema,
+          output: outputSchema,
+          jsonSchema: { input: commandSchema, output: outputSchema },
           cli: {
-            description: "Persistent workspace-local flags and configured defaults",
+            description: "Inspect and change persistent workspace flag values",
             examples: [
               "bl flag list",
               "bl flag get feature/example",
@@ -256,38 +268,56 @@ export function configureFlags(settings: readonly FlagSetting[]): Extension {
             ],
             commands: {
               list: {
-                description: "List current flags, configured defaults and persisted overrides",
+                description:
+                  "List the complete unpaged name-keyed map of current/default records and override status, including unsets",
+                examples: ["bl flag list"],
               },
               get: {
-                description: "Inspect current and default records (null when absent)",
+                description:
+                  "Show one flag's current/default records and override status; absent values are null",
+                examples: ["bl flag get feature/example"],
                 positionals: [{ name: "name", type: "string", required: true }],
               },
               set: {
-                description: "Persist a boolean; new or unset flags require a description",
+                description: "Persist true or false; returns the new value and description",
+                examples: [
+                  'bl flag set feature/example true --description "Enable the example feature"',
+                  "bl flag set feature/example false",
+                ],
                 positionals: [
                   { name: "name", type: "string", required: true },
-                  { name: "value", type: "boolean", required: true },
+                  {
+                    name: "value",
+                    type: "boolean",
+                    required: true,
+                    description: "Boolean: true or false",
+                  },
                 ],
                 flags: {
                   description: {
                     type: "string",
                     description:
-                      "Flag meaning; required for new or unset flags, preserved when omitted",
+                      "Nonblank; required for new or unset flags, replaces existing text when supplied",
                   },
                 },
               },
               unset: {
-                description: "Persistently unset a flag, including a configured default",
+                description:
+                  "Persistently unset a current/configured flag; returns whether a value was removed",
+                examples: ["bl flag unset feature/example"],
                 positionals: [{ name: "name", type: "string", required: true }],
               },
               reset: {
                 description:
-                  "Restore one configured default, or all with --all; database-only flags disappear",
-                positionals: [{ name: "name", type: "string" }],
+                  "Delete one override or all; choose exactly NAME or --all. Returns restored state or reset count",
+                examples: ["bl flag reset feature/example", "bl flag reset --all"],
+                positionals: [
+                  { name: "name", type: "string", description: "Flag name; omit with --all" },
+                ],
                 flags: {
                   all: {
                     type: "boolean",
-                    description: "Delete all persisted overrides and unsets",
+                    description: "Reset all overrides and unsets; use instead of NAME",
                   },
                 },
               },
@@ -310,13 +340,13 @@ export function configureFlags(settings: readonly FlagSetting[]): Extension {
               case "unset":
                 return { name: input.name, removed: unsetFlag(ctx, input.name) };
               case "reset":
-                return input.name === undefined
-                  ? { reset: resetFlags(ctx) }
-                  : {
+                return "name" in input
+                  ? {
                       name: input.name,
                       reset: resetFlag(ctx, input.name),
                       ...inspectFlag(ctx, input.name),
-                    };
+                    }
+                  : { reset: resetFlags(ctx) };
             }
           },
         }),

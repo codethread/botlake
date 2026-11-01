@@ -37,7 +37,8 @@ execution and all calls.
 Console and process output go to stderr. Only the returned JSON goes to stdout.
 This is not a sandbox or a read-only API: scripts have the caller's permissions,
 operations may mutate data, and completed mutations are not rolled back on error.
-Calls do not share a snapshot. Node list/ready retain their limits (default 100).
+Calls do not share a snapshot. For node selection pages and explicit attribute
+expansion, see "bl help node list"; a single page is not a complete join input.
 
 Examples (Batteries must be selected for node/query/edge):
   botlake lake eval 'return await api.call("query", {});'

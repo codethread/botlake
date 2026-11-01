@@ -1,4 +1,4 @@
-import { Fault, defineOp, jsonSchema, type Context, type Extension } from "@botlake/core";
+import { Fault, defineOp, type Context, type Extension } from "@botlake/core";
 import {
   agentsChanged,
   readAgentLiveness,
@@ -14,6 +14,15 @@ import { workAgentAttributes, workAgentBindingSchema } from "./node-model.ts";
 export { workAgentAttributes, workAgentBindingSchema } from "./node-model.ts";
 
 const text = z.compile(z.string().trim().min(1));
+const acknowledgementSchema = z.compile(
+  workAgentBindingSchema.pick({
+    task: true,
+    run: true,
+    assignment: true,
+    identity: true,
+    heartbeatAt: true,
+  }),
+);
 const optionsSchema = z.compile(z.strictObject({ checkIntervalMs: z.number().int().positive() }));
 const wakeSchema = z.compile(
   z.strictObject({ binding: text, assignment: text, heartbeatAt: z.number().int() }),
@@ -56,49 +65,97 @@ export function workAgents(raw: WorkAgentsOptions): Extension {
         service.observe(id, liveness);
       });
       ctx.resource({ start: service.start, stop: service.stop });
+      const commandSchema = z.compile(
+        z.discriminatedUnion("command", [
+          z.strictObject({
+            command: z.literal("bind"),
+            task: text,
+            run: text,
+            assignment: text,
+          }),
+          z.strictObject({
+            command: z.literal("heartbeat"),
+            task: text,
+            run: text,
+            assignment: text,
+            byIdentity: text.optional(),
+          }),
+        ]),
+      );
       ctx.register(
         defineOp({
           name: "work-agent",
-          input: z.compile(
-            z.discriminatedUnion("command", [
-              z.strictObject({
-                command: z.literal("bind"),
-                task: text,
-                run: text,
-                assignment: text,
-              }),
-              z.strictObject({
-                command: z.literal("heartbeat"),
-                task: text,
-                run: text,
-                assignment: text,
-                byIdentity: text.optional(),
-              }),
-            ]),
-          ),
-          output: jsonSchema,
+          input: commandSchema,
+          jsonSchema: { input: commandSchema, output: acknowledgementSchema },
+          output: acknowledgementSchema,
+          about:
+            "Optional Work integration that binds AFK assignment tokens to verified agent-run liveness.",
           primer:
-            "AFK claims and assigned creation bind automatically when Agents resolves an exact managed invocation or one matching native session. Missing evidence leaves work assigned and unbound; same-owner reclaim retries enrollment. Explicit bind and heartbeat remain available. Settled managed custody or a native session-end observation releases only the same assignment token. Silence triggers rechecking, never release. HITL assignments never bind.",
+            "AFK claims and assigned creation bind automatically when Agents resolves an exact managed invocation or one matching native session. Missing evidence leaves work assigned and unbound; same-owner reclaim retries enrollment. Use explicit bind or heartbeat only with the current assignment token and matching registered native identity. Settled managed custody or a native session-end observation releases only that token. Silence triggers rechecking, never release; HITL assignments never bind.",
           cli: {
-            description: "Bind assigned work to verified agent liveness",
+            description: "Bind or refresh verified Work-to-agent liveness",
+            examples: [
+              "bl work-agent bind TASK RUN --assignment TOKEN",
+              "bl work-agent heartbeat TASK RUN --assignment TOKEN --by-identity IDENTITY",
+            ],
             commands: {
               bind: {
-                description: "Bind a current assignment to a registered agent run",
+                description:
+                  "Bind the current AFK assignment to an unsettled managed or non-ended native run; returns task, run, assignment, identity and heartbeatAt (Unix ms)",
+                examples: ["bl work-agent bind TASK RUN --assignment TOKEN"],
                 positionals: [
-                  { name: "task", type: "string", required: true },
-                  { name: "run", type: "string", required: true },
-                ],
-                flags: { assignment: { type: "string", required: true } },
-              },
-              heartbeat: {
-                description: "Record a heartbeat from the matching bound native identity",
-                positionals: [
-                  { name: "task", type: "string", required: true },
-                  { name: "run", type: "string", required: true },
+                  {
+                    name: "task",
+                    type: "string",
+                    required: true,
+                    description: "Work task ID holding the current AFK assignment",
+                  },
+                  {
+                    name: "run",
+                    type: "string",
+                    required: true,
+                    description: "Registered managed or native agent run ID",
+                  },
                 ],
                 flags: {
-                  assignment: { type: "string", required: true },
-                  "by-identity": { key: "byIdentity", type: "string" },
+                  assignment: {
+                    type: "string",
+                    required: true,
+                    description: "Current Work assignment token",
+                  },
+                },
+              },
+              heartbeat: {
+                description:
+                  "Refresh the binding heartbeat, not run liveness; returns task, run, assignment, identity and heartbeatAt (Unix ms)",
+                examples: [
+                  "bl work-agent heartbeat TASK RUN --assignment TOKEN --by-identity IDENTITY",
+                ],
+                positionals: [
+                  {
+                    name: "task",
+                    type: "string",
+                    required: true,
+                    description: "Work task ID holding the current AFK assignment",
+                  },
+                  {
+                    name: "run",
+                    type: "string",
+                    required: true,
+                    description: "Registered managed or native agent run ID",
+                  },
+                ],
+                flags: {
+                  assignment: {
+                    type: "string",
+                    required: true,
+                    description: "Current binding's Work assignment token",
+                  },
+                  "by-identity": {
+                    key: "byIdentity",
+                    type: "string",
+                    description: "Must match the bound native identity; defaults to BL_ACTOR",
+                  },
                 },
               },
             },
