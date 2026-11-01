@@ -39,6 +39,8 @@
         "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-references": "workspace:*",
+        "@botlake/extension-ui": "file:../../botlake-ui/packages/ui-extension",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
@@ -399,6 +401,8 @@
     "yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 
     "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
+
+    "@botlake/dogfood/@botlake/extension-ui": ["@botlake/extension-ui@file:../botlake-ui/packages/ui-extension", { "bin": { "botlake-ui": "./bin/botlake-ui.mjs" } }],
 
     "@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
   }

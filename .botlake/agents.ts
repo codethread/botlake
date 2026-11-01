@@ -1,6 +1,7 @@
 import { agents } from "@botlake/extension-agents";
 
 import { workspaceFlags } from "./flags.ts";
+import references from "./references.ts";
 
 const workPrompt = [
   "This project uses Botlake for tasks and agent runs.",
@@ -29,6 +30,7 @@ const communicationPrompts = {
 };
 
 export default agents({
+  references,
   unmanaged: {
     systemPrompt: ({ audience }) =>
       [communicationPrompts[audience], workPrompt, delegationPrompt].join("\n"),
