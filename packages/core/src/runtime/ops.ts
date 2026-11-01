@@ -34,7 +34,8 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
   name: string;
   input: I;
   output: O;
-  cli: Command;
+  /** Omit for JSON-only peer operations excluded from CLI discovery. */
+  cli?: Command;
   about?: string;
   primer?: string;
   dependencies?: string[];
@@ -54,7 +55,7 @@ export function defineOp<I extends StandardSchemaV1, O extends StandardSchemaV1>
   return {
     name: descriptor.name,
     cli: descriptor.cli,
-    about: descriptor.about ?? descriptor.cli.description,
+    about: descriptor.about ?? descriptor.cli?.description,
     primer: descriptor.primer,
     dependencies: descriptor.dependencies ?? [],
     stream: descriptor.stream ?? false,

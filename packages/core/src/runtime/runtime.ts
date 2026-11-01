@@ -13,7 +13,7 @@ import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand, type Command } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
-import { Events } from "./events.ts";
+import { Events, nodesChanged } from "./events.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
@@ -97,6 +97,9 @@ export class Runtime {
       peers: options.peers ?? {
         resolve: () => Promise.reject(new Fault("peer", "Peer routing is unavailable")),
         call: () => Promise.reject(new Fault("peer", "Peer routing is unavailable")),
+        watch() {
+          throw new Fault("peer", "Peer routing is unavailable");
+        },
       },
       register: (op) => {
         this.collecting();
@@ -104,7 +107,7 @@ export class Runtime {
         if (this.ops.has(op.name) || metaOps.has(op.name))
           throw new Fault("collision", `Duplicate op: ${op.name}`);
 
-        this.ops.set(op.name, { ...op, cli: validateCommand(op.cli) });
+        this.ops.set(op.name, op.cli === undefined ? op : { ...op, cli: validateCommand(op.cli) });
       },
       registerQuery: (name, query) => {
         this.collecting();
@@ -142,6 +145,16 @@ export class Runtime {
 
     this.context.register(bins.operation());
     this.context.register(this.events.operations());
+    this.context.registerEvent(nodesChanged);
+    this.context.subscribe((event) => {
+      const ids = new Set<string>();
+      for (const change of event.changes) {
+        if (change.kind !== "node") continue;
+        const node = change.after ?? change.before;
+        if (node?.reference === null) ids.add(node.id);
+      }
+      if (ids.size > 0) this.context.emit(nodesChanged, { ids: [...ids].toSorted() });
+    });
   }
 
   async start(extensions: Extension[]): Promise<void> {
@@ -206,10 +219,18 @@ export class Runtime {
       throw new Fault("discovery", `${tier} requires an operation: bl ${tier} OP`);
     if (tier === "schema" && path.length > 0)
       throw new Fault("discovery", "Schemas describe an entire operation: bl schema OP");
+    const cliOps = [...this.ops.values()].filter(
+      (op): op is Op & { cli: Command } => op.cli !== undefined,
+    );
     const ops =
       name === undefined
-        ? [...this.ops.values()]
-        : [requireValue(this.ops.get(name), `Unknown op: ${name}`)];
+        ? cliOps
+        : [
+            requireValue(
+              cliOps.find((op) => op.name === name),
+              `Unknown op: ${name}`,
+            ),
+          ];
 
     return ops.map((op) => {
       let command = op.cli;
@@ -346,7 +367,11 @@ export class Runtime {
         (async () => {
           const payload =
             options.argv === true
-              ? await parseArgs(op.cli, zStringArray(input), options.payloads)
+              ? await parseArgs(
+                  requireValue(op.cli, `Operation ${name} accepts JSON input only`),
+                  zStringArray(input),
+                  options.payloads,
+                )
               : input;
           signal.throwIfAborted();
           return this.invocationEnv.run(env, () =>

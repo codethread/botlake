@@ -1,5 +1,6 @@
 import {
   canonical,
+  dependencyAttributes,
   Fault,
   q,
   requireValue,
@@ -54,6 +55,8 @@ import type {
 const authority = Symbol("work");
 const stores = new WeakMap<Graph, WorkStore>();
 const workRelationLabels: readonly string[] = Object.values(workRelations);
+const requiredReferenceKinds = ["work/task", "work/group"] as const;
+const requiredReferenceKindsSchema = z.tuple([z.literal("work/task"), z.literal("work/group")]);
 const createCommon = {
   title: text,
   description: z.string().default(""),
@@ -265,6 +268,21 @@ export function workStore(ctx: Context): WorkStore {
   }
 
   function summary(id: string): WorkSummary {
+    const node = graph.show(id);
+    if (node.reference !== null)
+      return {
+        id: node.id,
+        kind: "reference",
+        title: node.title,
+        state: node.state === "closed" ? "closed" : "open",
+        ready: false,
+        assignee: null,
+        audience: null,
+        origin: null,
+        priority: null,
+        parent: null,
+        reference: node.reference,
+      };
     const item = get(id);
     return {
       id: item.id,
@@ -334,19 +352,31 @@ export function workStore(ctx: Context): WorkStore {
 
   function tree(options: WorkTreeOptions = {}): WorkTopology {
     const parsed = treeInput.parse(options);
-    return topologyDetails(projectTree(topologySource(), parsed), parsed);
+    return topologyDetails(projectTree(topologySource(false), parsed), parsed);
   }
 
   function topologyGraph(options: WorkGraphOptions = {}): WorkTopology {
     const parsed = graphInput.parse(options);
-    return topologyDetails(projectGraph(topologySource(), parsed), parsed);
+    return topologyDetails(projectGraph(topologySource(true), parsed), parsed);
   }
 
-  function topologySource(): TopologySource {
+  function topologySource(includeReferences: boolean): TopologySource {
     const nodes = graph.all({
       where: q.eq(q.attr(workAttributes.item), true),
       includeArchived: true,
     });
+    if (includeReferences) {
+      const local = new Set(nodes.map((node) => node.id));
+      const seen = new Set(local);
+      for (const edge of graph.edges(undefined, workRelations.dependsOn)) {
+        if (!local.has(edge.from_id) || seen.has(edge.to_id)) continue;
+        const endpoint = graph.show(edge.to_id);
+        if (endpoint.reference !== null) {
+          nodes.push(endpoint);
+          seen.add(endpoint.id);
+        }
+      }
+    }
     const states = new Map(nodes.map((node) => [node.id, node.state]));
     const workEdges = (relation: string) =>
       graph
@@ -357,9 +387,13 @@ export function workStore(ctx: Context): WorkStore {
     const dependencyEdges = workEdges(workRelations.dependsOn);
     const parents = new Map(parentEdges.map((edge) => [edge.to, edge.from]));
     const waiting = new Set(
-      dependencyEdges.filter((edge) => states.get(edge.to) !== "closed").map((edge) => edge.from),
+      graph
+        .edges(undefined, workRelations.dependsOn)
+        .filter((edge) => states.has(edge.from_id) && !prerequisiteSatisfied(edge.to_id))
+        .map((edge) => edge.from_id),
     );
     const summaries = nodes.map((node): WorkSummary => {
+      if (node.reference !== null) return summary(node.id);
       const data = read(node);
       return {
         id: node.id,
@@ -386,6 +420,7 @@ export function workStore(ctx: Context): WorkStore {
     return {
       ...view,
       nodes: view.nodes.map((node) => {
+        if ("kind" in node && node.kind === "reference") return node;
         const detail = get(node.id);
         return {
           ...node,
@@ -564,15 +599,23 @@ export function workStore(ctx: Context): WorkStore {
   function link(from: string, to: string, relation: WorkLinkRelation): void {
     graph.atomic(() => {
       get(from);
-      get(to);
-      graph.connect(from, to, relation);
+      const target = graph.show(to);
+      if (target.reference === null) get(to);
+      graph.connect(
+        from,
+        to,
+        relation,
+        relation === workRelations.dependsOn && target.reference !== null
+          ? { [dependencyAttributes.referenceKinds]: [...requiredReferenceKinds] }
+          : {},
+      );
     }, authority);
   }
 
   function unlink(from: string, to: string, relation: WorkLinkRelation): void {
     graph.atomic(() => {
       get(from);
-      get(to);
+      if (graph.show(to).reference === null) get(to);
       graph.disconnect(from, to, relation);
     }, authority);
   }
@@ -580,8 +623,15 @@ export function workStore(ctx: Context): WorkStore {
   function ready(id: string): boolean {
     return (
       graph.show(id).state === "active" &&
-      outgoing(id, workRelations.dependsOn).every((target) => get(target).state === "closed")
+      outgoing(id, workRelations.dependsOn).every((target) => prerequisiteSatisfied(target))
     );
+  }
+
+  function prerequisiteSatisfied(id: string): boolean {
+    const node = graph.show(id);
+    return node.reference === null
+      ? get(id).state === "closed"
+      : isWorkReference(node) && node.reference.status === "current" && node.state === "closed";
   }
 
   function parentOf(id: string): string | null {
@@ -677,6 +727,11 @@ function read(node: Node): WorkData {
     criteria: attributes[workAttributes.criteria],
     assignments: attributes[workAttributes.assignments],
   });
+}
+
+function isWorkReference(node: Node): boolean {
+  const reference = node.reference;
+  return reference !== null && requiredReferenceKinds.some((kind) => kind === reference.kind);
 }
 
 function attributesFor(data: WorkData): Attributes {
@@ -786,6 +841,41 @@ function protect(graph: Graph, changes: readonly Mutation[], token: symbol | und
       to?.attributes[workAttributes.item] !== true
     )
       continue;
+    if (
+      (from !== undefined && from.reference !== null) ||
+      (to !== undefined && to.reference !== null)
+    ) {
+      if (change.after === null) continue;
+      if (
+        from?.attributes[workAttributes.item] === true &&
+        to !== undefined &&
+        to.reference !== null &&
+        edge.relation !== workRelations.parentOf
+      ) {
+        read(from);
+        if (edge.relation === workRelations.dependsOn && !isWorkReference(to))
+          throw new Fault(
+            "work-links",
+            "Work prerequisites must reference a source-verified task or group",
+          );
+        if (
+          edge.relation === workRelations.dependsOn &&
+          !requiredReferenceKindsSchema.safeParse(
+            edge.attributes[dependencyAttributes.referenceKinds],
+          ).success
+        )
+          throw new Fault(
+            "work-links",
+            "Remote Work prerequisites require the Work projection constraint; use work link",
+            { field: dependencyAttributes.referenceKinds, expected: [...requiredReferenceKinds] },
+          );
+        continue;
+      }
+      throw new Fault(
+        "work-links",
+        "References can be prerequisite or reference targets, never local work or context",
+      );
+    }
     if (change.after === null) continue;
     if (
       from === undefined ||

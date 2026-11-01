@@ -1,7 +1,10 @@
 import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
+import type { ReferenceLibrary } from "@botlake/extension-references";
 import { z } from "zod";
 
+import { diagnoseWork, diagnosticLimitsSchema, workDependencies } from "./diagnostics.ts";
 import { registerWorkEvents } from "./events.ts";
+import { workLinks } from "./links.ts";
 import { workAttributes, workRelations } from "./node-model.ts";
 import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
@@ -17,6 +20,16 @@ export {
 } from "./node-model.ts";
 export type { StoredCriterion, WorkData, WorkLinkRelation } from "./node-model.ts";
 export { workStore } from "./store.ts";
+export { workLinks, type WorkLink, type WorkLinkResult } from "./links.ts";
+export { diagnoseWork, workDependencies } from "./diagnostics.ts";
+export type {
+  WorkAddress,
+  ObservedWork,
+  WorkDependencyPage,
+  WorkDiagnosticOptions,
+  WorkDiagnosis,
+} from "./diagnostics.ts";
+export { workReferenceProjections } from "./references.ts";
 export type {
   Assignment,
   Attribution,
@@ -44,6 +57,7 @@ const attribution = { by: text.optional() };
 const item = { id: text };
 const relation = z.enum([workRelations.dependsOn, workRelations.references]);
 const topologyInput = treeInput.extend({ format: z.enum(["json", "text"]).optional() });
+const linkInput = { from: text, to: text, relation, toWorkspace: text.optional() };
 const input = z.compile(
   z.discriminatedUnion("command", [
     z.discriminatedUnion("kind", [
@@ -98,8 +112,15 @@ const input = z.compile(
         (value) => value.root !== (value.parent !== undefined),
         "Supply either --parent GROUP or --root",
       ),
-    z.strictObject({ command: z.literal("link"), from: text, to: text, relation }),
-    z.strictObject({ command: z.literal("unlink"), from: text, to: text, relation }),
+    z.strictObject({ command: z.literal("link"), ...linkInput }),
+    z.strictObject({ command: z.literal("unlink"), ...linkInput }),
+    z.strictObject({ command: z.literal("diagnose"), ...item, ...diagnosticLimitsSchema.shape }),
+    z.strictObject({
+      command: z.literal("dependencies"),
+      ...item,
+      limit: z.number().int().min(1).max(100).default(20),
+      offset: z.number().int().nonnegative().default(0),
+    }),
     z.discriminatedUnion("operation", [
       z.strictObject({
         command: z.literal("criterion"),
@@ -120,13 +141,22 @@ const input = z.compile(
   ]),
 );
 
-export function work(): Extension {
+export interface WorkOptions {
+  /** Shared library, explicitly selected alongside Work when cross-lake links are enabled. */
+  references?: ReferenceLibrary | undefined;
+}
+
+export function work(configuration: WorkOptions = {}): Extension {
   return {
     name: "work",
-    requires: ["identity"],
+    requires: [
+      "identity",
+      ...(configuration.references === undefined ? [] : [configuration.references.name]),
+    ],
     activate(ctx) {
       registerWorkEvents(ctx);
       const store = workStore(ctx);
+      const links = workLinks(ctx, configuration.references?.get(ctx));
       ctx.registerQuery("work-items", {
         where: q.eq(q.attr(workAttributes.item), true),
         description: "Tasks and context groups",
@@ -138,7 +168,7 @@ export function work(): Extension {
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
           about:
-            "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
+            "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks or groups and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
           primer:
             "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to BL_ACTOR. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
           cli: {
@@ -316,6 +346,59 @@ export function work(): Extension {
                   },
                 },
               },
+              diagnose: {
+                description:
+                  "Inspect recorded prerequisites through bounded live owner reads; cycles may include closed work. Returns paths, unavailable owners and explicit completeness",
+                examples: [
+                  "bl work diagnose TASK",
+                  "bl work diagnose TASK --max-lakes 4 --max-nodes 200 --max-edges 1000",
+                ],
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Locally owned task or group",
+                  },
+                ],
+                flags: {
+                  "max-lakes": {
+                    key: "maxLakes",
+                    type: "number",
+                    description: "Distinct owners including this lake (default 8, maximum 100)",
+                  },
+                  "max-nodes": {
+                    key: "maxNodes",
+                    type: "number",
+                    description:
+                      "Distinct prerequisite nodes inspected (default 1000, maximum 10000)",
+                  },
+                  "max-edges": {
+                    key: "maxEdges",
+                    type: "number",
+                    description: "Dependency edges read (default 5000, maximum 100000)",
+                  },
+                },
+              },
+              dependencies: {
+                description:
+                  "Read a page of direct, owner-qualified prerequisites without briefs or history; nextOffset=null means exhausted",
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Locally owned task or group",
+                  },
+                ],
+                flags: {
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  offset: {
+                    type: "number",
+                    description: "Continue at nextOffset (default 0); pages are not snapshots",
+                  },
+                },
+              },
               close: {
                 description:
                   "Close after criteria resolve or contained tasks close; releases assignment and returns closure attribution, not success or workflow completion",
@@ -385,13 +468,21 @@ export function work(): Extension {
               },
               link: {
                 description:
-                  "Add a direct prerequisite (from depends on to) or a non-contextual reference",
-                examples: ["bl work link TASK BLOCKER --relation depends-on"],
+                  "Add a prerequisite or reference; --to-workspace imports the remote endpoint and returns its local ID and provenance",
+                examples: [
+                  "bl work link TASK BLOCKER --relation depends-on",
+                  "bl work link UI_TASK API_TASK --to-workspace api --relation depends-on",
+                ],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
                 ],
                 flags: {
+                  "to-workspace": {
+                    key: "toWorkspace",
+                    type: "string",
+                    description: "Owner of TO; omitted treats TO as a local ID",
+                  },
                   relation: {
                     type: "string",
                     required: true,
@@ -400,13 +491,19 @@ export function work(): Extension {
                 },
               },
               unlink: {
-                description: "Remove the specified prerequisite or reference",
+                description:
+                  "Remove a prerequisite or reference; remote endpoints use the retained local import without fetching source state",
                 examples: ["bl work unlink TASK BLOCKER --relation depends-on"],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
                 ],
                 flags: {
+                  "to-workspace": {
+                    key: "toWorkspace",
+                    type: "string",
+                    description: "Owner of TO; alternatively pass the returned local reference ID",
+                  },
                   relation: {
                     type: "string",
                     required: true,
@@ -448,6 +545,16 @@ export function work(): Extension {
           },
           handler(value, _ctx, invocation) {
             switch (value.command) {
+              case "diagnose": {
+                const { command: _, id, ...limits } = value;
+                return diagnoseWork(ctx, id, limits, invocation.signal).then((result) =>
+                  jsonSchema.parse(result),
+                );
+              }
+              case "dependencies":
+                return jsonSchema.parse(
+                  workDependencies(ctx, value.id, { limit: value.limit, offset: value.offset }),
+                );
               case "tree":
               case "graph": {
                 const { command, format, ...options } = value;
@@ -511,11 +618,13 @@ export function work(): Extension {
                 return { id: value.id, parent };
               }
               case "link":
-                store.link(value.from, value.to, value.relation);
-                return { from: value.from, to: value.to, relation: value.relation, linked: true };
+                return links
+                  .link(value, invocation.signal)
+                  .then((result) => jsonSchema.parse(result));
               case "unlink":
-                store.unlink(value.from, value.to, value.relation);
-                return { from: value.from, to: value.to, relation: value.relation, linked: false };
+                return links
+                  .unlink(value, invocation.signal)
+                  .then((result) => jsonSchema.parse(result));
               case "criterion": {
                 if (value.operation === "add")
                   return jsonSchema.parse(store.addCriterion(value.id, value.condition, value.by));

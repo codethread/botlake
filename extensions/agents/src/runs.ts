@@ -15,6 +15,7 @@ import {
   type ProcessSpec,
 } from "@botlake/core";
 import { getFlag } from "@botlake/extension-flags";
+import type { ReferenceAddress, ReferenceLibrary, References } from "@botlake/extension-references";
 import {
   registrationSchema,
   agentMetadata,
@@ -47,7 +48,11 @@ export const startSchema = z.compile(
   }),
 );
 
-export type AgentOptions = AgentConfig & { providers?: Provider[] };
+export type AgentOptions = AgentConfig & {
+  providers?: Provider[];
+  /** Explicitly selected shared library for observing source-owned runs. */
+  references?: ReferenceLibrary;
+};
 
 export type StartRun = z.input<typeof startSchema>;
 
@@ -57,13 +62,15 @@ export class Agents {
   private readonly providers = new Map<ProviderName, Provider>();
   private readonly seats: Catalog;
   private readonly sessions: NativeSessions;
+  private readonly references: References | undefined;
   private reconcileTask: Promise<void> | undefined;
 
   constructor(
     private readonly ctx: Context,
     options: AgentOptions = {},
   ) {
-    const { providers, ...config } = options;
+    const { providers, references, ...config } = options;
+    this.references = references?.get(ctx);
     const configuration = agentConfigSchema.parse(config);
     this.activity = new RunActivity(ctx, this.authority, configuration.activity.retentionMs);
     this.sessions = new NativeSessions(
@@ -122,6 +129,13 @@ export class Agents {
 
   start(raw: StartRun): Node {
     return this.create(raw);
+  }
+
+  /** Observe a remote run without importing its execution state or process custody. */
+  async follow(source: ReferenceAddress, signal: AbortSignal): Promise<Node> {
+    if (this.references === undefined)
+      throw new Fault("reference-library", "Configure Agents with a selected reference library");
+    return this.references.follow(source, signal, { kinds: ["agent/run"] });
   }
 
   async reconcile(): Promise<void> {
@@ -336,6 +350,17 @@ export class Agents {
             throw new Fault("replay", "Request ID was used with different input");
           return existing;
         }
+      }
+
+      if (input.target !== undefined) {
+        const target = this.ctx.graph.show(input.target);
+        if (target.reference !== null)
+          throw new Fault("reference-target", "Start the agent in the task's owning lake", {
+            id: input.target,
+            lakeId: target.reference.lakeId,
+            workspace: target.reference.workspace,
+            nodeId: target.reference.nodeId,
+          });
       }
 
       const seat =

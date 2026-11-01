@@ -87,6 +87,20 @@ bl flag set agent/claude false  # Keep Claude registered, but unavailable for ne
 
 Waiting requires explicitly selected [Batteries](../batteries/README.md); Agents owns the `agent-run-settled` query, not the wait operation. Check `reason: "satisfied"`, then inspect `agent/substatus`, `agent/result` and `agent/error` with `agent show`. Settlement includes failure and cancellation; `completed` indicates successful execution. Closed/stopped alone does not establish settled custody. Timeout or interruption stops only the wait, not the agent. External sessions have no settlement guarantee, and run success does not close the served task.
 
+## Following another lake's run
+
+Supply a shared [reference library](../references/README.md) to `agents({ references })` and explicitly select that library alongside Agents. Configure `agentReferenceProjections` on the source library; combine it with other domain projections when needed. Imports alone activate nothing.
+
+```sh
+bl agent follow RUN_ID --from-workspace OTHER_LAKE
+bl agent show LOCAL_REFERENCE_ID
+bl --workspace OTHER_LAKE agent show RUN_ID
+```
+
+Follow returns a local ID, title, core node state and source provenance. Repeating it reuses the same reference. Observations update eventually and become stale when the source disconnects. Prompts, results, detailed lifecycle and custody stay at the owner; core node state does not establish successful execution or settlement. Followed runs remain outside the local run list and cannot be started, retried or cancelled locally. `--from-workspace` names the imported node's owner; Work uses the same endpoint convention with `link --to-workspace`. Use global `--workspace` to run commands in the owning lake.
+
+TypeScript consumers call `Agents.follow({ workspace, nodeId }, signal)` through the same injected library. A source without a matching `agent/run` projection fails before creating a local import.
+
 `agentConfigSchema` validates aliases and unmanaged configuration, including callbacks. `agentConfigJsonSchema()` describes JSON configuration (string prompts only). Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 
 Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.

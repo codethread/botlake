@@ -7,7 +7,7 @@ import type { Bin } from "./bins.ts";
 import type { Command } from "./cli.ts";
 import type { Clock } from "./clock.ts";
 import type { factSchema } from "./custody.ts";
-import type { EventDefinition, EventHandler, EventPhase } from "./events.ts";
+import type { EventDefinition, EventFrame, EventHandler, EventPhase } from "./events.ts";
 import type { Scheduler } from "./scheduler.ts";
 
 export interface Invocation {
@@ -29,7 +29,8 @@ export interface Invocation {
 
 export interface Op {
   name: string;
-  cli: Command;
+  /** Omit for JSON-only peer operations excluded from CLI discovery. */
+  cli?: Command | undefined;
   about?: string | undefined;
   primer?: string | undefined;
   dependencies: string[];
@@ -59,9 +60,20 @@ export interface Processes {
   acknowledge(handle: string, owner: string, key: string): Promise<void>;
 }
 
+export interface PeerCallOptions {
+  /** Abort the request and its transport when the caller stops waiting. */
+  signal?: AbortSignal;
+  /** Relative request deadline in milliseconds; defaults to 30 seconds. */
+  timeoutMs?: number;
+}
+
 export interface Peers {
-  resolve(workspace: string): Promise<{ path: string; name: string }>;
-  call(workspace: string, op: string, input: Json): Promise<unknown>;
+  /** Resolve a currently published lake name or canonical workspace path. */
+  resolve(workspace: string, options?: PeerCallOptions): Promise<{ path: string; name: string }>;
+  /** Invoke one operation at its owner; transport failures are not replayed. */
+  call(workspace: string, op: string, input: Json, options?: PeerCallOptions): Promise<unknown>;
+  /** Live committed notifications. Wait for ready, then refetch on every reconnect. */
+  watch(workspace: string, events: string[], signal: AbortSignal): AsyncIterable<EventFrame>;
 }
 
 export interface Resource {

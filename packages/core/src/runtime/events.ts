@@ -28,12 +28,19 @@ export function defineEvent<S extends z.ZodType, P extends EventPhase>(
   return definition;
 }
 
+/** Authoritative local nodes whose current snapshots should be read again. */
+export const nodesChanged = defineEvent({
+  name: "nodes.changed",
+  phase: "afterCommit",
+  schema: z.object({ ids: z.array(z.string()) }),
+});
+
 const inputSchema = z.discriminatedUnion("command", [
   z.strictObject({ command: z.literal("list") }),
   z.strictObject({ command: z.literal("show"), name: z.string().min(1) }),
   z.strictObject({ command: z.literal("stream"), events: z.array(z.string()).default([]) }),
 ]);
-const frameSchema = z.discriminatedUnion("type", [
+export const eventFrameSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("ready"), events: z.array(z.string()) }),
   z.strictObject({
     type: z.literal("event"),
@@ -42,14 +49,14 @@ const frameSchema = z.discriminatedUnion("type", [
     data: jsonSchema,
   }),
 ]);
-type Frame = z.infer<typeof frameSchema>;
+export type EventFrame = z.infer<typeof eventFrameSchema>;
 interface Registration {
   definition: EventDefinition;
   handlers: Set<(data: unknown) => unknown>;
 }
 interface Watcher {
   names: Set<string>;
-  push(frame: Frame): void;
+  push(frame: EventFrame): void;
   close(): void;
 }
 
@@ -103,7 +110,7 @@ export class Events {
       }
       return;
     }
-    const frame = frameSchema.parse({
+    const frame = eventFrameSchema.parse({
       type: "event",
       event: event.name,
       at: this.clock.now(),
@@ -131,7 +138,7 @@ export class Events {
       output: jsonSchema,
       jsonSchema: { input: inputSchema, output: jsonSchema },
       about:
-        "Event contracts belong to selected extensions. Transactional hooks run in-process; after-commit notifications invalidate reads without durable replay.",
+        "Core and selected extensions declare event contracts. Transactional hooks run in-process; after-commit notifications invalidate reads without durable replay.",
       primer:
         "List event names and phases; show NAME expands one payload schema. Stream committed notifications with events stream, optionally --event NAME repeated. Wait for ready before reading an initial snapshot. Notifications invalidate cached reads; refetch on reconnect. Live only: no replay or durable cursor. A slow consumer is disconnected. Transactional hooks are in-process only.",
       cli: {
@@ -194,7 +201,7 @@ export class Events {
     return registration;
   }
 
-  private async *stream(names: string[], signal: AbortSignal): AsyncGenerator<Frame> {
+  private async *stream(names: string[], signal: AbortSignal): AsyncGenerator<EventFrame> {
     const selected =
       names.length > 0
         ? [...new Set(names)]
@@ -205,7 +212,7 @@ export class Events {
     for (const name of selected)
       if (this.registrations.get(name)?.definition.phase !== "afterCommit")
         throw new Fault("event", `Expected a registered after-commit event: ${name}`);
-    const queue: Frame[] = [];
+    const queue: EventFrame[] = [];
     let wake: (() => void) | undefined;
     let closed = false;
     let failure: Fault | undefined;
