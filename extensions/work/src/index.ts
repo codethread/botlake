@@ -231,7 +231,7 @@ export function work(configuration: WorkOptions = {}): Extension {
               },
               show: {
                 description:
-                  "Returns item, context, readiness, complete prerequisites/references and paged member summaries; history is opt-in",
+                  "Owned work returns brief, context, links and paged members; reference IDs return the observed summary and owner. History is opt-in",
                 examples: ["bl work show TASK", "bl work show GROUP --limit 50 --history"],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
@@ -273,7 +273,7 @@ export function work(configuration: WorkOptions = {}): Extension {
               },
               list: {
                 description:
-                  "Paged priority-ordered summaries; returns items, total and nextOffset (null when exhausted)",
+                  "Paged owned work and linked remote summaries; queue views are local-only. Returns items, total and nextOffset (null when exhausted)",
                 examples: [
                   "bl work list --view available",
                   "bl work list --view human --assignee IDENTITY",
@@ -309,7 +309,7 @@ export function work(configuration: WorkOptions = {}): Extension {
                   search: {
                     type: "string",
                     description:
-                      "Case-insensitive title, description and task notes; view=all includes closed work by default",
+                      "Local title/description/notes and linked remote titles; view=all includes closed work by default",
                   },
                   limit: {
                     type: "number",
@@ -577,7 +577,9 @@ export function work(configuration: WorkOptions = {}): Extension {
                 const result = store.update(id, request);
                 return { id, revision: result.revision };
               }
-              case "show":
+              case "show": {
+                const summary = store.summary(value.id);
+                if (summary.kind === "reference") return jsonSchema.parse(summary);
                 return jsonSchema.parse(
                   store.inspect(value.id, {
                     history: value.history,
@@ -585,6 +587,7 @@ export function work(configuration: WorkOptions = {}): Extension {
                     offset: value.offset,
                   }),
                 );
+              }
               case "list": {
                 const { command: _, ...request } = value;
                 return jsonSchema.parse(store.list(request));

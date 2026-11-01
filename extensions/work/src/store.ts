@@ -342,12 +342,40 @@ export function workStore(ctx: Context): WorkStore {
           return ready(item.id) && item.assignee === null && item.audience === "AFK";
         return ready(item.id) && item.audience === "HITL" && item.assignee === human;
       })
-      .map((node) => summary(node.id))
-      .toSorted((a, b) => {
+      .map((node) => summary(node.id));
+    if (
+      input.view === "all" &&
+      input.assignee === undefined &&
+      input.audience === undefined &&
+      input.origin === undefined &&
+      input.parent === undefined
+    ) {
+      const ownedWork = q.eq(q.attr(workAttributes.item), true);
+      const linked = graph.all({
+        where: q.and(
+          q.missing(q.attr(workAttributes.item)),
+          q.or(
+            q.edgeIn(workRelations.dependsOn, ownedWork),
+            q.edgeIn(workRelations.references, ownedWork),
+          ),
+          ...(state === "all" ? [] : [q.eq("state", state === "open" ? "active" : "closed")]),
+        ),
+      });
+      for (const node of linked) {
+        if (node.reference === null) continue;
+        if (input.kind !== undefined && node.reference.kind !== `work/${input.kind}`) continue;
+        if (needle !== undefined && !node.title.toLowerCase().includes(needle)) continue;
+        matches.push(summary(node.id));
+      }
+    }
+    return page(
+      matches.toSorted((a, b) => {
         const urgency = (a.priority ?? "P4").localeCompare(b.priority ?? "P4");
         return urgency === 0 ? a.id.localeCompare(b.id) : urgency;
-      });
-    return page(matches, input.limit, input.offset);
+      }),
+      input.limit,
+      input.offset,
+    );
   }
 
   function tree(options: WorkTreeOptions = {}): WorkTopology {
@@ -712,6 +740,12 @@ export function workStore(ctx: Context): WorkStore {
 // -- Storage and invariant enforcement --
 
 function read(node: Node): WorkData {
+  if (node.reference !== null)
+    throw new Fault(
+      "reference-read-only",
+      "This work is owned by another lake; run the operation in its workspace",
+      { id: node.id, ...node.reference },
+    );
   if (node.attributes[workAttributes.item] !== true)
     throw new Fault("work", `Expected task or group: ${node.id}`);
   const attributes = node.attributes;
