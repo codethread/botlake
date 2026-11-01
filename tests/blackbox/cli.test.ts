@@ -75,7 +75,7 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     );
     expect(evaluated.code).toBe(0);
     expect(evaluated.stderr).toContain("diagnostic");
-    expect(JSON.parse(evaluated.stdout)).toMatchObject([{ id: committed.refs.root }]);
+    expect(JSON.parse(evaluated.stdout)).toMatchObject({ nodes: [{ id: committed.refs.root }] });
     const rejected = await runCli(host, ["--workspace", "nodes", "--json", "eval", "return 1;"]);
     expect(rejected.code).toBe(1);
     expect(rejected.stdout).toBe("");
@@ -513,7 +513,6 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
         z.tuple([
           z.object({
             cli: z.object({ commands: z.record(z.string(), z.unknown()) }),
-            jsonSchema: z.object({ input: z.unknown() }),
           }),
         ]),
       )
@@ -549,7 +548,11 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
           ),
         }),
       )
-      .parse(nodeOperation.jsonSchema.input);
+      .parse(
+        z
+          .array(z.object({ jsonSchema: z.object({ input: z.unknown() }) }))
+          .parse(await host.cli([...prefix, "schema", "node"]))[0]?.jsonSchema.input,
+      );
     expect(
       nodeInputSchema.oneOf.map((variant) => variant.properties.command.const).toSorted(),
     ).toEqual(nodeCommands);
@@ -634,7 +637,7 @@ export default {name:"help",activate(ctx){ctx.register(defineOp({name:"nested",i
       description: "Bundle operations",
     });
     const selectedOperationHelp = await host.cli([...prefix, "help", "nested"]);
-    expect(selectedOperationHelp).toMatchObject([
+    expect(await host.cli([...prefix, "schema", "nested"])).toMatchObject([
       { jsonSchema: { input: { properties: { count: { type: "integer" } } } } },
     ]);
     const operationHelp = z

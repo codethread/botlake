@@ -163,7 +163,11 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       '{"botlake":{"name":"alpha","extensions":["missing-extension"]}}',
     );
     expect(await host.botlake(["restart-host"], false)).toContain("missing-extension");
-    expect(await host.bl("healthy", "node", { command: "list" })).toEqual([]);
+    expect(await host.bl("healthy", "node", { command: "list" })).toEqual({
+      nodes: [],
+      total: 0,
+      nextOffset: null,
+    });
     expect(await host.bl("alpha", "node", { command: "list" }, false)).toContain(
       "unknown workspace",
     );

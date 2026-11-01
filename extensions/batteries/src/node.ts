@@ -33,8 +33,10 @@ const selection = {
   query: z.string().optional(),
   where: predicateSchema.optional(),
   params: attributesSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  limit: z.number().int().min(1).max(10000).default(100),
+  offset: z.number().int().nonnegative().default(0),
   ...readOptions,
+  lean: z.boolean().default(true),
 };
 
 const inputSchema = z.compile(
@@ -77,8 +79,10 @@ export function registerNode(ctx: Context): void {
       input: inputSchema,
       output: jsonSchema,
       jsonSchema: { input: inputSchema, output: jsonSchema },
+      about:
+        "Nodes are graph records with hot and archived attributes. Domain extensions own their protocols and guard protected data; changing a generic node state does not submit a workflow outcome.",
       primer:
-        "Create, inspect, select and mutate graph nodes. Update applies recursive merge patches (null deletes keys); set-attributes replaces supplied values exactly, including nested objects and nulls. Omitted top-level keys stay unchanged in both operations.",
+        "Create, inspect, select and mutate graph nodes. List/ready return summary pages; follow nextOffset until null, and use show ID for attributes or --lean=false to expand page records. Pages are not snapshots. Named queries come from query NAME; ad hoc predicates use --input or botlake lake eval. Archived values do not participate in selection. Update merges objects recursively and null deletes keys; set-attributes preserves supplied values exactly. Omitted keys stay unchanged in both.",
       cli: {
         description: "Create, inspect, select and mutate graph nodes",
         examples: [
@@ -92,7 +96,10 @@ export function registerNode(ctx: Context): void {
             description: "Create a node, then use its returned id for notes, edges and updates",
             examples: ['bl node add "Investigate issue" --attributes \'{"priority":"p2"}\''],
             positionals: [{ name: "title", type: "string", required: true }],
-            flags: { state: { type: "string" }, attributes: { type: "json" } },
+            flags: {
+              state: { type: "string", description: "active (default) or closed" },
+              attributes: { type: "json", description: "Initial attribute object (default {})" },
+            },
           },
           show: {
             description:
@@ -110,7 +117,7 @@ export function registerNode(ctx: Context): void {
             positionals: [{ name: "id", type: "string", required: true }],
             flags: {
               title: { type: "string" },
-              state: { type: "string" },
+              state: { type: "string", description: "active or closed; omitted stays unchanged" },
               attributes: {
                 type: "json",
                 description: "Recursive merge patch; null deletes keys",
@@ -143,24 +150,44 @@ export function registerNode(ctx: Context): void {
           },
           list: {
             description:
-              "Select nodes with a named query (--query and --params) or an ad hoc predicate through lake eval and api.call('node', {command: 'list', where, params, limit}). Default limit is 100; a full page does not prove completeness, and archived values do not participate in hot selection.",
+              "List summary nodes, total and nextOffset (null when exhausted); all states by default. Use show ID for details.",
             examples: ["bl node list --limit 20"],
             flags: {
               query: { type: "string", description: "Registered query name" },
-              params: { type: "json", description: "Named-query parameters" },
-              limit: { type: "number", description: "Maximum results; defaults to 100" },
+              params: { type: "json", description: "Query parameters (default {})" },
+              limit: { type: "number", description: "Page size (default 100; 1–10000)" },
+              offset: { type: "number", description: "Continue at nextOffset (default 0)" },
               ...readFlags,
+              "include-archived": {
+                ...readFlags["include-archived"],
+                description:
+                  "Include archived attributes in expanded records; requires --lean=false",
+              },
+              lean: {
+                type: "boolean",
+                description: "Summaries by default; --lean=false includes attributes",
+              },
             },
           },
           ready: {
             description:
-              "Select active nodes with no active depends-on targets; use --query and --params or lake eval with api.call('node', {command: 'ready', where, params, limit}). Default limit is 100; a full page does not prove completeness.",
+              "List active nodes with no active depends-on targets; returns nodes, total and nextOffset (null when exhausted).",
             examples: ["bl node ready --limit 20"],
             flags: {
               query: { type: "string", description: "Registered query name" },
-              params: { type: "json", description: "Named-query parameters" },
-              limit: { type: "number", description: "Maximum results; defaults to 100" },
+              params: { type: "json", description: "Query parameters (default {})" },
+              limit: { type: "number", description: "Page size (default 100; 1–10000)" },
+              offset: { type: "number", description: "Continue at nextOffset (default 0)" },
               ...readFlags,
+              "include-archived": {
+                ...readFlags["include-archived"],
+                description:
+                  "Include archived attributes in expanded records; requires --lean=false",
+              },
+              lean: {
+                type: "boolean",
+                description: "Summaries by default; --lean=false includes attributes",
+              },
             },
           },
           supersede: {
@@ -250,9 +277,14 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
             throw new Fault("query", `Missing parameter: ${param}`);
         where = named.where;
       }
-      return ctx.graph
-        .list({ ...options, where, ready: command === "ready" })
-        .map((node) => nodeView(node, lean));
+      const selected = { ...options, where, ready: command === "ready" };
+      const nodes = ctx.graph.list(selected).map((node) => nodeView(node, lean));
+      const total = ctx.graph.count({ where, params: options.params, ready: selected.ready });
+      return {
+        nodes,
+        total,
+        nextOffset: options.offset + nodes.length < total ? options.offset + nodes.length : null,
+      };
     }
     case "supersede":
       return ctx.graph.supersede(input.id, input.replacement);

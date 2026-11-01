@@ -107,17 +107,17 @@ _bl() {
         def escape: gsub("\\\\"; "\\\\") | gsub(":"; "\\:") | gsub("[\\r\\n\\t]"; " ");
         .[] | (.name | escape) + ":" + (.cli.description | escape)
       ' <<< "$catalog")}" )
-      candidates+=( 'help:Discover commands' 'about:Read explanations' 'prime:Read runbooks' )
+      candidates+=( 'help:Discover commands' 'about:Read explanations' 'prime:Read runbooks' 'schema:Read declared JSON schemas' )
       _describe operation candidates
       ;;
     arguments)
       name=${(Q)words[1]}
-      if [[ $name == (help|about|prime) ]]; then
+      if [[ $name == (help|about|prime|schema) ]]; then
         # --json is recognized only immediately after the discovery operation.
         _arguments -C -A '-*' '--json[Force JSON output]' '1:operation:->operation' '*::arguments:->arguments'
         if [[ $state == operation ]]; then
           _bl_command "$node" yes
-        elif [[ $state == arguments ]]; then
+        elif [[ $state == arguments && $name != schema ]]; then
           name=${(Q)words[1]}
           node=$(command bl "${context_flags[@]}" help --json "$name" | command jq -ec '.[0].cli') || return 1
           _bl_command "$node" yes "$name"
@@ -138,7 +138,7 @@ _botlake() {
   local -a help=( '(-h --help)'{-h,--help}'[Show command help]' )
 
   _arguments -C -A '-*' \
-    '--help[Show dispatcher help]' \
+    "${help[@]}" \
     '--version[Print CLI and protocol versions]' \
     '1:command:((
       init\:"Initialize workspace configuration"
@@ -161,17 +161,35 @@ _botlake() {
         '--workspace=[Workspace directory]:directory:_directories' \
         '--name=[Published workspace name]:name:'
       ;;
+    start|status|stop|restart-host|host-status)
+      _arguments -S "${help[@]}"
+      ;;
+    help)
+      _arguments -C '1:command:(init start status stop restart-host host-status lake bin completions)' '*::arguments:->topic'
+      [[ $state == topic ]] || return
+      case ${(Q)words[1]} in
+        lake) _arguments '1:command:(start restart stop status list eval)' ;;
+        bin) _arguments '1:command:(list build run)' ;;
+        completions) _arguments '1:shell:(zsh)' ;;
+      esac
+      ;;
     completions)
-      _arguments '1:shell:(zsh)'
+      _arguments -S "${help[@]}" '1:shell:(zsh)'
       ;;
     lake)
-      _arguments -C -A '-*' \
-        '1:action:(start restart stop status list eval)' \
+      _arguments -C -A '-*' "${help[@]}" \
+        '1:action:(start restart stop status list eval help)' \
         '*::arguments:->lake'
       [[ $state == lake ]] || return
       case ${(Q)words[1]} in
         start|restart|stop|status)
-          _arguments -S -A '-*' "$workspace"
+          _arguments -S -A '-*' "${help[@]}" "$workspace"
+          ;;
+        list)
+          _arguments -S "${help[@]}"
+          ;;
+        help)
+          _arguments '1:command:(start restart stop status list eval)'
           ;;
         eval)
           _arguments -S -A '-*' "${help[@]}" "$workspace" \
@@ -191,6 +209,7 @@ _botlake() {
         build) args+=( '1:executable:_message executable' ) ;;
         run) args+=( '1:executable:_message executable' '*:arguments:_files' ) ;;
         list) ;;
+        help) _arguments '1:command:(list build run)'; return ;;
         *) return 1 ;;
       esac
       _arguments -S -A '-*' "${args[@]}"

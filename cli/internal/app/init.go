@@ -4,14 +4,36 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
 
+const initUsage = `Usage:
+  botlake init [--workspace DIR] [--name NAME]
+
+Initialize .botlake/package.json without installing or selecting extensions.
+Existing package fields are preserved; if botlake configuration already exists,
+init reports it and makes no changes.
+
+Flags:
+  --workspace DIR  Workspace directory (default: main Git checkout)
+  --name NAME      Published workspace name (default: directory basename)
+
+Without --workspace, Git discovery selects the main checkout, including from a
+linked worktree or subdirectory. Outside Git, pass --workspace. Names start with
+a letter and contain only letters, digits, underscores or hyphens.
+
+Examples:
+  botlake init
+  botlake init --workspace /path/to/project --name work
+`
+
 func initWorkspace(args []string) int {
 	fail := func(err error) int { return cliFailure(err, false) }
+	if len(args) == 1 && args[0] == "help" {
+		return writeHelp(initUsage)
+	}
 	flags := flag.NewFlagSet("botlake init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 
@@ -19,14 +41,15 @@ func initWorkspace(args []string) int {
 	name := flags.String("name", "", "published workspace name (defaults to directory basename)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]")
-
-			return 0
+			return writeHelp(initUsage)
 		}
 
 		return fail(err)
 	}
 
+	if flags.NArg() == 1 && flags.Arg(0) == "help" {
+		return writeHelp(initUsage)
+	}
 	if flags.NArg() != 0 {
 		return fail(errors.New("usage: botlake init [--workspace DIR] [--name NAME]"))
 	}

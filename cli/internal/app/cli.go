@@ -7,10 +7,48 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 //go:embed completions.zsh
 var zshCompletions string
+
+const botlakeUsage = `Usage:
+  botlake <command> [flags]
+
+Commands:
+  init               Initialize workspace configuration
+  start              Run the foreground supervisor
+  status             Show supervisor and active-lake status
+  stop               Stop the supervisor and its lakes
+  restart-host       Restart the Bun host and restore active lakes
+  host-status        Inspect the Bun host
+  lake <command>     Manage a workspace lake or evaluate code
+  bin <command>      List, build or run extension-provided programs
+  completions zsh    Print the zsh completion script
+  --version          Print CLI, build and protocol versions
+
+Use "botlake COMMAND --help", "botlake GROUP COMMAND --help", or
+"botlake help COMMAND [SUBCOMMAND]" for details. Commands that select a
+workspace default to the main Git checkout. BL_HOME selects the supervisor home
+(default: ~/.botlake).
+`
+
+const lakeUsage = `Usage:
+  botlake lake <command> [flags]
+
+Commands:
+  start       Start a workspace lake
+  restart     Reload its configuration and restart it
+  stop        Stop a workspace lake
+  status      Inspect a workspace lake
+  list        List active lakes
+  eval        Run trusted JavaScript against a running lake
+
+For start, restart, stop and status, --workspace PATH|NAME defaults to the
+main Git checkout. Outside Git, pass --workspace. New lakes require a path;
+published names select active lakes. "botlake help lake COMMAND" shows details.
+`
 
 func warnAudienceEnvironment() {
 	if _, present := os.LookupEnv("BL_AUDIENCE"); present {
@@ -18,11 +56,159 @@ func warnAudienceEnvironment() {
 	}
 }
 
-func Botlake(args []string) int {
-	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Fprintln(os.Stdout, "botlake init [--workspace DIR] [--name NAME]\nbotlake start | status | stop | restart-host | host-status\nbotlake lake start|restart|stop|status --workspace PATH|NAME\nbotlake lake list\nbotlake lake eval [--workspace PATH|NAME] [--timeout DURATION] CODE|@FILE|-\nbotlake bin list|build|run [--workspace PATH|NAME] [NAME] [ARGS]\nbotlake completions zsh")
+func isHelpArg(arg string) bool { return arg == "help" || arg == "--help" || arg == "-h" }
 
-		return 0
+func writeHelp(text string) int {
+	if _, err := io.WriteString(os.Stdout, text); err != nil {
+		return cliFailure(err, false)
+	}
+
+	return 0
+}
+
+func helpCLI(path []string) int {
+	if len(path) == 0 {
+		return writeHelp(botlakeUsage)
+	}
+
+	switch path[0] {
+	case "init":
+		if len(path) == 1 {
+			return writeHelp(initUsage)
+		}
+	case "start", "status", "stop", "restart-host", "host-status":
+		if len(path) == 1 {
+			return writeHelp(supervisorCommandHelp(path[0]))
+		}
+	case "lake":
+		if len(path) == 1 {
+			return writeHelp(lakeUsage)
+		}
+		if len(path) == 2 {
+			switch path[1] {
+			case "start", "restart", "stop", "status", "list", "eval":
+				return writeHelp(lakeCommandHelp(path[1]))
+			}
+		}
+	case "bin":
+		return binHelp(path[1:])
+	case "completions":
+		if len(path) == 1 || (len(path) == 2 && path[1] == "zsh") {
+			return writeHelp(completionsUsage)
+		}
+	case "--version":
+		if len(path) == 1 {
+			return writeHelp("Usage:\n  botlake --version\n\nPrint the CLI version, build ID and protocol version as JSON.\n")
+		}
+	}
+
+	return cliFailure(fmt.Errorf("unknown help topic: botlake %s", strings.Join(path, " ")), false)
+}
+
+func supervisorCommandHelp(command string) string {
+	common := "The supervisor home is BL_HOME (default: ~/.botlake)."
+	switch command {
+	case "start":
+		return `Usage:
+  botlake start
+
+Run the supervisor in the foreground and start its Bun host. Keep this process
+running while using lakes. BL_HOME selects the supervisor home (default:
+~/.botlake); BL_CORE can select the core package (default: this checkout).
+`
+	case "status":
+		return `Usage:
+  botlake status
+
+Show the supervisor process, Bun host readiness and registered lakes. ` + common + "\n"
+	case "stop":
+		return `Usage:
+  botlake stop
+
+Stop the supervisor and its managed lakes. ` + common + "\n"
+	case "restart-host":
+		return `Usage:
+  botlake restart-host
+
+Restart the Bun host and restore currently active lakes from their workspace
+configuration. ` + common + "\n"
+	case "host-status":
+		return `Usage:
+  botlake host-status
+
+Inspect Bun host readiness and runtime status. ` + common + "\n"
+	default:
+		return botlakeUsage
+	}
+}
+
+func lakeCommandHelp(command string) string {
+	common := `Flags:
+  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+
+Outside Git, pass --workspace. For start, a new lake needs a workspace path;
+published names refer to active lakes.
+`
+	switch command {
+	case "start":
+		return `Usage:
+  botlake lake start [--workspace PATH|NAME]
+
+Start the selected workspace lake. Without --workspace, use the main Git
+checkout (including when invoked from a linked worktree).
+
+` + common
+	case "restart":
+		return `Usage:
+  botlake lake restart [--workspace PATH|NAME]
+
+Reload the selected workspace configuration and restart its lake. Without
+--workspace, use the main Git checkout.
+
+` + common
+	case "stop":
+		return `Usage:
+  botlake lake stop [--workspace PATH|NAME]
+
+Stop the selected lake without stopping the supervisor. Without --workspace,
+use the main Git checkout.
+
+` + common
+	case "status":
+		return `Usage:
+  botlake lake status [--workspace PATH|NAME]
+
+Report whether the selected lake is ready. Without --workspace, use the main
+Git checkout.
+
+` + common
+	case "list":
+		return `Usage:
+  botlake lake list
+
+List currently active lakes and their published workspace names. This command
+does not start or discover inactive workspaces.
+`
+	case "eval":
+		return evalUsage
+	default:
+		return lakeUsage
+	}
+}
+
+const completionsUsage = `Usage:
+  botlake completions zsh
+
+Print the zsh completion script to stdout. Source it or redirect it to a file;
+generation is offline and does not contact the supervisor.
+`
+
+func Botlake(args []string) int {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		return helpCLI(nil)
+	}
+	if args[0] == "help" {
+		return helpCLI(args[1:])
 	}
 
 	fail := func(err error) int {
@@ -31,6 +217,9 @@ func Botlake(args []string) int {
 
 	switch args[0] {
 	case "completions":
+		if (len(args) == 2 && isHelpArg(args[1])) || (len(args) == 3 && args[1] == "zsh" && isHelpArg(args[2])) {
+			return writeHelp(completionsUsage)
+		}
 		if len(args) != 2 || args[1] != "zsh" {
 			return fail(errors.New("usage: botlake completions zsh"))
 		}
@@ -46,6 +235,9 @@ func Botlake(args []string) int {
 	case "init":
 		return initWorkspace(args[1:])
 	case "start":
+		if len(args) == 2 && isHelpArg(args[1]) {
+			return writeHelp(supervisorCommandHelp("start"))
+		}
 		if len(args) != 1 {
 			return fail(errors.New("usage: botlake start (foreground daemon)"))
 		}
@@ -55,18 +247,23 @@ func Botlake(args []string) int {
 		}
 		return 0
 	case "lake":
-		if len(args) < 2 {
-			return fail(errors.New("usage: botlake lake start|restart|stop|status|list|eval"))
+		if len(args) == 1 || len(args) == 2 && isHelpArg(args[1]) {
+			return writeHelp(lakeUsage)
+		}
+		if args[1] == "help" {
+			return helpCLI(append([]string{"lake"}, args[2:]...))
 		}
 		action := args[1]
 		if action == "eval" {
 			return evalCLI(args[2:])
 		}
 		if action == "list" {
+			if len(args) == 3 && isHelpArg(args[2]) {
+				return writeHelp(lakeCommandHelp("list"))
+			}
 			if len(args) != 2 {
 				return fail(errors.New("usage: botlake lake list"))
 			}
-
 			return Relay(request("lake-list", "", nil))
 		}
 		switch action {
@@ -78,7 +275,13 @@ func Botlake(args []string) int {
 		flags.SetOutput(io.Discard)
 		target := flags.String("workspace", "", "workspace path or published name")
 		if err := flags.Parse(args[2:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return writeHelp(lakeCommandHelp(action))
+			}
 			return fail(err)
+		}
+		if flags.NArg() == 1 && flags.Arg(0) == "help" {
+			return writeHelp(lakeCommandHelp(action))
 		}
 		if flags.NArg() != 0 {
 			return fail(errors.New("select a workspace with --workspace PATH|NAME"))
@@ -88,7 +291,6 @@ func Botlake(args []string) int {
 			if err != nil {
 				return fail(err)
 			}
-
 			*target = selected
 		}
 		var payload any
@@ -100,6 +302,9 @@ func Botlake(args []string) int {
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":
+		if len(args) == 2 && isHelpArg(args[1]) {
+			return writeHelp(supervisorCommandHelp(args[0]))
+		}
 		if len(args) != 1 {
 			return fail(fmt.Errorf("usage: botlake %s", args[0]))
 		}

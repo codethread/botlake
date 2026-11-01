@@ -19,6 +19,8 @@ export default cron({
 
 Schedules accept `everyMs` or `expression` with an IANA `timezone`. Jobs declare overlap (`skip`, `queue`, `allow`), missed-run (`skip`, `once`, `catch-up`) and retry policies. Unchanged definitions retain cadence; changes reset it. Actions receive stable occurrence IDs for deduplicating external effects under at-least-once delivery.
 
+`bl cron status` and `bl cron history` return `{ items, total, nextOffset }` pages (default 20, maximum 100); continue with `--offset nextOffset` until it is `null`. Pages are not snapshots. Status summaries are ordered by ID and contain `id`, `nextAt` and `enabled`; `--details` adds the decoded persisted `definition`, including potentially large or sensitive payloads. Disabled jobs retain their former `nextAt`, meaningful as a next fire only when enabled. History is ordered by scheduled time then ID and may be filtered with `--job`; `--details` adds result/error fields. All timestamps are Unix milliseconds.
+
 ```mermaid
 classDiagram
   Job "1" --> "*" Occurrence : produces
@@ -26,4 +28,4 @@ classDiagram
 
 A job is a definition, not a run. An occurrence records one scheduled execution at `${job.id}/${scheduledAt}`; retries increment that occurrence's `attempt` rather than creating a new one.
 
-`defineJob`, `Cron`, `nextFire`, `jobSchema`, `scheduleSchema`, job/action types and `jobJsonSchema()` are public exports. The default export is an inert Cron extension with no jobs/actions, useful for status/history. Core's durable wake scheduler remains separate from Cron's job model.
+`defineJob`, `Cron`, `nextFire`, `jobSchema`, `scheduleSchema`, job/action types and `jobJsonSchema()` are public exports. Use `bl help cron status` and `bl help cron history` for flag details. Imports are inert. Selecting the default empty job set reconciles persisted schedules at startup: removed jobs are disabled, their wakes cancelled, and pending/running occurrences marked skipped. Select the configured module when inspecting an existing scheduled lake; status/history themselves are read-only. Core's durable wake scheduler remains separate from Cron's job model.

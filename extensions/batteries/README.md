@@ -4,11 +4,13 @@ Everyday graph operations: `node`, `edge`, `query`, `await` and `batch`. Node cr
 
 Select `"@botlake/extension-batteries"` in workspace `extensions`, or default-export `batteries(namedQueries)` from a local module. The package's default export is an inert, unconfigured Batteries extension. The `q` predicate builders belong to core, not Batteries.
 
-`bl node show`, `list`, `ready` and `subgraph` omit archived attributes by default. `--include-archived` adds archived values; `--lean` returns only `id`, `title` and `state` for each node, omitting all attributes even with `--include-archived`. Subgraph edges are unchanged.
+`bl node list` and `ready` return `{ nodes, total, nextOffset }` pages of `{ id, title, state }` summaries. Continue with `--offset nextOffset` until `null`; page size defaults to 100 (maximum 10,000). `ready` selects active nodes with no active prerequisites; `list` includes every state unless filtered. Separate calls are not a snapshot.
 
-`bl node list` and `bl node ready` accept `--query NAME`, `--params JSON` and `--limit`. Inspect registered definitions with `bl query [NAME]`. For ad hoc predicates and JavaScript composition use [`botlake lake eval`](../../README.md#javascript-evaluation); `api.call("node", { command: "list"|"ready", where, params, limit, lean, includeArchived })` retains programmatic selection. Raw `bl --input` also accepts predicates; there is no `--where` flag.
+Use `bl node show ID` for one full node, or `--lean=false` to expand page records. Reads omit archived attributes unless `--include-archived` is set. `show` and the explicit `subgraph` expansion also accept `--lean` to omit attributes. Archived values never participate in selection, even when returned.
 
-List/ready default to 100 results (maximum 10,000); a full result page does not establish completeness. Separate calls do not share a snapshot.
+Use `--query NAME --params JSON` for registered queries. `bl query` lists names, descriptions and parameter names; `bl query NAME` expands the predicate. For ad hoc predicates and composition use [`botlake lake eval`](../../README.md#javascript-evaluation) or `bl --input`; both accept `where`, `params`, `limit` and `offset`. There is no `--where` shell flag.
+
+`bl edge list [ID]` pages incident edges, or all edges when ID is omitted. It returns `{ edges, total, nextOffset }` with attributes omitted; `--lean=false` expands them. Use leaf help for defaults and filters. Graph mutations return their stored records; `batch` returns refs and committed changes atomically.
 
 `bl node update ID --attributes JSON` applies a merge patch: objects merge recursively, arrays/scalars replace, and null deletes keys. `bl node set-attributes ID --attributes JSON` replaces supplied values verbatim, preserving nested and top-level nulls; omitted keys stay unchanged. Both accept `--expected-revision`.
 

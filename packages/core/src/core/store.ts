@@ -83,6 +83,7 @@ const databaseVersionSchema = z.compile(z.object({ user_version: z.number() }));
 const attributeRowsSchema = z.compile(z.array(z.object({ key: z.string(), value: z.string() })));
 const limitSchema = z.compile(z.number().int().positive().max(10000));
 const positiveIntegerSchema = z.compile(z.number().int().positive());
+const offsetSchema = z.compile(z.number().int().nonnegative());
 const countSchema = z.compile(z.object({ count: z.number().int().nonnegative() }));
 const createSchema = z.compile(patchSchema.required({ title: true }));
 const attributeKeysSchema = z.compile(z.array(z.string().min(1)).min(1));
@@ -348,9 +349,12 @@ export class Graph {
     };
   }
 
-  list(options: Selection & { limit?: number | undefined } = {}): Node[] {
+  list(
+    options: Selection & { limit?: number | undefined; offset?: number | undefined } = {},
+  ): Node[] {
     const limit = limitSchema.parse(options.limit ?? 100);
-    return this.select(options, limit);
+    const offset = offsetSchema.parse(options.offset ?? 0);
+    return this.select(options, limit, offset);
   }
 
   all(options: Selection = {}): Node[] {
@@ -800,7 +804,7 @@ export class Graph {
     this.changes.push(change);
   }
 
-  private select(options: Selection, limit?: number): Node[] {
+  private select(options: Selection, limit?: number, offset = 0): Node[] {
     const selection = this.compileSelection(options);
     const ids = idRowsSchema.parse(
       this.db
@@ -809,9 +813,9 @@ export class Graph {
           FROM nodes s
           WHERE ${selection.sql}
           ORDER BY s.created_at, s.id
-          ${limit === undefined ? "" : sql`LIMIT ?`}
+          ${limit === undefined ? "" : sql`LIMIT ? OFFSET ?`}
         `)
-        .all(...selection.bindings, ...(limit === undefined ? [] : [limit])),
+        .all(...selection.bindings, ...(limit === undefined ? [] : [limit, offset])),
     );
     return ids.map(({ id }) =>
       this.show(id, { includeArchived: options.includeArchived ?? false }),

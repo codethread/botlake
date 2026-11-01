@@ -15,7 +15,72 @@ import (
 	"syscall"
 )
 
-const binUsage = "botlake bin list [--workspace PATH|NAME]\nbotlake bin build [--workspace PATH|NAME] NAME\nbotlake bin run [--workspace PATH|NAME] NAME [ARGS...]\n"
+const binUsage = `Usage:
+  botlake bin <command> [flags]
+
+Commands:
+  list                  List extension-declared programs
+  build NAME            Run a program's declared build recipe
+  run NAME [ARGS...]    Execute a program and pass arguments through
+
+Flags:
+  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+
+The selected lake must be active and provide its bins operation. Outside Git,
+pass --workspace. Builds run only when requested; runs keep the caller's working
+directory and pass all arguments after NAME literally, including --help.
+Use "botlake bin help COMMAND" for command details.
+`
+
+func binCommandHelp(command string) string {
+	common := `Flags:
+  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+
+Outside Git, pass --workspace. The selected lake must be active and provide its
+bins operation.
+`
+	switch command {
+	case "list":
+		return `Usage:
+  botlake bin list [--workspace PATH|NAME]
+
+List declared extension programs as JSON, with each program's name and
+description. This does not start or build a program.
+
+` + common
+	case "build":
+		return `Usage:
+  botlake bin build [--workspace PATH|NAME] NAME
+
+Run NAME's declared build recipe in its configured working directory. A bin
+without a build recipe cannot be built. Build is explicit; list and run do not
+invoke it automatically.
+
+` + common
+	case "run":
+		return `Usage:
+  botlake bin run [--workspace PATH|NAME] NAME [ARGS...]
+
+Execute the declared program in the caller's working directory with inherited
+stdin/stdout/stderr and its configured environment. Arguments after NAME pass
+through literally, including --help; put --workspace before NAME.
+
+` + common
+	default:
+		return binUsage
+	}
+}
+
+func binHelp(path []string) int {
+	if len(path) == 0 {
+		return writeHelp(binUsage)
+	}
+	if len(path) == 1 && (path[0] == "list" || path[0] == "build" || path[0] == "run") {
+		return writeHelp(binCommandHelp(path[0]))
+	}
+
+	return cliFailure(fmt.Errorf("unknown help topic: botlake bin %s", strings.Join(path, " ")), false)
+}
 
 type binPlan struct {
 	Operation   string `json:"operation"`
@@ -39,15 +104,19 @@ func binCLI(args []string) int {
 	flags.SetOutput(io.Discard)
 
 	target := flags.String("workspace", "", "workspace path or published name")
-	if err := flags.Parse(args); err != nil && !errors.Is(err, flag.ErrHelp) {
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return writeHelp(binUsage)
+		}
 		return fail(err)
 	}
 
 	args = flags.Args()
-	if len(args) == 0 || args[0] == "help" {
-		fmt.Fprint(os.Stdout, binUsage)
-
-		return 0
+	if len(args) == 0 {
+		return writeHelp(binUsage)
+	}
+	if args[0] == "help" {
+		return binHelp(args[1:])
 	}
 
 	action := args[0]
@@ -57,17 +126,29 @@ func binCLI(args []string) int {
 
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(os.Stdout, binUsage)
-
-			return 0
+			return writeHelp(binCommandHelp(action))
 		}
 
 		return fail(err)
 	}
 
 	args = flags.Args()
-	if (action == "list" && len(args) != 0) || (action == "build" && len(args) != 1) || (action == "run" && len(args) == 0) {
-		return fail(errors.New(binUsage))
+	if action == "list" && len(args) == 1 && args[0] == "help" {
+		return writeHelp(binCommandHelp(action))
+	}
+	switch action {
+	case "list":
+		if len(args) != 0 {
+			return fail(errors.New("usage: botlake bin list [--workspace PATH|NAME]"))
+		}
+	case "build":
+		if len(args) != 1 {
+			return fail(errors.New("usage: botlake bin build [--workspace PATH|NAME] NAME"))
+		}
+	case "run":
+		if len(args) == 0 {
+			return fail(errors.New("usage: botlake bin run [--workspace PATH|NAME] NAME [ARGS...]"))
+		}
 	}
 
 	if *target == "" {

@@ -142,7 +142,7 @@ export function work(): Extension {
           primer:
             "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to BL_ACTOR. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
           cli: {
-            description: "Tasks, context groups, prerequisites and composed work views",
+            description: "Create, route, inspect and close tasks and context groups",
             examples: [
               'bl work create "Investigate alternatives" --description "Answer with supporting evidence"',
               'bl work create "Delivery context" --kind group',
@@ -154,61 +154,100 @@ export function work(): Extension {
             ],
             commands: {
               create: {
-                description: "Create a task (default) or a non-assignable context group",
-                positionals: [{ name: "title", type: "string", required: true }],
+                description:
+                  "Create a task by default or a non-assignable context group; returns id, kind and state",
+                examples: [
+                  'bl work create "Investigate alternatives" --criterion "Compare three options"',
+                  'bl work create "Delivery context" --kind group --description "Shared constraints"',
+                ],
+                positionals: [
+                  {
+                    name: "title",
+                    type: "string",
+                    required: true,
+                    description: "Short task or group title",
+                  },
+                ],
                 flags: {
                   kind: { type: "string", description: "task (default) or group" },
-                  description: { type: "string" },
-                  notes: { type: "string" },
-                  parent: { type: "string", description: "Context group" },
+                  description: { type: "string", description: "Local brief (default empty)" },
+                  notes: { type: "string", description: "Initial task findings (default absent)" },
+                  parent: {
+                    type: "string",
+                    description: "Context group; omitted leaves this item at the root",
+                  },
                   criterion: {
                     key: "acceptanceCriteria",
                     type: "string",
                     multiple: true,
-                    description: "Repeat for each condition; optional",
+                    description: "Repeat per task condition; optional",
                   },
                   assignee: {
                     type: "string",
-                    description: "Responsible identity; HITL routes to this person",
+                    description:
+                      "Initial responsible identity; omitted leaves it unassigned; HITL work is routed to them",
                   },
-                  audience: { type: "string", description: "AFK (default) or HITL" },
-                  origin: { type: "string", description: "planned (default) or unplanned" },
-                  priority: {
+                  audience: { type: "string", description: "AFK or HITL; default AFK" },
+                  origin: { type: "string", description: "planned or unplanned; default planned" },
+                  priority: { type: "string", description: "P0 (highest) through P4; default P2" },
+                  prerequisite: {
+                    key: "prerequisites",
                     type: "string",
-                    description: "P0 immediate through P4 lowest; default P2",
+                    multiple: true,
+                    description: "Repeat with each direct prerequisite ID",
                   },
-                  prerequisite: { key: "prerequisites", type: "string", multiple: true },
-                  by: { type: "string", description: "Attribution (defaults to BL_ACTOR)" },
+                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
                 },
               },
               show: {
                 description:
-                  "Brief, criteria, findings, context and relationships; members are paged",
+                  "Returns item, context, readiness, complete prerequisites/references and paged member summaries; history is opt-in",
+                examples: ["bl work show TASK", "bl work show GROUP --limit 50 --history"],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
                   history: {
                     type: "boolean",
-                    description: "Include full criterion, assignment and recovery history",
+                    description:
+                      "Include assignment, criterion, closure and recovery history (default false)",
                   },
-                  limit: { type: "number" },
-                  offset: { type: "number", description: "Continue members at nextOffset" },
+                  limit: {
+                    type: "number",
+                    description: "Member page size: integer, default 20, min 1, max 100",
+                  },
+                  offset: {
+                    type: "number",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at members.nextOffset, null when exhausted",
+                  },
                 },
               },
               update: {
-                description: "Edit the brief or findings; criteria use explicit operations",
+                description:
+                  "Edit open items or replace notes on closed tasks; criteria use criterion commands. Returns id and revision",
+                examples: ['bl work update TASK --notes "Findings and references"'],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
-                  title: { type: "string" },
-                  description: { type: "string" },
-                  notes: { type: "string" },
-                  audience: { type: "string" },
-                  origin: { type: "string" },
-                  priority: { type: "string" },
-                  "expected-revision": { key: "expectedRevision", type: "number" },
+                  title: { type: "string", description: "New title" },
+                  description: { type: "string", description: "Replace local brief" },
+                  notes: { type: "string", description: "Replace task findings" },
+                  audience: { type: "string", description: "AFK or HITL" },
+                  origin: { type: "string", description: "planned or unplanned" },
+                  priority: { type: "string", description: "P0 (highest) through P4" },
+                  "expected-revision": {
+                    key: "expectedRevision",
+                    type: "number",
+                    description:
+                      "Positive integer concurrency check; omit to update current revision",
+                  },
                 },
               },
               list: {
-                description: "Paged summaries ordered by priority; search includes closed work",
+                description:
+                  "Paged priority-ordered summaries; returns items, total and nextOffset (null when exhausted)",
+                examples: [
+                  "bl work list --view available",
+                  "bl work list --view human --assignee IDENTITY",
+                ],
                 flags: {
                   view: {
                     type: "string",
@@ -216,36 +255,59 @@ export function work(): Extension {
                   },
                   state: {
                     type: "string",
-                    description: "open (default), closed or all; search defaults to all",
+                    description:
+                      "open (default), closed or all; search defaults to all in view=all; queue views are open-only",
                   },
-                  kind: { type: "string" },
+                  kind: { type: "string", description: "task or group; no kind filter by default" },
                   assignee: {
                     type: "string",
                     description:
-                      "Human view defaults to BL_ACTOR; otherwise an explicit assignment filter",
+                      "Human view requires --assignee or BL_ACTOR; other views filter current assignment only when supplied",
                   },
-                  audience: { type: "string" },
-                  origin: { type: "string" },
-                  parent: { type: "string", description: "Immediate members of this group" },
+                  audience: {
+                    type: "string",
+                    description: "AFK or HITL; no audience filter by default",
+                  },
+                  origin: {
+                    type: "string",
+                    description: "planned or unplanned; no origin filter by default",
+                  },
+                  parent: {
+                    type: "string",
+                    description: "Immediate members of this group; no parent filter by default",
+                  },
                   search: {
                     type: "string",
-                    description: "Case-insensitive title, description and notes search",
+                    description:
+                      "Case-insensitive title, description and task notes; view=all includes closed work by default",
                   },
-                  limit: { type: "number", description: "Page size: default 20, max 100" },
+                  limit: {
+                    type: "number",
+                    description: "Page size: integer, default 20, min 1, max 100",
+                  },
                   offset: {
                     type: "number",
-                    description: "Continue at nextOffset; pages are not snapshots",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at nextOffset, null when exhausted; pages are not snapshots",
                   },
                 },
               },
               tree: {
-                description: "Containment forest or descendants of ID; never prerequisite nesting",
-                positionals: [{ name: "id", type: "string" }],
+                description:
+                  "Complete unpaged containment projection (all matching work or descendants of ID; open by default): roots, summary nodes, edges, context, components and omittedLinks",
+                examples: ["bl work tree --lean", "bl work tree GROUP --state all -sd -ss"],
+                positionals: [
+                  { name: "id", type: "string", description: "Optional work-item anchor" },
+                ],
                 flags: topologyFlags(),
               },
               graph: {
-                description: "Dependency graph for ID or all work; never contextual containment",
-                positionals: [{ name: "id", type: "string" }],
+                description:
+                  "Complete unpaged dependency projection for all matching work or transitive links from ID; open by default; returns summary nodes, edges, components and omittedLinks",
+                examples: ["bl work graph TASK", "bl work graph TASK --direction dependents"],
+                positionals: [
+                  { name: "id", type: "string", description: "Optional dependency root" },
+                ],
                 flags: {
                   ...topologyFlags(),
                   direction: {
@@ -256,44 +318,75 @@ export function work(): Extension {
               },
               close: {
                 description:
-                  "Close resolved work; does not assert success or submit a workflow action",
+                  "Close after criteria resolve or contained tasks close; releases assignment and returns closure attribution, not success or workflow completion",
+                examples: ["bl work close TASK"],
                 positionals: [{ name: "id", type: "string", required: true }],
-                flags: { by: { type: "string" } },
+                flags: { by: { type: "string", description: "Attribution; defaults to BL_ACTOR" } },
               },
               reopen: {
                 description:
-                  "Recovery only; retains prior criteria resolutions and closure history",
-                positionals: [{ name: "id", type: "string", required: true }],
-                flags: { reason: { type: "string", required: true }, by: { type: "string" } },
-              },
-              claim: {
-                description: "Reserve ready work; a competing owner must explicitly release first",
+                  "Reopen for recovery, retaining criterion resolutions and closure history; returns id and open state",
+                examples: ['bl work reopen TASK --reason "Recheck the result"'],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
-                  assignee: { type: "string", description: "Defaults to BL_ACTOR" },
-                  by: { type: "string" },
+                  reason: {
+                    type: "string",
+                    required: true,
+                    description: "Required recovery reason",
+                  },
+                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                },
+              },
+              claim: {
+                description:
+                  "Reserve ready work; competing owners must release first. Returns id and assignment; use assignment.id as --assignment-id to release",
+                examples: ["bl work claim TASK", "bl work claim TASK --assignee IDENTITY"],
+                positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  assignee: {
+                    type: "string",
+                    description: "Responsible identity; defaults to BL_ACTOR",
+                  },
+                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
                 },
               },
               release: {
                 description:
-                  "Release only the matching current assignment; preserves work and history",
+                  "Release only the matching assignment, preserving work/history; returns released true or false",
+                examples: ['bl work release TASK --assignment-id TOKEN --reason "Handing off"'],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
-                  "assignment-id": { key: "assignmentId", type: "string", required: true },
-                  reason: { type: "string", required: true },
-                  by: { type: "string" },
+                  "assignment-id": {
+                    key: "assignmentId",
+                    type: "string",
+                    required: true,
+                    description: "Current assignment fencing token",
+                  },
+                  reason: {
+                    type: "string",
+                    required: true,
+                    description: "Required release reason",
+                  },
+                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
                 },
               },
               move: {
-                description: "Move into one context group, or detach with --root",
+                description:
+                  "Set one context parent or detach; supply exactly one of --parent and --root",
+                examples: ["bl work move TASK --parent GROUP", "bl work move TASK --root"],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
                   parent: { type: "string", description: "New context group" },
-                  root: { type: "boolean", description: "Detach from contextual containment" },
+                  root: {
+                    type: "boolean",
+                    description: "Detach from contextual containment (default false)",
+                  },
                 },
               },
               link: {
-                description: "Add a prerequisite or non-contextual reference",
+                description:
+                  "Add a direct prerequisite (from depends on to) or a non-contextual reference",
+                examples: ["bl work link TASK BLOCKER --relation depends-on"],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
@@ -307,32 +400,48 @@ export function work(): Extension {
                 },
               },
               unlink: {
-                description: "Remove a prerequisite or reference",
+                description: "Remove the specified prerequisite or reference",
+                examples: ["bl work unlink TASK BLOCKER --relation depends-on"],
                 positionals: [
                   { name: "from", type: "string", required: true },
                   { name: "to", type: "string", required: true },
                 ],
-                flags: { relation: { type: "string", required: true } },
+                flags: {
+                  relation: {
+                    type: "string",
+                    required: true,
+                    description: "depends-on or references",
+                  },
+                },
               },
               criterion: {
-                description: "Preserve conditions; resolve or explicitly correct their assessments",
+                description: "Manage immutable task conditions and append-only assessments",
                 selector: "operation",
                 commands: {
                   add: {
-                    description: "Append an immutable condition to an open task",
+                    description:
+                      "Append an immutable condition to an open task; returns its criterion ID",
+                    examples: ['bl work criterion add TASK "Tests pass"'],
                     positionals: [
                       { name: "id", type: "string", required: true },
                       { name: "condition", type: "string", required: true },
                     ],
-                    flags: { by: { type: "string" } },
+                    flags: {
+                      by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                    },
                   },
                   resolve: criterionCommand(
-                    "Record an assessment, including unmet or no longer required",
+                    "Record an assessment, including unmet or no longer required; output retains the condition",
+                    'bl work criterion resolve TASK CRITERION "Satisfied by test report"',
                   ),
                   correct: criterionCommand(
-                    "Append a corrected assessment without erasing the original",
+                    "Append a corrected assessment without erasing prior history",
+                    'bl work criterion correct TASK CRITERION "Correction: report covers all cases"',
                   ),
-                  reopen: criterionCommand("Restore an open condition with an explicit reason"),
+                  reopen: criterionCommand(
+                    "Restore a resolved condition on an open task; TEXT is the required reason",
+                    'bl work criterion reopen TASK CRITERION "Evidence needs rechecking"',
+                  ),
                 },
               },
             },
@@ -440,36 +549,45 @@ function topologyFlags() {
   return {
     format: {
       type: "string" as const,
-      description: "json or text; defaults to text on a terminal, JSON otherwise",
+      description:
+        "json or text; default text on a terminal, JSON otherwise; global --json forces JSON",
     },
-    state: { type: "string" as const, description: "open (default), closed or all" },
+    state: {
+      type: "string" as const,
+      description:
+        "open (default), closed or all; omittedLinks counts scoped links crossing this filter",
+    },
     lean: {
       type: "boolean" as const,
-      description: "Only id, title and state per node; overrides detail flags, preserves edges",
+      description:
+        "Only id, title and state per node (default false); overrides detail flags, preserves edges",
     },
     "show-description": {
       short: "sd",
       key: "showDescription",
       type: "boolean" as const,
-      description: "Include each node's local description",
+      description: "Include each node's local description (default false)",
     },
     "show-criteria": {
       short: "ss",
       key: "showCriteria",
       type: "boolean" as const,
-      description: "Include task conditions and their current assessments",
+      description: "Include task conditions and current assessments (default false; not history)",
     },
   };
 }
 
-function criterionCommand(description: string) {
+function criterionCommand(description: string, example: string) {
   return {
     description,
+    examples: [example],
     positionals: [
       { name: "id", type: "string" as const, required: true },
       { name: "criterion", type: "string" as const, required: true },
       { name: "text", type: "string" as const, required: true },
     ],
-    flags: { by: { type: "string" as const } },
+    flags: {
+      by: { type: "string" as const, description: "Attribution; defaults to BL_ACTOR" },
+    },
   };
 }

@@ -84,7 +84,7 @@ export function workflows(): Extension {
           primer:
             "Start an authored definition to create a context Work group and its ready tasks. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome, checkpoints the actor and publishes the next Work atomically. Inspect a task before completion for instructions and outcome schemas.",
           cli: {
-            description: "Start, inspect and advance authored workflow work",
+            description: "Discover, start, inspect and explicitly advance authored workflows",
             examples: [
               "bl workflow catalog",
               "bl workflow start NAME --input '{}'",
@@ -93,46 +93,122 @@ export function workflows(): Extension {
             ],
             commands: {
               catalog: {
-                description: "List definitions; NAME or --source reveals the input schema",
-                positionals: [{ name: "name", type: "string" }],
-                flags: { source: { type: "string", description: "Use instead of NAME" } },
+                description:
+                  "List all local definitions (unpaged), or inspect one definition's input schema and constraints",
+                examples: [
+                  "bl workflow catalog",
+                  "bl workflow catalog NAME",
+                  "bl workflow catalog --source .workflows/demo/workflow.ts",
+                ],
+                positionals: [
+                  {
+                    name: "name",
+                    type: "string",
+                    description: "Named workflow; omit when listing",
+                  },
+                ],
+                flags: {
+                  source: {
+                    type: "string",
+                    description:
+                      "Workflow entry file instead of NAME; mutually exclusive with NAME",
+                  },
+                },
               },
               start: {
-                description: "Start a definition and create its context Work group",
-                positionals: [{ name: "name", type: "string" }],
+                description:
+                  "Create a context Work group from a named or file workflow; returns first 20 tasks/history entries. Continue with workflow show RUN_ID",
+                examples: [
+                  'bl workflow start NAME --input \'{"customer":"Acme"}\'',
+                  "bl workflow start --source .workflows/demo/workflow.ts",
+                  "bl workflow show RUN_ID --offset 20",
+                ],
+                positionals: [
+                  {
+                    name: "name",
+                    type: "string",
+                    description: "Named workflow; required unless --source is supplied",
+                  },
+                ],
                 flags: {
-                  source: { type: "string", description: "Use instead of NAME" },
-                  input: { type: "json", description: "Initial input (default {})" },
+                  source: {
+                    type: "string",
+                    description:
+                      "Workflow entry file instead of NAME; mutually exclusive with NAME",
+                  },
+                  input: {
+                    type: "json",
+                    description: "Initial input validated by the definition (default {})",
+                  },
                   parent: {
                     type: "string",
-                    description: "Optional open Work group containing the context group",
+                    description:
+                      "Optional existing open Work group containing the new context group",
                   },
                 },
               },
               show: {
-                description: "Run: paged pending actions and decisions; worker: full detail",
-                positionals: [{ name: "id", type: "string", required: true }],
+                description:
+                  "Show run summaries and paged pending actions/decisions, or a worker task's full instructions and schemas (paging flags apply to runs only)",
+                examples: [
+                  "bl workflow show RUN_ID",
+                  "bl workflow show TASK_ID",
+                  "bl workflow show RUN_ID --offset 20",
+                  "bl workflow show RUN_ID --history-offset 20",
+                ],
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Workflow run ID or authored worker task ID",
+                  },
+                ],
                 flags: {
-                  limit: { type: "number", description: "Page size: default 20, max 100" },
+                  limit: {
+                    type: "number",
+                    description:
+                      "Run page size for tasks and history: integer, default 20, min 1, max 100",
+                  },
                   offset: {
                     type: "number",
-                    description: "Pending actions: continue at taskPage.nextOffset",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at taskPage.nextOffset, null when exhausted",
                   },
                   "history-offset": {
                     key: "historyOffset",
                     type: "number",
-                    description: "Decisions: continue at historyPage.nextOffset",
+                    description:
+                      "Zero-based nonnegative integer (default 0); continue at historyPage.nextOffset, null when exhausted",
                   },
                 },
               },
               complete: {
-                description: "Submit an outcome, checkpoint and publish next work atomically",
+                description:
+                  "Submit an authored outcome, checkpoint and publish subsequent Work atomically; returns updated run view (first 20 tasks/history). Continue with workflow show RUN_ID",
+                examples: [
+                  "bl workflow complete TASK_ID CHOICE --data '{}'",
+                  "bl workflow show RUN_ID --history-offset 20",
+                ],
                 positionals: [
-                  { name: "id", type: "string", required: true },
-                  { name: "choice", type: "string", required: true },
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Authored worker task ID, not run ID",
+                  },
+                  {
+                    name: "choice",
+                    type: "string",
+                    required: true,
+                    description: "Choice declared for this task; inspect bl workflow show TASK_ID",
+                  },
                 ],
                 flags: {
-                  data: { type: "json", description: "Outcome payload (default {})" },
+                  data: {
+                    type: "json",
+                    description: "JSON outcome validated by the choice schema (default {})",
+                  },
                 },
               },
             },

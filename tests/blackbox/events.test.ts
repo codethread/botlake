@@ -171,7 +171,7 @@ test("public CLI lists contracts and streams filtered committed changes with a r
     ]);
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const definitions = z
-      .array(z.object({ name: z.string(), phase: z.string(), schema: z.unknown() }))
+      .array(z.object({ name: z.string(), phase: z.string() }))
       .parse(await host.cli(["--workspace", workspace, "events", "list"]));
     expect(definitions.map((event) => event.name).toSorted()).toEqual(
       [agentsChanged.name, workAssignmentEstablished.name, workChanged.name].toSorted(),
@@ -179,6 +179,12 @@ test("public CLI lists contracts and streams filtered committed changes with a r
     expect(definitions.find((event) => event.name === workAssignmentEstablished.name)?.phase).toBe(
       "transactional",
     );
+    expect(
+      await host.cli(["--workspace", workspace, "events", "show", workChanged.name]),
+    ).toMatchObject({
+      name: workChanged.name,
+      schema: { type: "object" },
+    });
     const prefix = ["--workspace", workspace];
     child = Bun.spawn([host.blBin, ...prefix, "events", "stream", "--event", workChanged.name], {
       cwd: host.dir,

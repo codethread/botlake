@@ -31,14 +31,14 @@ bl flag list
 bl flag get feature/example
 bl flag set feature/example false # Persists; preserves its description.
 bl flag set feature/other true --description "Enable the other feature."
-bl flag unset feature/example     # Persists absence, even with a configured default.
+bl flag unset feature/example     # Persist absence, even with a configured default.
 bl flag reset feature/example     # Delete its override; restore the configured default.
 bl flag reset --all               # Delete every override and persistent unset.
 ```
 
-`list` returns a name-keyed map of `{ current, default, overridden }`; `get` adds `name`. `current` and `default` are `{ description, value }` records or `null` when absent. `overridden` indicates a database entry, even when it equals the default or persistently unsets the flag. Lists include persistent unsets so they remain discoverable and resettable.
+`list` returns a complete, unpaged name-keyed map of `{ current, default, overridden }`; `get` adds `name`. `current` and `default` are `{ description, value }` records or `null` when absent. `overridden` indicates a database entry, even when it equals the default or persistently unsets the flag. Lists include persistent unsets so they remain discoverable and resettable.
 
-CLI `set` requires `--description` for new or unset flags; on existing flags it replaces the description only when supplied. Reset removes database-only flags entirely. Bare `reset` and combining a name with `--all` are errors. The consuming extension defines what an unset flag means and when changes take effect.
+CLI `set` requires `--description` for new or unset flags; on existing flags it replaces the description only when supplied. `unset` writes a persistent unset only when a current value exists; an absent or already-unset name returns `removed: false`. Reset removes database-only flags entirely. Supply exactly one of a name or `--all`; bare `reset` and combining both are errors. The consuming extension defines what an unset flag means and when changes take effect.
 
 ## Consumers
 

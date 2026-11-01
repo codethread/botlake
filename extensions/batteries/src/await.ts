@@ -51,19 +51,29 @@ export function registerAwait(ctx: Context): void {
       output: outputSchema,
       jsonSchema: { input: inputSchema, output: outputSchema },
       deadline: "unbounded",
+      about:
+        "Observe a named query until its count enters a band; observation does not execute or complete the work being watched.",
       primer:
         "Wait for a named query's result count to enter the inclusive min/max band. Checks immediately, then every second. Timeout is data (reason=timeout, exit 0); inspect reason before continuing. count is capped at countLimit, not a total. --timeout-secs 0 checks once. --timeout before await imposes a separate hard request deadline; interrupting or timing out a wait does not cancel agents or complete tasks. Active-set disappearance can mean closure, replacement or deletion, not success.",
       cli: {
-        description: "Wait for a named query's result count to enter an inclusive band",
+        description: "Wait for a count band; returns reason=satisfied|timeout (both exit 0)",
         examples: [
           'bl await --query node-closed --params \'{"id":"NODE_ID"}\' --min-count 1',
           'bl await --query children-active --params \'{"parent":"NODE_ID"}\' --max-count 0',
         ],
         flags: {
           query: { type: "string", required: true, description: "Registered query name" },
-          params: { type: "json", description: "Named-query parameters" },
-          "min-count": { key: "minCount", type: "number", description: "Inclusive minimum" },
-          "max-count": { key: "maxCount", type: "number", description: "Inclusive maximum" },
+          params: { type: "json", description: "Query parameters (default {})" },
+          "min-count": {
+            key: "minCount",
+            type: "number",
+            description: "Inclusive minimum; 0 requires --max-count",
+          },
+          "max-count": {
+            key: "maxCount",
+            type: "number",
+            description: "Inclusive maximum; requires this or --min-count",
+          },
           "timeout-secs": {
             key: "timeoutSecs",
             type: "number",

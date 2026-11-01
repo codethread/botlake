@@ -30,6 +30,7 @@ export function defineEvent<S extends z.ZodType, P extends EventPhase>(
 
 const inputSchema = z.discriminatedUnion("command", [
   z.strictObject({ command: z.literal("list") }),
+  z.strictObject({ command: z.literal("show"), name: z.string().min(1) }),
   z.strictObject({ command: z.literal("stream"), events: z.array(z.string()).default([]) }),
 ]);
 const frameSchema = z.discriminatedUnion("type", [
@@ -129,16 +130,28 @@ export class Events {
       input: inputSchema,
       output: jsonSchema,
       jsonSchema: { input: inputSchema, output: jsonSchema },
+      about:
+        "Event contracts belong to selected extensions. Transactional hooks run in-process; after-commit notifications invalidate reads without durable replay.",
       primer:
-        "List registered event contracts. Stream committed notifications with events stream, optionally --event NAME repeated. Wait for ready before reading an initial snapshot. Notifications invalidate cached reads; refetch on reconnect. Live only: no replay or durable cursor. A slow consumer is disconnected. Transactional hooks are in-process only.",
+        "List event names and phases; show NAME expands one payload schema. Stream committed notifications with events stream, optionally --event NAME repeated. Wait for ready before reading an initial snapshot. Notifications invalidate cached reads; refetch on reconnect. Live only: no replay or durable cursor. A slow consumer is disconnected. Transactional hooks are in-process only.",
       cli: {
         description: "Registered event contracts and live committed notifications",
         commands: {
-          list: { description: "List event names, phases and payload schemas" },
+          list: { description: "List registered event names and phases" },
+          show: {
+            description: "Read one event payload schema and phase",
+            positionals: [{ name: "name", type: "string", required: true }],
+          },
           stream: {
-            description: "Stream committed notifications as JSONL",
+            description: "Stream ready then event frames as JSONL; live only, no replay",
             flags: {
-              event: { key: "events", type: "string", multiple: true, description: "Event name" },
+              event: {
+                key: "events",
+                type: "string",
+                multiple: true,
+                description:
+                  "After-commit event names; omitted subscribes to all after-commit events",
+              },
             },
           },
         },
@@ -146,7 +159,21 @@ export class Events {
       deadline: "unbounded",
       stream: true,
       handler: (input, _ctx, request) => {
-        if (input.command === "list") return this.list();
+        if (input.command === "list")
+          return [...this.registrations.values()].map(({ definition }) => ({
+            name: definition.name,
+            phase: definition.phase,
+          }));
+        if (input.command === "show") {
+          const registration = this.registrations.get(input.name);
+          if (registration === undefined) throw new Fault("event", `Unknown event: ${input.name}`);
+          const { definition } = registration;
+          return {
+            name: definition.name,
+            phase: definition.phase,
+            schema: jsonSchema.parse(z.toJSONSchema(definition.schema, { io: "output" })),
+          };
+        }
         return this.stream(input.events, request.signal);
       },
     });
@@ -167,19 +194,12 @@ export class Events {
     return registration;
   }
 
-  private list() {
-    return [...this.registrations.values()].map(({ definition }) => ({
-      name: definition.name,
-      phase: definition.phase,
-      schema: jsonSchema.parse(z.toJSONSchema(definition.schema, { io: "output" })),
-    }));
-  }
-
   private async *stream(names: string[], signal: AbortSignal): AsyncGenerator<Frame> {
     const selected =
       names.length > 0
         ? [...new Set(names)]
-        : this.list()
+        : [...this.registrations.values()]
+            .map(({ definition }) => definition)
             .filter((event) => event.phase === "afterCommit")
             .map((event) => event.name);
     for (const name of selected)

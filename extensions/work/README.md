@@ -39,7 +39,7 @@ Criteria are optional. `criterion add TASK CONDITION` appends an immutable condi
 
 Claim defaults to `BL_ACTOR`; competing owners must explicitly release before handoff. `release TASK --assignment-id TOKEN --reason TEXT` changes only the matching current assignment. Stale releases return `released: false`. Closure releases its assignment and preserves history. Optional [Work Agents](../work-agents/README.md) binds assignment tokens to managed agent liveness.
 
-`show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes, including closed work unless `--state` narrows it. Lists omit briefs and findings.
+`show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion, closure and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes. With `--view all` it includes closed work unless `--state` narrows it; queue views remain open-only. Lists omit briefs and findings.
 
 ## Tree and graph
 

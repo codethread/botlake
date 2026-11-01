@@ -29,6 +29,13 @@ const binSchema = z.compile(
 
 export type Bin = z.input<typeof binSchema>;
 
+const inputSchema = z.compile(
+  z.discriminatedUnion("command", [
+    z.strictObject({ command: z.literal("list") }),
+    z.strictObject({ command: z.literal("plan"), name: z.string().min(1) }),
+  ]),
+);
+
 export class Bins {
   private readonly entries = new Map<string, z.output<typeof binSchema>>();
 
@@ -41,17 +48,17 @@ export class Bins {
   operation(): Op {
     return defineOp({
       name: "bins",
-      input: z.compile(
-        z.discriminatedUnion("command", [
-          z.strictObject({ command: z.literal("list") }),
-          z.strictObject({ command: z.literal("plan"), name: z.string().min(1) }),
-        ]),
-      ),
+      input: inputSchema,
+      jsonSchema: { input: inputSchema, output: jsonSchema },
+      about:
+        "Extensions declare executables and optional build recipes; listing or planning never builds or runs them.",
+      primer:
+        "List names, inspect bins plan NAME for paths, environment and build recipe, then use botlake bin build/run NAME. Builds are explicit; runs preserve caller I/O and exit status.",
       output: jsonSchema,
       cli: {
         description: "Inspect extension-declared executables and build recipes",
         commands: {
-          list: { description: "List declared bins" },
+          list: { description: "List all declared bin names and descriptions" },
           plan: {
             description: "Inspect an executable and its build recipe",
             positionals: [{ name: "name", type: "string", required: true }],
