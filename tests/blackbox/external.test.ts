@@ -111,7 +111,7 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(relayed.result === unicode).toBe(true);
     expect(
       await host.bl("alpha", "relay", { value: "", operation: "success-stream" }, false),
-    ).toContain("Streaming peer calls are unsupported");
+    ).toContain("Single-result requests do not support stream operations");
     expect(await host.bl("alpha", "issues", {}, false)).toContain("Symbol(field)");
     const streamCli = Bun.spawn([host.blBin, "--workspace", "alpha", "success-stream"], {
       env: host.env,

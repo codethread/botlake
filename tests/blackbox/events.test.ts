@@ -174,7 +174,12 @@ test("public CLI lists contracts and streams filtered committed changes with a r
       .array(z.object({ name: z.string(), phase: z.string() }))
       .parse(await host.cli(["--workspace", workspace, "events", "list"]));
     expect(definitions.map((event) => event.name).toSorted()).toEqual(
-      [agentsChanged.name, workAssignmentEstablished.name, workChanged.name].toSorted(),
+      [
+        "nodes.changed",
+        agentsChanged.name,
+        workAssignmentEstablished.name,
+        workChanged.name,
+      ].toSorted(),
     );
     expect(definitions.find((event) => event.name === workAssignmentEstablished.name)?.phase).toBe(
       "transactional",

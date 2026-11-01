@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -15,7 +16,7 @@ import {
   requireValue,
   type Attributes,
 } from "./json.ts";
-import { noteAttributes, noteRelations } from "./node-model.ts";
+import { dependencyAttributes, noteAttributes, noteRelations } from "./node-model.ts";
 import { compileQuery, type Predicate } from "./query.ts";
 import { sql } from "./sql.ts";
 
@@ -32,7 +33,33 @@ const rowSchema = z.compile(
   }),
 );
 
-export const nodeSchema = z.compile(rowSchema.extend({ attributes: attributesSchema }));
+const referenceSchema = z.compile(
+  z.strictObject({
+    lakeId: z.uuid(),
+    workspace: z.string().min(1),
+    nodeId: z.string().min(1),
+    revision: z.number().int().positive(),
+    observedAt: z.number(),
+    status: z.enum(["current", "stale", "missing"]),
+    kind: z.string().min(1).nullable(),
+  }),
+);
+const nullableReferenceSchema = z.compile(referenceSchema.nullable());
+const referenceSourceSchema = z.compile(
+  referenceSchema.pick({ lakeId: true, workspace: true, nodeId: true }),
+);
+const referenceSnapshotSchema = z.compile(
+  z.strictObject({
+    title: z.string().trim().min(1),
+    state: stateSchema,
+    revision: z.number().int().positive(),
+    kind: z.string().min(1).nullable().default(null),
+  }),
+);
+
+export const nodeSchema = z.compile(
+  rowSchema.extend({ attributes: attributesSchema, reference: nullableReferenceSchema }),
+);
 
 const edgeRow = z.compile(
   z.strictObject({
@@ -80,6 +107,7 @@ export const batchSchema = z.compile(
 );
 
 const databaseVersionSchema = z.compile(z.object({ user_version: z.number() }));
+const lakeIdentitySchema = z.compile(z.object({ lakeId: z.uuid() }));
 const attributeRowsSchema = z.compile(z.array(z.object({ key: z.string(), value: z.string() })));
 const limitSchema = z.compile(z.number().int().positive().max(10000));
 const positiveIntegerSchema = z.compile(z.number().int().positive());
@@ -89,8 +117,36 @@ const createSchema = z.compile(patchSchema.required({ title: true }));
 const attributeKeysSchema = z.compile(z.array(z.string().min(1)).min(1));
 const edgeRowsSchema = z.compile(z.array(edgeRow));
 const nonemptyTextSchema = z.compile(z.string().min(1));
-const idRowsSchema = z.compile(z.array(z.object({ id: z.string() })));
+const referenceKindsSchema = z.compile(
+  z
+    .array(nonemptyTextSchema)
+    .min(1)
+    .refine((kinds) => new Set(kinds).size === kinds.length, "Reference kinds must be unique"),
+);
+const referenceKindsPath = `$.${JSON.stringify(dependencyAttributes.referenceKinds)}`;
+const idRowSchema = z.compile(z.object({ id: z.string() }));
+const idRowsSchema = z.compile(z.array(idRowSchema));
 const keyRowsSchema = z.compile(z.array(z.object({ key: z.string() })));
+const referenceRowsSchema = z.compile(z.array(rowSchema.extend({ reference: z.string() })));
+const snapshotSchema = z.compile(
+  rowSchema.pick({ id: true, title: true, state: true, revision: true }),
+);
+const snapshotRowsSchema = z.compile(z.array(snapshotSchema));
+const summaryRowsSchema = z.compile(
+  z.array(snapshotSchema.extend({ reference: z.string().nullable() })),
+);
+const snapshotIdsSchema = z.compile(z.array(nonemptyTextSchema).max(1000));
+const referenceScopeSchema = z.compile(
+  z
+    .strictObject({
+      lakeId: z.uuid().optional(),
+      workspace: nonemptyTextSchema.optional(),
+    })
+    .refine(
+      (scope) => scope.lakeId !== undefined || scope.workspace !== undefined,
+      "Select a source lake identity or routing path",
+    ),
+);
 
 const ddl = sql`
   CREATE TABLE nodes (
@@ -164,6 +220,82 @@ export interface Node {
   updated_at: string;
   revision: number;
   attributes: Attributes;
+  /** Source provenance for a read-only observed node; null for locally owned nodes. */
+  reference: Reference | null;
+}
+
+export interface ReferenceSource {
+  /** Persistent identity of the owning lake, independent of its published name or path. */
+  lakeId: string;
+  /** Canonical source workspace path used for peer routing. */
+  workspace: string;
+  /** Opaque node ID in the source lake. */
+  nodeId: string;
+}
+
+export interface Reference extends ReferenceSource {
+  /** Source revision of the retained summary. */
+  revision: number;
+  /** Time of the latest successful source observation, in milliseconds. */
+  observedAt: number;
+  /** Whether the retained summary is verified, disconnected or confirmed absent. */
+  status: "current" | "stale" | "missing";
+  /** Source-verified domain kind; null when the source supplies no domain evidence. */
+  kind: string | null;
+}
+
+export interface NodeSnapshot {
+  /** Opaque ID in the selected graph. */
+  id: string;
+  /** Current source title. */
+  title: string;
+  /** Source graph state, without domain-specific completion claims. */
+  state: Node["state"];
+  /** Source revision accompanying these facts. */
+  revision: number;
+}
+
+export interface NodeSummary extends NodeSnapshot {
+  /** Source ownership and observation facts; null for locally owned nodes. */
+  reference: Reference | null;
+}
+
+export interface ReferenceSnapshot {
+  /** Source title. */
+  title: string;
+  /** Observed source graph state. */
+  state: Node["state"];
+  /** Source revision accompanying these facts. */
+  revision: number;
+  /** Explicitly declared projection kind; omission records no domain evidence. */
+  kind?: string | null;
+}
+
+export interface ReferenceSelection {
+  /** Filter by the current routing path. */
+  workspace?: string;
+  /** Filter by persistent source identity. */
+  lakeId?: string;
+  /** Maximum returned nodes; defaults to 20, maximum 10,000. */
+  limit?: number;
+  /** Position in stable local-node ID order; defaults to zero. */
+  offset?: number;
+}
+
+export interface ReferenceScope {
+  /** Select a persistent source identity; at least one selector is required. */
+  lakeId?: string;
+  /** Select a routing path; supplying both selectors narrows their intersection. */
+  workspace?: string;
+}
+
+export interface ReferencePage {
+  /** Bounded reference nodes, without any source attributes. */
+  nodes: Node[];
+  /** Total matching references before pagination. */
+  total: number;
+  /** Continue at this offset; null means exhausted. */
+  nextOffset: number | null;
 }
 
 export interface Edge {
@@ -207,12 +339,15 @@ export interface Selection {
 
 export class Graph {
   readonly db: Database;
+  /** Persistent identity of this database, independent of workspace routing. */
+  readonly lakeId: string;
   private readonly guards: Guard[] = [];
   private changes: Mutation[] = [];
   private commitActions: (() => void)[] = [];
   private writing = false;
   private currentAuthority: symbol | undefined;
   private readonly permissions = new WeakMap<Mutation, symbol>();
+  private readonly referenceAuthority = Symbol("reference observations");
 
   constructor(
     path: string,
@@ -249,8 +384,55 @@ export class Graph {
       } else if (version !== 1)
         throw new Fault("schema", `Unsupported database generation: ${version}`);
       this.db.run(sql`
-        CREATE INDEX IF NOT EXISTS burns_node_id ON burns(node_id)
+        CREATE INDEX IF NOT EXISTS burns_node_id ON burns(node_id);
+        CREATE TABLE IF NOT EXISTS lake_metadata (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          lake_id TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS node_references (
+          node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+          lakeId TEXT NOT NULL,
+          workspace TEXT NOT NULL,
+          nodeId TEXT NOT NULL,
+          revision INTEGER NOT NULL CHECK (revision > 0),
+          observedAt INTEGER NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('current', 'stale', 'missing')),
+          kind TEXT,
+          UNIQUE (lakeId, nodeId)
+        );
+        CREATE INDEX IF NOT EXISTS references_workspace ON node_references(workspace, node_id);
+        CREATE INDEX IF NOT EXISTS references_lake ON node_references(lakeId, node_id);
       `);
+      this.db.query(sql`INSERT OR IGNORE INTO lake_metadata VALUES (1, ?)`).run(randomUUID());
+      this.lakeId = lakeIdentitySchema.parse(
+        this.db.query(sql`SELECT lake_id AS lakeId FROM lake_metadata WHERE singleton = 1`).get(),
+      ).lakeId;
+      this.db
+        .transaction(() => {
+          this.db
+            .query(sql`
+          UPDATE nodes SET revision = revision + 1, updated_at = ?
+          WHERE id IN (SELECT node_id FROM node_references WHERE status = 'current')
+        `)
+            .run(new Date(this.now()).toISOString());
+          this.db.run(sql`UPDATE node_references SET status = 'stale' WHERE status = 'current'`);
+        })
+        .immediate();
+      this.protect((changes, authority) => {
+        if (authority === this.referenceAuthority) return;
+        for (const change of changes)
+          if (change.kind === "node" && change.before !== null && change.before.reference !== null)
+            throw new Fault(
+              "reference-read-only",
+              "Change source facts in the owning lake; use reference forget to remove this local reference",
+              {
+                id: change.before.id,
+                lakeId: change.before.reference.lakeId,
+                workspace: change.before.reference.workspace,
+                nodeId: change.before.reference.nodeId,
+              },
+            );
+      });
     } catch (error) {
       this.db.close();
       throw error;
@@ -346,7 +528,214 @@ export class Graph {
     return {
       ...row,
       attributes: Object.fromEntries(attrs.map((entry) => [entry.key, decode(entry.value)])),
+      reference: nullableReferenceSchema.parse(
+        this.db
+          .query(sql`
+            SELECT lakeId, workspace, nodeId, revision, observedAt, status, kind
+            FROM node_references
+            WHERE node_id = ?
+          `)
+          .get(id),
+      ),
     };
+  }
+
+  /** Find the local read-only reference to one source node. */
+  reference(lakeId: string, nodeId: string): Node | null {
+    const row = this.db
+      .query(sql`
+        SELECT node_id AS id
+        FROM node_references
+        WHERE lakeId = ? AND nodeId = ?
+      `)
+      .get(lakeId, nodeId);
+    return row === null ? null : this.show(idRowSchema.parse(row).id);
+  }
+
+  /** Filter and page references before reading their lightweight facts. Pages are not snapshots. */
+  references(options: ReferenceSelection = {}): ReferencePage {
+    const limit = limitSchema.parse(options.limit ?? 20);
+    const offset = offsetSchema.parse(options.offset ?? 0);
+    const workspace =
+      options.workspace === undefined ? null : nonemptyTextSchema.parse(options.workspace);
+    const lakeId = options.lakeId === undefined ? null : z.uuid().parse(options.lakeId);
+    const where = sql`${workspace === null ? "1" : "r.workspace = ?"} AND ${lakeId === null ? "1" : "r.lakeId = ?"}`;
+    const values = [
+      ...(workspace === null ? [] : [workspace]),
+      ...(lakeId === null ? [] : [lakeId]),
+    ];
+    const total = countSchema.parse(
+      this.db
+        .query(sql`
+          SELECT COUNT(*) AS count FROM node_references r WHERE ${where}
+    `)
+        .get(...values),
+    ).count;
+    const rows = referenceRowsSchema.parse(
+      this.db
+        .query(sql`
+      SELECT n.*, json_object(
+        'lakeId', r.lakeId, 'workspace', r.workspace, 'nodeId', r.nodeId,
+        'revision', r.revision, 'observedAt', r.observedAt, 'status', r.status, 'kind', r.kind
+      ) AS reference
+      FROM node_references r JOIN nodes n ON n.id = r.node_id
+          WHERE ${where}
+      ORDER BY r.node_id LIMIT ? OFFSET ?
+    `)
+        .all(...values, limit, offset),
+    );
+    return {
+      nodes: rows.map(({ reference, ...row }) => ({
+        ...row,
+        attributes: {},
+        reference: referenceSchema.parse(decode(reference)),
+      })),
+      total,
+      nextOffset: offset + rows.length < total ? offset + rows.length : null,
+    };
+  }
+
+  /** Read at most 1,000 source-owned core summaries without loading any attributes. */
+  snapshots(ids: string[]): NodeSnapshot[] {
+    const requested = snapshotIdsSchema.parse(ids);
+    return snapshotRowsSchema.parse(
+      this.db
+        .query(sql`
+      SELECT n.id, n.title, n.state, n.revision FROM nodes n
+      WHERE n.id IN (SELECT value FROM json_each(?))
+        AND NOT EXISTS (SELECT 1 FROM node_references r WHERE r.node_id = n.id)
+      ORDER BY n.id
+    `)
+        .all(encode(requested)),
+    );
+  }
+
+  /** Read at most 1,000 core summaries, including reference provenance, without attributes. */
+  summaries(ids: string[]): NodeSummary[] {
+    const requested = snapshotIdsSchema.parse(ids);
+    const rows = summaryRowsSchema.parse(
+      this.db
+        .query(sql`
+      SELECT n.id, n.title, n.state, n.revision, (
+        SELECT json_object(
+          'lakeId', r.lakeId, 'workspace', r.workspace, 'nodeId', r.nodeId,
+          'revision', r.revision, 'observedAt', r.observedAt, 'status', r.status, 'kind', r.kind
+        ) FROM node_references r WHERE r.node_id = n.id
+      ) AS reference
+      FROM nodes n WHERE n.id IN (SELECT value FROM json_each(?)) ORDER BY n.id
+    `)
+        .all(encode(requested)),
+    );
+    return rows.map(({ reference, ...row }) => ({
+      ...row,
+      reference: reference === null ? null : referenceSchema.parse(decode(reference)),
+    }));
+  }
+
+  /** Retain only source identity and summary facts; source attributes remain remote. */
+  observeReference(source: ReferenceSource, snapshot: ReferenceSnapshot | null): Node {
+    const { lakeId, workspace, nodeId } = referenceSourceSchema.parse(source);
+    if (lakeId === this.lakeId)
+      throw new Fault("reference-local", "Use the locally owned node directly");
+    const observed = snapshot === null ? null : referenceSnapshotSchema.parse(snapshot);
+    return this.atomic(() => {
+      const before = this.reference(lakeId, nodeId);
+      if (observed === null && before === null)
+        throw new Fault("reference-missing", "Cannot observe absence without a local reference");
+      if (
+        observed !== null &&
+        before !== null &&
+        before.reference !== null &&
+        observed.revision < before.reference.revision
+      )
+        return before;
+      const at = new Date(this.now()).toISOString();
+      const id =
+        before === null
+          ? this.insertNode(
+              requireValue(observed, "Missing reference snapshot").title,
+              "active",
+              at,
+            )
+          : before.id;
+      this.db
+        .query(sql`
+          UPDATE nodes
+          SET title = ?, state = ?, updated_at = ?, revision = revision + ?
+          WHERE id = ?
+        `)
+        .run(
+          observed?.title ?? requireValue(before, "Missing reference snapshot").title,
+          observed?.state ?? requireValue(before, "Missing reference snapshot").state,
+          at,
+          before === null ? 0 : 1,
+          id,
+        );
+      this.db
+        .query(sql`
+          INSERT INTO node_references (node_id, lakeId, workspace, nodeId, revision, observedAt, status, kind)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (node_id) DO UPDATE SET
+            workspace = excluded.workspace,
+            revision = excluded.revision,
+            observedAt = excluded.observedAt,
+            status = excluded.status,
+            kind = excluded.kind
+        `)
+        .run(
+          id,
+          lakeId,
+          workspace,
+          nodeId,
+          observed?.revision ??
+            requireValue(before?.reference, "Missing reference metadata").revision,
+          this.now(),
+          observed === null ? "missing" : "current",
+          observed === null
+            ? requireValue(before?.reference, "Missing reference metadata").kind
+            : observed.kind,
+        );
+      const after = this.show(id);
+      this.record({ kind: "node", before, after });
+      return after;
+    }, this.referenceAuthority);
+  }
+
+  /** Disconnecting never erases retained facts or pretends that prerequisites completed. */
+  invalidateReferences(source: ReferenceScope): number {
+    const { lakeId, workspace } = referenceScopeSchema.parse(source);
+    const where = sql`${lakeId === undefined ? "1" : "lakeId = ?"} AND ${workspace === undefined ? "1" : "workspace = ?"}`;
+    const values = [
+      ...(lakeId === undefined ? [] : [lakeId]),
+      ...(workspace === undefined ? [] : [workspace]),
+    ];
+    return this.atomic(() => {
+      const nodes = idRowsSchema.parse(
+        this.db
+          .query(sql`
+            SELECT node_id AS id
+            FROM node_references
+            WHERE status = 'current'
+              AND ${where}
+          `)
+          .all(...values),
+      );
+      for (const { id } of nodes) {
+        const before = this.show(id);
+        this.db
+          .query(sql`
+            UPDATE node_references SET status = 'stale' WHERE node_id = ?
+          `)
+          .run(id);
+        this.db
+          .query(sql`
+            UPDATE nodes SET revision = revision + 1, updated_at = ? WHERE id = ?
+          `)
+          .run(new Date(this.now()).toISOString(), id);
+        this.record({ kind: "node", before, after: this.show(id) });
+      }
+      return nodes.length;
+    }, this.referenceAuthority);
   }
 
   list(
@@ -501,6 +890,17 @@ export class Graph {
   connect(from: string, to: string, relation: string, attributes: Attributes = {}): Edge {
     nonemptyTextSchema.parse(relation);
     attributesSchema.parse(attributes);
+    const referenceKinds = attributes[dependencyAttributes.referenceKinds];
+    if (
+      relation === "depends-on" &&
+      referenceKinds !== undefined &&
+      !referenceKindsSchema.safeParse(referenceKinds).success
+    )
+      throw new Fault(
+        "dependency-reference-kinds",
+        "Dependency reference kinds must be a nonempty array of unique nonempty strings",
+        { attribute: dependencyAttributes.referenceKinds },
+      );
 
     return this.atomic(() => {
       const before = this.edge(from, to, relation);
@@ -606,8 +1006,11 @@ export class Graph {
   supersede(id: string, replacement: string): Node {
     return this.atomic(() => {
       const before = this.show(id);
+      const next = this.show(replacement);
+      if (before.reference !== null || next.reference !== null)
+        throw new Fault("reference-read-only", "Supersession requires locally owned nodes");
       if (before.state === "replaced") throw new Fault("supersede", "Node is already replaced");
-      if (id === replacement || this.show(replacement).state !== "active")
+      if (id === replacement || next.state !== "active")
         throw new Fault("supersede", "Replacement must be a different active node");
 
       this.db
@@ -629,6 +1032,15 @@ export class Graph {
 
       return this.show(replacement);
     });
+  }
+
+  /** Remove a local import deliberately; its source node is never changed. */
+  forgetReference(id: string): void {
+    this.atomic(() => {
+      if (this.show(id).reference === null)
+        throw new Fault("reference", "Expected a local reference node");
+      this.burn([id]);
+    }, this.referenceAuthority);
   }
 
   burn(ids: string[]): Node[] {
@@ -832,16 +1244,41 @@ export class Graph {
         ? sql`
           AND s.state = 'active'
           AND NOT EXISTS (
+            SELECT 1 FROM node_references own WHERE own.node_id = s.id
+          )
+          AND NOT EXISTS (
             SELECT 1
             FROM edges e
             JOIN nodes target ON target.id = e.to_id
+            LEFT JOIN node_references observed ON observed.node_id = target.id
             WHERE e.from_id = s.id
               AND e.relation = 'depends-on'
-              AND target.state = 'active'
+              AND (
+                target.state = 'active'
+                OR (
+                  observed.node_id IS NOT NULL
+                  AND (
+                    observed.status <> 'current' OR target.state <> 'closed'
+                    OR (
+                      json_type(e.attributes, ?) IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM json_each(e.attributes, ?) accepted
+                        WHERE accepted.value = observed.kind
+                      )
+                    )
+                  )
+                )
+              )
           )
         `
         : "";
-    return { ...query, sql: sql`${query.sql} ${ready}` };
+    return {
+      sql: sql`${query.sql} ${ready}`,
+      bindings:
+        options.ready === true
+          ? [...query.bindings, referenceKindsPath, referenceKindsPath]
+          : query.bindings,
+    };
   }
 
   private updateNode(

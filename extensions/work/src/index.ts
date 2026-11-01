@@ -1,6 +1,7 @@
 import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
 import { z } from "zod";
 
+import { diagnoseWork, diagnosticLimitsSchema, workDependencies } from "./diagnostics.ts";
 import { registerWorkEvents } from "./events.ts";
 import { workAttributes, workRelations } from "./node-model.ts";
 import { renderWorkTopology } from "./render.ts";
@@ -17,6 +18,15 @@ export {
 } from "./node-model.ts";
 export type { StoredCriterion, WorkData, WorkLinkRelation } from "./node-model.ts";
 export { workStore } from "./store.ts";
+export { diagnoseWork, workDependencies } from "./diagnostics.ts";
+export type {
+  WorkAddress,
+  ObservedWork,
+  WorkDependencyPage,
+  WorkDiagnosticOptions,
+  WorkDiagnosis,
+} from "./diagnostics.ts";
+export { workReferenceProjections } from "./references.ts";
 export type {
   Assignment,
   Attribution,
@@ -100,6 +110,13 @@ const input = z.compile(
       ),
     z.strictObject({ command: z.literal("link"), from: text, to: text, relation }),
     z.strictObject({ command: z.literal("unlink"), from: text, to: text, relation }),
+    z.strictObject({ command: z.literal("diagnose"), ...item, ...diagnosticLimitsSchema.shape }),
+    z.strictObject({
+      command: z.literal("dependencies"),
+      ...item,
+      limit: z.number().int().min(1).max(100).default(20),
+      offset: z.number().int().nonnegative().default(0),
+    }),
     z.discriminatedUnion("operation", [
       z.strictObject({
         command: z.literal("criterion"),
@@ -138,7 +155,7 @@ export function work(): Extension {
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
           about:
-            "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
+            "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks or groups and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
           primer:
             "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to BL_ACTOR. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
           cli: {
@@ -316,6 +333,59 @@ export function work(): Extension {
                   },
                 },
               },
+              diagnose: {
+                description:
+                  "Inspect recorded prerequisites through bounded live owner reads; cycles may include closed work. Returns paths, unavailable owners and explicit completeness",
+                examples: [
+                  "bl work diagnose TASK",
+                  "bl work diagnose TASK --max-lakes 4 --max-nodes 200 --max-edges 1000",
+                ],
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Locally owned task or group",
+                  },
+                ],
+                flags: {
+                  "max-lakes": {
+                    key: "maxLakes",
+                    type: "number",
+                    description: "Distinct owners including this lake (default 8, maximum 100)",
+                  },
+                  "max-nodes": {
+                    key: "maxNodes",
+                    type: "number",
+                    description:
+                      "Distinct prerequisite nodes inspected (default 1000, maximum 10000)",
+                  },
+                  "max-edges": {
+                    key: "maxEdges",
+                    type: "number",
+                    description: "Dependency edges read (default 5000, maximum 100000)",
+                  },
+                },
+              },
+              dependencies: {
+                description:
+                  "Read a page of direct, owner-qualified prerequisites without briefs or history; nextOffset=null means exhausted",
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Locally owned task or group",
+                  },
+                ],
+                flags: {
+                  limit: { type: "number", description: "Page size (default 20, maximum 100)" },
+                  offset: {
+                    type: "number",
+                    description: "Continue at nextOffset (default 0); pages are not snapshots",
+                  },
+                },
+              },
               close: {
                 description:
                   "Close after criteria resolve or contained tasks close; releases assignment and returns closure attribution, not success or workflow completion",
@@ -385,7 +455,7 @@ export function work(): Extension {
               },
               link: {
                 description:
-                  "Add a direct prerequisite (from depends on to) or a non-contextual reference",
+                  "Add a direct prerequisite or non-contextual reference; remote prerequisites require a source-verified task/group, while references accept any remote node",
                 examples: ["bl work link TASK BLOCKER --relation depends-on"],
                 positionals: [
                   { name: "from", type: "string", required: true },
@@ -448,6 +518,16 @@ export function work(): Extension {
           },
           handler(value, _ctx, invocation) {
             switch (value.command) {
+              case "diagnose": {
+                const { command: _, id, ...limits } = value;
+                return diagnoseWork(ctx, id, limits, invocation.signal).then((result) =>
+                  jsonSchema.parse(result),
+                );
+              }
+              case "dependencies":
+                return jsonSchema.parse(
+                  workDependencies(ctx, value.id, { limit: value.limit, offset: value.offset }),
+                );
               case "tree":
               case "graph": {
                 const { command, format, ...options } = value;

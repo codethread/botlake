@@ -13,7 +13,7 @@ import { Bins } from "./bins.ts";
 import { parseArgs, validateCommand, type Command } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
-import { Events } from "./events.ts";
+import { Events, nodesChanged } from "./events.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
@@ -97,6 +97,9 @@ export class Runtime {
       peers: options.peers ?? {
         resolve: () => Promise.reject(new Fault("peer", "Peer routing is unavailable")),
         call: () => Promise.reject(new Fault("peer", "Peer routing is unavailable")),
+        watch() {
+          throw new Fault("peer", "Peer routing is unavailable");
+        },
       },
       register: (op) => {
         this.collecting();
@@ -142,6 +145,16 @@ export class Runtime {
 
     this.context.register(bins.operation());
     this.context.register(this.events.operations());
+    this.context.registerEvent(nodesChanged);
+    this.context.subscribe((event) => {
+      const ids = new Set<string>();
+      for (const change of event.changes) {
+        if (change.kind !== "node") continue;
+        const node = change.after ?? change.before;
+        if (node?.reference === null) ids.add(node.id);
+      }
+      if (ids.size > 0) this.context.emit(nodesChanged, { ids: [...ids].toSorted() });
+    });
   }
 
   async start(extensions: Extension[]): Promise<void> {

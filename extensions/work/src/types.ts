@@ -1,3 +1,5 @@
+import type { Reference } from "@botlake/core";
+
 import type { WorkLinkRelation } from "./node-model.ts";
 
 export interface Attribution {
@@ -113,9 +115,8 @@ export interface UpdateItem {
   expectedRevision?: number | undefined;
 }
 
-export interface WorkSummary {
+interface SummaryBase {
   id: string;
-  kind: "task" | "group";
   title: string;
   state: "open" | "closed";
   ready: boolean;
@@ -125,6 +126,17 @@ export interface WorkSummary {
   priority: Task["priority"] | null;
   parent: string | null;
 }
+
+export type WorkSummary = SummaryBase &
+  (
+    | { kind: "task" | "group" }
+    | {
+        /** Observed endpoint owned by another lake, never locally actionable. */
+        kind: "reference";
+        /** Source identity, revision and current observation availability. */
+        reference: Reference;
+      }
+  );
 
 export interface ListOptions {
   view?: "all" | "ready" | "available" | "assigned" | "waiting" | "human" | undefined;
@@ -167,6 +179,12 @@ export interface WorkGraphOptions extends WorkTopologyOptions {
 
 export type WorkTopologyNode =
   | Pick<WorkSummary, "id" | "title" | "state">
+  | (Pick<WorkSummary, "id" | "title" | "state"> & {
+      /** Remote endpoint marker retained even in lean graph output. */
+      kind: "reference";
+      /** Provenance and freshness of the observed endpoint. */
+      reference: Reference;
+    })
   | (WorkSummary & {
       description?: string | undefined;
       acceptanceCriteria?: Criterion[] | undefined;

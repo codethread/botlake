@@ -12,6 +12,7 @@
         "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-references": "workspace:*",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
@@ -112,6 +113,16 @@
         "@botlake/core": "workspace:^",
       },
     },
+    "extensions/references": {
+      "name": "@botlake/extension-references",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
     "extensions/work": {
       "name": "@botlake/extension-work",
       "version": "0.1.0",
@@ -196,6 +207,8 @@
     "@botlake/extension-flags": ["@botlake/extension-flags@workspace:extensions/flags"],
 
     "@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
+
+    "@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
 
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 

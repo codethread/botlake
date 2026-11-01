@@ -31,6 +31,18 @@ flowchart LR
 
 `link FROM TO --relation depends-on` adds a direct prerequisite task or group. An open item is ready when all its direct prerequisites are closed. Containment and references do not create prerequisites; a group prerequisite does not silently become a prerequisite of its members. Closing work neither asserts success nor completes dependents. `references` retains useful non-contextual connections without adding inherited instructions.
 
+Select [References](../references/README.md) explicitly in both lakes and configure `references({ projections: workReferenceProjections })`, importing `workReferenceProjections` from Work. The selectors are inert; importing Work never selects References. A local reference ID can be a prerequisite or non-contextual reference target, never an assignable task or contextual parent. Only source-verified `work/task` and `work/group` observations can satisfy prerequisites, and they must be current and closed. Stale, missing or replaced-source observations leave dependents waiting. Agent lifecycle states do not substitute for Work completion.
+
+Work links record their accepted projection kinds on the dependency edge. Generic edge writes must preserve the exact Work constraint; use `work link` to supply it automatically. Losing the source classification blocks both Work queues and generic readiness used for targeted agent launch, even when the last observed node state is closed.
+
+```sh
+bl reference add OTHER_LAKE REMOTE_TASK
+bl work link LOCAL_TASK LOCAL_REFERENCE_ID --relation depends-on
+bl work diagnose LOCAL_TASK
+```
+
+`diagnose ID` follows recorded prerequisite edges through live owners, with defaults of eight lakes, 1,000 nodes and 5,000 edges; `--max-lakes`, `--max-nodes` and `--max-edges` set explicit bounds. It returns one representative path per cyclic component, unavailable owners, reached limits and `complete`. Cycles can include closed historical work and do not establish current blockedness; an incomplete result does not establish the absence of cycles. `dependencies ID --limit 20 --offset 0` exposes bounded direct owner addresses with `nextOffset`; fetch that owner for current facts. Briefs and histories are omitted. These reads are observations, not a shared snapshot. Local cycle checks still cannot reject every cycle spanning multiple lakes, and a remote source can change after a dependent is claimed.
+
 Defaults are AFK, planned, P2. P0 is immediate attention; P1–P4 decrease in urgency. `list --view human --assignee PERSON` shows ready HITL work routed to that person; filter `--origin planned|unplanned` for planned handoffs or interruptions. `available` excludes HITL, assigned and waiting work. `assigned` and `waiting` overlap. Assignment is responsibility, not proof of execution. Human assignments never expire automatically.
 
 Criteria are optional. `criterion add TASK CONDITION` appends an immutable condition. `criterion resolve TASK CRITERION TEXT` records an assessment, including unmet or no longer required. Every added condition must be resolved before task closure; readiness is not a universal closure guard. Findings belong in notes; no global notes-presence rule applies.
@@ -54,6 +66,8 @@ bl work graph --lean --format json   # All open dependency components
 `tree [ID]` follows only `parent-of`; `graph [ID]` follows only `depends-on`. Without ID they include all matching work. Graph direction defaults to `prerequisites`; an explicit `--direction prerequisites|dependents` requires ID. Stored dependency edges always point from dependent to prerequisite, regardless of traversal.
 
 Output defaults to a static text outline on a terminal and JSON otherwise. `--format text|json` overrides detection; global `bl --json` forces JSON. Both formats default to summaries. `--show-description` (`-sd`) and `--show-criteria` (`-ss`) expand local briefs and criterion assessments. `--lean` overrides expansions and keeps only `id`, `title`, `state` per node, preserving edges and topology metadata.
+
+Remote endpoints retain reference identity and observation status even in lean graph output. Trees and local Work queues contain only locally owned tasks and groups.
 
 `--state open|closed|all` defaults to `open`. An explicit root stays visible. Trees retain required nonmatching ancestors as context; graphs never bridge hidden nodes with invented edges. `omittedLinks` counts scoped links crossing the state filter. Readiness always considers actual prerequisites. JSON stores nodes once with typed edges, entry roots and component membership; text marks repeated branches as shown above.
 

@@ -338,6 +338,17 @@ export class Agents {
         }
       }
 
+      if (input.target !== undefined) {
+        const target = this.ctx.graph.show(input.target);
+        if (target.reference !== null)
+          throw new Fault("reference-target", "Start the agent in the task's owning lake", {
+            id: input.target,
+            lakeId: target.reference.lakeId,
+            workspace: target.reference.workspace,
+            nodeId: target.reference.nodeId,
+          });
+      }
+
       const seat =
         parent === undefined
           ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })

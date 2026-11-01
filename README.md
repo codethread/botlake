@@ -11,6 +11,7 @@ Canonical origin: [millstrand](https://github.com/codethread/millstrand).
 | [`@botlake/core`](packages/core/README.md) | Graph, operations, activation, events, durable wakes, workers | None |
 | [`@botlake/extension-batteries`](extensions/batteries/README.md) | Everyday graph commands | None |
 | [`@botlake/extension-identity`](extensions/identity/README.md) | Native session identity and attribution | None |
+| [`@botlake/extension-references`](extensions/references/README.md) | Opt-in source-owned summaries and cross-lake subscriptions | None |
 | [`@botlake/extension-diary`](extensions/diary/README.md) | Identity-owned working history | Identity |
 | [`@botlake/extension-flags`](extensions/flags/README.md) | Persistent workspace-local flags with configured defaults | None |
 | [`@botlake/extension-agents`](extensions/agents/README.md) | Providers, tracked runs, native observations, custody reconciliation | Identity, Flags |

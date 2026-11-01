@@ -29,6 +29,7 @@
     "@botlake/extension-diary": "workspace:*",
     "@botlake/extension-flags": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
+    "@botlake/extension-references": "workspace:*",
     "@botlake/extension-work": "workspace:*",
     "@botlake/extension-work-agents": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",

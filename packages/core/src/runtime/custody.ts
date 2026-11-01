@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { jsonSchema, Fault } from "../core/json.ts";
-import type { Processes, ProcessFact, ProcessSpec, Peers } from "./context.ts";
+import { jsonSchema, Fault, type Json } from "../core/json.ts";
+import { botlakeCall } from "./client.ts";
+import type { Processes, ProcessFact, ProcessSpec, Peers, PeerCallOptions } from "./context.ts";
+import { watchPeer } from "./peer-stream.ts";
 
 const exitSchema = z.compile(z.object({ code: z.number(), signal: z.string().nullable() }));
 
@@ -36,6 +38,7 @@ const controlFrameSchema = z.compile(
 );
 const factsSchema = z.compile(z.array(factSchema));
 const peerSchema = z.compile(z.object({ path: z.string(), name: z.string() }));
+const peerTimeoutSchema = z.compile(z.number().int().positive().max(2_147_483_647));
 
 interface ControlData {
   resolve(value: unknown): void;
@@ -101,6 +104,33 @@ export function botlakeServices(
       flush(connection);
     });
   }
+
+  async function peerCall(
+    operation: string,
+    target: string,
+    payload: Json,
+    options: PeerCallOptions = {},
+  ): Promise<Json> {
+    const timeoutMs = peerTimeoutSchema.parse(options.timeoutMs ?? 30_000);
+    const controller = new AbortController();
+    const signal =
+      options.signal === undefined
+        ? controller.signal
+        : AbortSignal.any([controller.signal, options.signal]);
+    const timer = setTimeout(() => {
+      controller.abort(new Fault("deadline", `Peer request deadline exceeded: ${operation}`));
+    }, timeoutMs);
+    try {
+      return await botlakeCall(
+        socket,
+        { operation, workspace: target, cwd: workspace, payload },
+        signal,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     processes: {
       async launch(spec: ProcessSpec): Promise<ProcessFact> {
@@ -135,11 +165,19 @@ export function botlakeServices(
       },
     },
     peers: {
-      async resolve(target) {
-        return peerSchema.parse(await control("lake-resolve", {}, target));
+      async resolve(target, options) {
+        return peerSchema.parse(await peerCall("lake-resolve", target, {}, options));
       },
-      async call(target, name, input) {
-        return control("invoke", { name, input }, target);
+      async call(target, name, input, options) {
+        return peerCall(
+          "invoke",
+          target,
+          { name, input, timeout_ms: options?.timeoutMs ?? 30_000 },
+          options,
+        );
+      },
+      watch(target, events, signal) {
+        return watchPeer(socket, workspace, target, events, signal);
       },
     },
   };

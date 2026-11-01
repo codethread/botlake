@@ -22,7 +22,10 @@ const readOptions = {
   includeArchived: z.boolean().default(false),
 };
 const readFlags = {
-  lean: { type: "boolean", description: "Return only id, title and state for each node" },
+  lean: {
+    type: "boolean",
+    description: "Return id, title, state and source metadata for references",
+  },
   "include-archived": {
     key: "includeArchived",
     type: "boolean",
@@ -80,7 +83,7 @@ export function registerNode(ctx: Context): void {
       output: jsonSchema,
       jsonSchema: { input: inputSchema, output: jsonSchema },
       about:
-        "Nodes are graph records with hot and archived attributes. Domain extensions own their protocols and guard protected data; changing a generic node state does not submit a workflow outcome.",
+        "Nodes are graph records with hot and archived attributes. Read-only references expose source metadata separately from attributes; change their facts in the owning lake. Domain extensions own their protocols and guard protected data; changing a generic node state does not submit a workflow outcome.",
       primer:
         "Create, inspect, select and mutate graph nodes. List/ready return summary pages; follow nextOffset until null, and use show ID for attributes or --lean=false to expand page records. Pages are not snapshots. Named queries come from query NAME; ad hoc predicates use --input or botlake lake eval. Archived values do not participate in selection. Update merges objects recursively and null deletes keys; set-attributes preserves supplied values exactly. Omitted keys stay unchanged in both.",
       cli: {
@@ -103,7 +106,7 @@ export function registerNode(ctx: Context): void {
           },
           show: {
             description:
-              "Read a node with hot attributes; --include-archived adds archived values, --lean returns only id, title and state",
+              "Read a node with hot attributes; --include-archived adds archived values, --lean retains id, title, state and reference provenance",
             examples: ["bl node show ID"],
             positionals: [{ name: "id", type: "string", required: true }],
             flags: readFlags,
@@ -171,7 +174,7 @@ export function registerNode(ctx: Context): void {
           },
           ready: {
             description:
-              "List active nodes with no active depends-on targets; returns nodes, total and nextOffset (null when exhausted).",
+              "List locally owned active nodes with no active or unverified depends-on targets; returns nodes, total and nextOffset (null when exhausted).",
             examples: ["bl node ready --limit 20"],
             flags: {
               query: { type: "string", description: "Registered query name" },
@@ -201,7 +204,7 @@ export function registerNode(ctx: Context): void {
           },
           burn: {
             description:
-              "Delete nodes and incident edges while retaining tombstones; domain guards can reject protected evidence",
+              "Delete owned nodes and incident edges while retaining tombstones; use reference forget for imported nodes; domain guards can reject protected evidence",
             examples: ["bl node burn ID"],
             positionals: [{ name: "ids", type: "string", multiple: true, required: true }],
           },
@@ -303,6 +306,16 @@ function handleNode(input: NodeInput, ctx: Context): unknown {
   }
 }
 
-function nodeView(node: Node, lean: boolean): Node | Pick<Node, "id" | "title" | "state"> {
-  return lean ? { id: node.id, title: node.title, state: node.state } : node;
+function nodeView(
+  node: Node,
+  lean: boolean,
+): Node | (Pick<Node, "id" | "title" | "state"> & Partial<Pick<Node, "reference">>) {
+  return lean
+    ? {
+        id: node.id,
+        title: node.title,
+        state: node.state,
+        ...(node.reference === null ? {} : { reference: node.reference }),
+      }
+    : node;
 }

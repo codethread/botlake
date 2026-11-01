@@ -58,8 +58,12 @@ export function renderWorkTopology(view: WorkTopology, columns: number | null): 
       const stem =
         entry.prefix + (entry.branch === "root" ? "" : entry.branch === "last" ? "    " : "│   ");
       const isContext = context.has(node.id);
-      const lean = !("kind" in node);
-      const label = `${entry.prefix}${branch}${inline(node.title)}${lean ? ` [${node.state}${isContext ? ", context" : ""}]` : ""}`;
+      const lean = !("ready" in node);
+      const remote = "kind" in node && node.kind === "reference";
+      const reference = remote
+        ? ` [reference: ${inline(node.reference.workspace)}:${inline(node.reference.nodeId)}, ${node.reference.status}]`
+        : "";
+      const label = `${entry.prefix}${branch}${inline(node.title)}${reference}${lean ? ` [${node.state}${isContext ? ", context" : ""}]` : ""}`;
       lines.push(
         `${label}${" ".repeat(Math.max(2, idColumn - displayWidth(label)))}${inline(node.id)}`,
       );
@@ -114,7 +118,7 @@ function renderDetails(
   context: boolean,
   columns: number | null,
 ): void {
-  if (!("kind" in node)) return;
+  if (!("ready" in node)) return;
   const metadata = [
     ...(node.priority === null ? [] : [node.priority]),
     ...(node.kind === "group" ? ["group"] : []),

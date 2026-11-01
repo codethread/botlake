@@ -47,7 +47,7 @@ export function botlakeCall(
       try {
         const frame = frameSchema.parse(JSON.parse(buffer.slice(0, newline)));
         if ("stream" in frame)
-          throw new Fault("eval", "api.call supports single-result operations, not streams");
+          throw new Fault("stream", "Single-result requests do not support stream operations");
         if (!frame.ok)
           throw new Fault(frame.error.code, frame.error.message, frame.error.details ?? null);
         resolve(frame.result);

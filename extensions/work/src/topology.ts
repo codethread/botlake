@@ -158,7 +158,11 @@ function assemble(input: Assembly): WorkTopology {
 }
 
 function nodeView(summary: WorkSummary, lean: boolean): WorkTopologyNode {
-  return lean ? { id: summary.id, title: summary.title, state: summary.state } : summary;
+  if (!lean) return summary;
+  const minimal = { id: summary.id, title: summary.title, state: summary.state };
+  return summary.kind === "reference"
+    ? { ...minimal, kind: summary.kind, reference: summary.reference }
+    : minimal;
 }
 
 function reachable(
