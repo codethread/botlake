@@ -44,9 +44,15 @@ export function operationPrimer(
   invocation: Invocation,
 ): string {
   const configured = additions?.get(operation.name);
-  const result = typeof configured === "function" ? configured(ctx, invocation) : configured;
-  if (result !== undefined && typeof result !== "string")
-    throw new Fault("priming", `Primer callback for ${operation.name} must return a string`);
+  let result: string | undefined;
+  if (typeof configured === "function") {
+    const callbackResult: unknown = configured(ctx, invocation);
+    if (typeof callbackResult !== "string")
+      throw new Fault("priming", `Primer callback for ${operation.name} must return a string`);
+    result = callbackResult;
+  } else {
+    result = configured;
+  }
 
   const addition = result?.trim();
   if (addition === undefined || addition.length === 0)

@@ -714,7 +714,7 @@ test("callback priming uses only the current operation-prime invocation", async 
   const operations: Extension = {
     name: "callback-primer-fixtures",
     activate(ctx) {
-      for (const name of ["tailored", "throwing", "invalid", "async"])
+      for (const name of ["tailored", "throwing", "undefined", "null", "invalid", "async"])
         ctx.register(
           defineOp({
             name,
@@ -730,6 +730,11 @@ test("callback priming uses only the current operation-prime invocation", async 
   const throwing: PrimerCallback = () => {
     throw new Error("caller-specific failure");
   };
+  // @ts-expect-error Exercise untyped workspace modules that violate the callback contract.
+  // oxlint-disable-next-line unicorn/no-useless-undefined -- undefined is the regression input.
+  const undefinedResult: PrimerCallback = () => undefined;
+  // @ts-expect-error Exercise untyped workspace modules that violate the callback contract.
+  const nullResult: PrimerCallback = () => null;
   // @ts-expect-error Exercise untyped workspace modules that violate the callback contract.
   const invalid: PrimerCallback = () => 42;
   // @ts-expect-error Primer callbacks are deliberately synchronous.
@@ -769,6 +774,12 @@ test("callback priming uses only the current operation-prime invocation", async 
       expect(calls).toHaveLength(3);
 
       expect(() => runtime.discovery("throwing", "prime")).toThrow("caller-specific failure");
+      expect(() => runtime.discovery("undefined", "prime")).toThrow(
+        "Primer callback for undefined must return a string",
+      );
+      expect(() => runtime.discovery("null", "prime")).toThrow(
+        "Primer callback for null must return a string",
+      );
       expect(() => runtime.discovery("invalid", "prime")).toThrow(
         "Primer callback for invalid must return a string",
       );
@@ -782,6 +793,8 @@ test("callback priming uses only the current operation-prime invocation", async 
       priming({
         tailored: callback,
         throwing,
+        undefined: undefinedResult,
+        null: nullResult,
         invalid,
         async: asynchronous,
       }),
