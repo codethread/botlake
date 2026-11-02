@@ -12,7 +12,6 @@ import {
 } from "@botlake/core";
 import {
   attribute,
-  callerActor,
   identityRelations,
   identityAttributes,
   resolveIdentity,
@@ -85,7 +84,7 @@ export function diary(): Extension {
           output: jsonSchema,
           jsonSchema: { input: commandSchema, output: jsonSchema },
           about:
-            "Each registered identity has an implicit diary across tasks. Add/list default to caller BL_ACTOR. List returns oldest-first previews; pass nextCursor as --after until null, then show an entry for full text. Pages are not a shared snapshot. Entries are immutable; corrections are new entries.",
+            "Each registered identity has an implicit diary across tasks. Add/list default to the invocation caller. List returns oldest-first previews; pass nextCursor as --after until null, then show an entry for full text. Pages are not a shared snapshot. Entries are immutable; corrections are new entries.",
           primer:
             "Record useful experiments, intermediate findings and working history selectively. Promote conclusions into the task's current summary at handoff/completion. A diary is optional, not an automatic transcript or automatically evidence for every task its author touched.",
           cli: {
@@ -107,7 +106,7 @@ export function diary(): Extension {
                 flags: {
                   identity: {
                     type: "string",
-                    description: "Registered identity (defaults to caller BL_ACTOR)",
+                    description: "Registered identity (defaults to the invocation caller)",
                   },
                 },
               },
@@ -123,7 +122,7 @@ export function diary(): Extension {
                   {
                     name: "identity",
                     type: "string",
-                    description: "Optional registered identity (defaults to caller BL_ACTOR)",
+                    description: "Optional registered identity (defaults to the invocation caller)",
                   },
                 ],
                 flags: {
@@ -141,12 +140,21 @@ export function diary(): Extension {
               },
             },
           },
-          handler(input) {
+          handler(input, _ctx, invocation) {
             switch (input.command) {
               case "add":
-                return addEntry(ctx, input.text, input.identity);
+                return addEntry(
+                  ctx,
+                  input.text,
+                  input.identity ?? invocation.identity ?? undefined,
+                );
               case "list":
-                return listEntries(ctx, input.identity, input.after, input.limit);
+                return listEntries(
+                  ctx,
+                  input.identity ?? invocation.identity ?? undefined,
+                  input.after,
+                  input.limit,
+                );
               case "show":
                 return presentEntry(entry(ctx, input.id));
             }
@@ -166,7 +174,7 @@ function addEntry(
   body: string,
   requestedIdentity: string | undefined,
 ): { id: string; identity: string; at: string } {
-  const identity = selectedIdentity(ctx, requestedIdentity);
+  const identity = selectedIdentity(requestedIdentity);
   const owner = requireValue(resolveIdentity(ctx.graph, identity), "Unknown identity");
   const record = ctx.graph.atomic(() => {
     const created = ctx.graph.note(owner.id, body, {
@@ -190,7 +198,7 @@ function listEntries(
   entries: { id: string; at: string; preview: string }[];
   nextCursor: string | null;
 } {
-  const identity = selectedIdentity(ctx, requestedIdentity);
+  const identity = selectedIdentity(requestedIdentity);
   requireValue(resolveIdentity(ctx.graph, identity), "Unknown identity");
   const predicates: [Predicate, ...Predicate[]] = [
     entryPredicate,
@@ -247,6 +255,6 @@ function entryAt(record: Node): string {
   return text.parse(record.attributes[noteAttributes.at]);
 }
 
-function selectedIdentity(ctx: Context, explicit: string | undefined): string {
-  return requireValue(explicit ?? callerActor(ctx), "Supply identity or BL_ACTOR");
+function selectedIdentity(explicit: string | undefined): string {
+  return requireValue(explicit, "Supply identity or caller identity");
 }

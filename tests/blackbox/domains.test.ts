@@ -5,7 +5,9 @@ import { join } from "node:path";
 
 import { sql, Runtime, ManualClock, type Context, type Extension } from "@botlake/core";
 import { Cron, defineJob, nextFire } from "@botlake/extension-cron";
+import { diary } from "@botlake/extension-diary";
 import { identity } from "@botlake/extension-identity";
+import { work } from "@botlake/extension-work";
 import { z } from "zod";
 
 const nextAtHistory = z.compile(z.array(z.object({ next_at: z.number() })));
@@ -38,6 +40,48 @@ test("Identity recovers a repeated native session startup", async () => {
         }),
       ),
     ).toEqual({ ...created, result: "recovered" });
+  });
+});
+
+test("domain defaults use normalized caller identity without changing subjects", async () => {
+  await world([identity(), diary(), work()], new ManualClock(1000), async (runtime) => {
+    const registered = z.object({ identity: z.string() }).parse(
+      await runtime.invoke("identity", {
+        command: "startup",
+        provider: "codex",
+        nativeSessionId: "caller-session",
+      }),
+    );
+    const options = { identity: registered.identity, env: { BL_ACTOR: "inherited-launcher" } };
+
+    const shown = z
+      .object({ attributes: z.record(z.string(), z.unknown()) })
+      .parse(await runtime.invoke("identity", { command: "show" }, options));
+    expect(shown.attributes["identity/id"]).toBe(registered.identity);
+
+    const entry = z
+      .object({ identity: z.string() })
+      .parse(await runtime.invoke("diary", { command: "add", text: "evidence" }, options));
+    expect(entry.identity).toBe(registered.identity);
+
+    const created = z
+      .object({ id: z.string() })
+      .parse(
+        await runtime.invoke(
+          "work",
+          { command: "create", title: "Distinct assignment", assignee: "subject" },
+          options,
+        ),
+      );
+    const detail = z
+      .object({
+        item: z.object({ assignment: z.object({ assignee: z.string(), by: z.string() }) }),
+      })
+      .parse(await runtime.invoke("work", { command: "show", id: created.id }));
+    expect(detail.item.assignment).toMatchObject({
+      assignee: "subject",
+      by: registered.identity,
+    });
   });
 });
 

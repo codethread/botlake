@@ -12,7 +12,7 @@ The target workspace must select Identity, Flags and Agents. Discovery uses the 
 | Codex | Session context; no hook shell-env export | Start/end, prompt/stop, tools, available user/final assistant text and model |
 | Claude | Session context; optional `CLAUDE_ENV_FILE` | Start/end, prompt/stop, tools, available user/final assistant text and model |
 
-Pi and Claude shell injection sets `BL_ACTOR` to the native identity and supplies `BL_AGENT_SEAT`, `BL_MODEL` and `BL_EFFORT` when known. Pi refreshes these on metadata changes. Codex and Claude hosts without `CLAUDE_ENV_FILE` receive explicit attribution guidance and a pointer to operation help for assignment flags instead.
+Pi and Claude shell injection sets `BL_ACTOR` to the native identity and supplies `BL_AGENT_SEAT`, `BL_MODEL` and `BL_EFFORT` when known. Pi refreshes these on metadata changes. Codex and Claude hosts without `CLAUDE_ENV_FILE` receive guidance to invoke `bl --identity IDENTITY OP`; operation-specific `--by`, assignee and subject flags retain their separate meanings.
 
 Agents' `unmanaged.systemPrompt` supplies project context for direct sessions: Pi refreshes it before each turn, Claude/Codex at session startup. Managed runs receive their configured prompt through launch arguments instead; adapters do not add the unmanaged prompt. Project context requires a reachable lake; local identity still works when tracking is unavailable.
 

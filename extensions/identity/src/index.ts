@@ -30,7 +30,6 @@ export type { AttributionRelation } from "./node-model.ts";
 const authority = Symbol("identity");
 
 const text = z.compile(z.string().trim().min(1));
-const optionalText = z.compile(text.optional());
 
 export const startupSchema = z.compile(
   sessionSchema.extend({
@@ -40,10 +39,6 @@ export const startupSchema = z.compile(
 );
 
 export type Startup = z.infer<typeof startupSchema>;
-
-export function callerActor(ctx: Context): string | undefined {
-  return optionalText.parse(ctx.env.bl["BL_ACTOR"]);
-}
 
 export function identityRecords(graph: Graph): Node[] {
   return graph.all({
@@ -224,7 +219,7 @@ export function identity(): Extension {
           about:
             "Identity names are deterministic labels for provider-scoped native sessions. Records retain attribution and last-reported metadata; they do not grant process custody, prove liveness or complete tasks.",
           primer:
-            "Use startup to register or recover a native session, show to inspect one identity (defaults to BL_ACTOR), and list to find registered identities. Omitted startup seat/model/effort use BL_AGENT_SEAT, BL_MODEL and BL_EFFORT from the caller environment; explicit values win.",
+            "Use startup to register or recover a native session, show to inspect one identity (defaults to the invocation caller), and list to find registered identities. Omitted startup seat/model/effort use BL_AGENT_SEAT, BL_MODEL and BL_EFFORT from the caller environment; explicit values win.",
           input: commandSchema,
           output: jsonSchema,
           jsonSchema: { input: commandSchema, output: jsonSchema },
@@ -275,13 +270,13 @@ export function identity(): Extension {
               },
               show: {
                 description:
-                  "Show one full identity record and last observation (defaults to BL_ACTOR)",
+                  "Show one full identity record and last observation (defaults to the invocation caller)",
                 examples: ["bl identity show", "bl identity show IDENTITY"],
                 positionals: [
                   {
                     name: "identity",
                     type: "string",
-                    description: "Identity name (defaults to caller BL_ACTOR)",
+                    description: "Identity name (defaults to the invocation caller)",
                   },
                 ],
               },
@@ -304,7 +299,7 @@ export function identity(): Extension {
               },
             },
           },
-          handler(input) {
+          handler(input, _ctx, invocation) {
             switch (input.command) {
               case "startup": {
                 const { command: _, ...request } = input;
@@ -316,8 +311,8 @@ export function identity(): Extension {
               }
               case "show": {
                 const name = requireValue(
-                  input.identity ?? callerActor(ctx),
-                  "Supply identity or BL_ACTOR",
+                  input.identity ?? invocation.identity,
+                  "Supply identity or caller identity",
                 );
                 return jsonSchema.parse(
                   requireValue(resolveIdentity(ctx.graph, name), "Unknown identity"),

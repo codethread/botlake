@@ -22,6 +22,7 @@ export async function bl(
   workspace: string,
   input: unknown,
   env: NodeJS.ProcessEnv,
+  identity: string,
 ): Promise<unknown> {
   const options = { timeout: 5000, maxBuffer: 1024 * 1024, env };
   try {
@@ -32,7 +33,7 @@ export async function bl(
 
   const stdout = await execute(
     env["BL_BIN"] ?? "bl",
-    ["--workspace", workspace, "--input", JSON.stringify(input), "agent"],
+    ["--workspace", workspace, "--identity", identity, "--input", JSON.stringify(input), "agent"],
     options,
   );
 

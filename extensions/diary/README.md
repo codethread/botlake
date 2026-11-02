@@ -9,6 +9,6 @@ bl diary list IDENTITY --after ENTRY_ID
 bl diary show ENTRY_ID
 ```
 
-`add` and `list` use the explicit identity, or the caller's `BL_ACTOR` when omitted. The identity must already be registered. `list` returns oldest-first previews, 20 per page by default (maximum 100); pass `nextCursor` as `--after` until null. Pages are not a shared snapshot. `show` returns the full entry; `add` returns only its ID, identity and time.
+`add` and `list` use the explicit diary identity, or the normalized invocation caller when omitted. The identity must already be registered. `list` returns oldest-first previews, 20 per page by default (maximum 100); pass `nextCursor` as `--after` until null. Pages are not a shared snapshot. `show` returns the full entry; `add` returns only its ID, identity and time.
 
 Each entry is a graph note on its author's identity node, marked by `diaryAttributes.entry`, with `diaryNamespace` as its reserved attribute prefix; Identity also records authorship with an `attributed` edge. A diary is optional working history across tasks, not an automatic transcript. Promote useful conclusions into the task's current summary. Ownership history provides the path from a card to an identity's diary; diary entries are not automatically evidence for that card.

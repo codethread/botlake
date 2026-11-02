@@ -213,7 +213,7 @@ export function workflows(): Extension {
               },
             },
           },
-          handler(value) {
+          handler(value, _ctx, invocation) {
             switch (value.command) {
               case "catalog":
                 return service.catalog(selection(value.name, value.source));
@@ -230,7 +230,7 @@ export function workflows(): Extension {
                   historyOffset: value.historyOffset,
                 });
               case "complete":
-                return service.complete(value.id, value.choice, value.data);
+                return service.complete(value.id, value.choice, value.data, invocation.identity);
             }
           },
         }),

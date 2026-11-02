@@ -170,7 +170,7 @@ export function work(configuration: WorkOptions = {}): Extension {
           about:
             "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks or groups and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
           primer:
-            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to BL_ACTOR. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
+            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to the invocation caller. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
           cli: {
             description: "Create, route, inspect and close tasks and context groups",
             examples: [
@@ -226,7 +226,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                     multiple: true,
                     description: "Repeat with each direct prerequisite ID",
                   },
-                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
                 },
               },
               show: {
@@ -292,7 +295,7 @@ export function work(configuration: WorkOptions = {}): Extension {
                   assignee: {
                     type: "string",
                     description:
-                      "Human view requires --assignee or BL_ACTOR; other views filter current assignment only when supplied",
+                      "Human view requires --assignee or caller identity; other views filter current assignment only when supplied",
                   },
                   audience: {
                     type: "string",
@@ -404,7 +407,12 @@ export function work(configuration: WorkOptions = {}): Extension {
                   "Close after criteria resolve or contained tasks close; releases assignment and returns closure attribution, not success or workflow completion",
                 examples: ["bl work close TASK"],
                 positionals: [{ name: "id", type: "string", required: true }],
-                flags: { by: { type: "string", description: "Attribution; defaults to BL_ACTOR" } },
+                flags: {
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
+                },
               },
               reopen: {
                 description:
@@ -417,7 +425,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                     required: true,
                     description: "Required recovery reason",
                   },
-                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
                 },
               },
               claim: {
@@ -428,9 +439,12 @@ export function work(configuration: WorkOptions = {}): Extension {
                 flags: {
                   assignee: {
                     type: "string",
-                    description: "Responsible identity; defaults to BL_ACTOR",
+                    description: "Responsible identity; defaults to the invocation caller",
                   },
-                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
                 },
               },
               release: {
@@ -450,7 +464,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                     required: true,
                     description: "Required release reason",
                   },
-                  by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
                 },
               },
               move: {
@@ -524,7 +541,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                       { name: "condition", type: "string", required: true },
                     ],
                     flags: {
-                      by: { type: "string", description: "Attribution; defaults to BL_ACTOR" },
+                      by: {
+                        type: "string",
+                        description: "Attribution; defaults to the invocation caller",
+                      },
                     },
                   },
                   resolve: criterionCommand(
@@ -569,7 +589,10 @@ export function work(configuration: WorkOptions = {}): Extension {
               }
               case "create": {
                 const { command: _, ...request } = value;
-                const result = store.create(request);
+                const result = store.create({
+                  ...request,
+                  by: request.by ?? invocation.identity ?? undefined,
+                });
                 return { id: result.id, kind: result.kind, state: result.state };
               }
               case "update": {
@@ -590,10 +613,17 @@ export function work(configuration: WorkOptions = {}): Extension {
               }
               case "list": {
                 const { command: _, ...request } = value;
-                return jsonSchema.parse(store.list(request));
+                return jsonSchema.parse(
+                  store.list({
+                    ...request,
+                    assignee:
+                      request.assignee ??
+                      (request.view === "human" ? (invocation.identity ?? undefined) : undefined),
+                  }),
+                );
               }
               case "close": {
-                const result = store.close(value.id, value.by);
+                const result = store.close(value.id, value.by ?? invocation.identity ?? undefined);
                 return {
                   id: result.id,
                   state: result.state,
@@ -602,18 +632,31 @@ export function work(configuration: WorkOptions = {}): Extension {
                 };
               }
               case "reopen": {
-                const result = store.reopen(value.id, value.reason, value.by);
+                const result = store.reopen(
+                  value.id,
+                  value.reason,
+                  value.by ?? invocation.identity ?? undefined,
+                );
                 return { id: result.id, state: result.state };
               }
               case "claim":
                 return jsonSchema.parse({
                   id: value.id,
-                  assignment: store.claim(value.id, value.assignee, value.by),
+                  assignment: store.claim(
+                    value.id,
+                    value.assignee ?? invocation.identity ?? undefined,
+                    value.by ?? invocation.identity ?? undefined,
+                  ),
                 });
               case "release":
                 return {
                   id: value.id,
-                  released: store.release(value.id, value.assignmentId, value.reason, value.by),
+                  released: store.release(
+                    value.id,
+                    value.assignmentId,
+                    value.reason,
+                    value.by ?? invocation.identity ?? undefined,
+                  ),
                 };
               case "move": {
                 const parent = value.parent ?? null;
@@ -630,17 +673,28 @@ export function work(configuration: WorkOptions = {}): Extension {
                   .then((result) => jsonSchema.parse(result));
               case "criterion": {
                 if (value.operation === "add")
-                  return jsonSchema.parse(store.addCriterion(value.id, value.condition, value.by));
+                  return jsonSchema.parse(
+                    store.addCriterion(
+                      value.id,
+                      value.condition,
+                      value.by ?? invocation.identity ?? undefined,
+                    ),
+                  );
                 if (value.operation === "reopen")
                   return jsonSchema.parse(
-                    store.reopenCriterion(value.id, value.criterion, value.text, value.by),
+                    store.reopenCriterion(
+                      value.id,
+                      value.criterion,
+                      value.text,
+                      value.by ?? invocation.identity ?? undefined,
+                    ),
                   );
                 return jsonSchema.parse(
                   store.resolveCriterion(
                     value.id,
                     value.criterion,
                     value.text,
-                    value.by,
+                    value.by ?? invocation.identity ?? undefined,
                     value.operation === "correct",
                   ),
                 );
@@ -699,7 +753,10 @@ function criterionCommand(description: string, example: string) {
       { name: "text", type: "string" as const, required: true },
     ],
     flags: {
-      by: { type: "string" as const, description: "Attribution; defaults to BL_ACTOR" },
+      by: {
+        type: "string" as const,
+        description: "Attribution; defaults to the invocation caller",
+      },
     },
   };
 }

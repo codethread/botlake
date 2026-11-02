@@ -159,12 +159,12 @@ export function sessionIdentity(session: NativeSession): string {
 export function identityInstruction(identity: string, shellEnvironment = false): string {
   const usage = shellEnvironment
     ? "Commands supporting identity attribution default to `BL_ACTOR` in your shell environment; explicit flags override it."
-    : `Pass \`--by ${identity}\` where attribution is supported; use \`bl help OP\` for assignment and ownership flags.`;
+    : `Pass \`--identity ${identity}\` before the operation; this sets invocation attribution without changing assignment or subject flags.`;
   return [
     `Your Botlake identity is ${identity}.`,
     usage,
     "Identity is attribution, not process custody or task completion.",
-    `Inspect it with \`bl identity show${shellEnvironment ? "" : ` ${identity}`}\`.`,
+    `Inspect it with \`bl${shellEnvironment ? "" : ` --identity ${identity}`} identity show\`.`,
   ].join(" ");
 }
 

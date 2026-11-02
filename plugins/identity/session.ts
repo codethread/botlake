@@ -56,6 +56,7 @@ export async function reportNative(
           ...(parts === undefined ? {} : { runId: parts[0], invocation: parts[1] }),
         },
         env,
+        identity,
       ),
     );
     if (binding.identity !== identity)

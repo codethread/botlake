@@ -8,7 +8,6 @@ import {
   type Json,
   type Node,
 } from "@botlake/core";
-import { callerActor } from "@botlake/extension-identity";
 import { workStore, type Page, type WorkStore, type WorkSummary } from "@botlake/extension-work";
 import { z } from "zod";
 
@@ -176,7 +175,12 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     });
   }
 
-  async function complete(taskId: string, choice: string, data: Json): Promise<Json> {
+  async function complete(
+    taskId: string,
+    choice: string,
+    data: Json,
+    callerIdentity: string | null,
+  ): Promise<Json> {
     const run = containingRun(taskId);
     const node = graph.show(taskId);
     if (node.attributes[workflowAttributes.task] !== true)
@@ -200,7 +204,10 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         "No current worker visit",
       );
       const parsed = validateResult(loaded.definition, visit, choice, data);
-      const actorName = requireValue(callerActor(ctx), "Supply BL_ACTOR to attribute completion");
+      const actorName = requireValue(
+        callerIdentity,
+        "Supply caller identity to attribute completion",
+      );
       const actor = restore(run.id, loaded.definition);
       try {
         advance(actor, { visit, choice, data: parsed });

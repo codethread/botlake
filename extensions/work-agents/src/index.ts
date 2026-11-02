@@ -5,7 +5,7 @@ import {
   resolveAssignmentRun,
   type AgentLiveness,
 } from "@botlake/extension-agents";
-import { callerActor, resolveIdentity } from "@botlake/extension-identity";
+import { resolveIdentity } from "@botlake/extension-identity";
 import { workAssignmentEstablished, workStore, type Assignment } from "@botlake/extension-work";
 import { z } from "zod";
 
@@ -154,15 +154,16 @@ export function workAgents(raw: WorkAgentsOptions): Extension {
                   "by-identity": {
                     key: "byIdentity",
                     type: "string",
-                    description: "Must match the bound native identity; defaults to BL_ACTOR",
+                    description:
+                      "Must match the bound native identity; defaults to the invocation caller",
                   },
                 },
               },
             },
           },
-          handler(input) {
+          handler(input, _ctx, invocation) {
             if (input.command === "bind") return service.bind(input);
-            return service.heartbeat(input);
+            return service.heartbeat(input, invocation.identity);
           },
         }),
       );
@@ -321,13 +322,16 @@ function createService(ctx: Context, options: WorkAgentsOptions) {
     return acknowledgement(entry);
   }
 
-  function heartbeat(input: {
-    task: string;
-    run: string;
-    assignment: string;
-    byIdentity?: string | undefined;
-  }) {
-    const actor = input.byIdentity ?? callerActor(ctx);
+  function heartbeat(
+    input: {
+      task: string;
+      run: string;
+      assignment: string;
+      byIdentity?: string | undefined;
+    },
+    callerIdentity: string | null,
+  ) {
+    const actor = input.byIdentity ?? callerIdentity;
     return ctx.graph.atomic(() => {
       const entry = bindings().find(
         (candidate) =>

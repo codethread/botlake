@@ -87,7 +87,7 @@ interface CreateBase {
   parent?: string | undefined;
   /** Direct prerequisite task/group identities. */
   prerequisites?: string[] | undefined;
-  /** Attribution defaults to the caller's BL_ACTOR. */
+  /** Attribution defaults to the invocation caller. */
   by?: string | undefined;
 }
 

@@ -569,13 +569,13 @@ export class Agents {
         this.providers.get(definition.provider),
         "Provider unavailable",
       ).prepare(definition);
+      const resumedIdentity = definition.resumes
+        ? text.parse(current.attributes[agentAttributes.identity])
+        : undefined;
       const trackingEnv: Record<string, string> = {
         BL_AGENT_SEAT: text.parse(current.attributes[agentAttributes.seat]),
         ...(definition.model === undefined ? {} : { BL_MODEL: definition.model }),
         ...(definition.effort === undefined ? {} : { BL_EFFORT: definition.effort }),
-        ...(definition.resumes
-          ? { BL_ACTOR: text.parse(current.attributes[agentAttributes.identity]) }
-          : {}),
       };
       const spec: ProcessSpec = {
         owner: "agents",
@@ -583,8 +583,8 @@ export class Agents {
         command: [
           "env",
           ...[
-            "BL_AUDIENCE",
             "BL_ACTOR",
+            "BL_AUDIENCE",
             "BL_AGENT_SEAT",
             "BL_MODEL",
             "BL_EFFORT",
@@ -592,7 +592,10 @@ export class Agents {
             "BL_NATIVE_PROVIDER",
             "PI_SUBAGENT",
             "PI_SUBAGENT_CHILD",
-          ].flatMap((key) => (trackingEnv[key] === undefined ? ["-u", key] : [])),
+          ].flatMap((key) =>
+            key === "BL_ACTOR" || trackingEnv[key] === undefined ? ["-u", key] : [],
+          ),
+          ...(resumedIdentity === undefined ? [] : [`BL_ACTOR=${resumedIdentity}`]),
           ...plan.command,
         ],
         cwd: definition.cwd,

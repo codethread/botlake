@@ -11,7 +11,6 @@ import {
   type Node,
   type Predicate,
 } from "@botlake/core";
-import { callerActor } from "@botlake/extension-identity";
 import { z } from "zod";
 
 import { workAssignmentEstablished } from "./events.ts";
@@ -303,10 +302,7 @@ export function workStore(ctx: Context): WorkStore {
     const state = input.state ?? (input.search === undefined ? "open" : "all");
     const human =
       input.view === "human"
-        ? requireValue(
-            input.assignee ?? callerActor(ctx),
-            "Supply --assignee or BL_ACTOR for the human queue",
-          )
+        ? requireValue(input.assignee, "Supply --assignee or caller identity for the human queue")
         : undefined;
     const needle = input.search?.toLowerCase();
     const where: [Predicate, ...Predicate[]] = [q.eq(q.attr(workAttributes.item), true)];
@@ -573,9 +569,7 @@ export function workStore(ctx: Context): WorkStore {
   function claim(id: string, assignee?: string, by?: string): Assignment {
     return graph.atomic(() => {
       const data = openTask(id);
-      const owner = text.parse(
-        requireValue(assignee ?? callerActor(ctx), "Supply --assignee or BL_ACTOR"),
-      );
+      const owner = text.parse(requireValue(assignee, "Supply --assignee or caller identity"));
       const current = currentAssignment(data);
       if (current !== null) {
         if (current.assignee === owner) {
@@ -694,7 +688,7 @@ export function workStore(ctx: Context): WorkStore {
 
   function attribution(by?: string) {
     return {
-      by: text.parse(requireValue(by ?? callerActor(ctx), "Supply --by or BL_ACTOR")),
+      by: text.parse(requireValue(by, "Supply --by or caller identity")),
       at: new Date(ctx.clock.now()).toISOString(),
     };
   }
