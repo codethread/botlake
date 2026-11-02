@@ -83,6 +83,34 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
       });
       return run;
     }
+    async function verifyResumedRetryIdentity(): Promise<void> {
+      const retryParent = idRun.parse(
+        await host.bl("providers", "agent", {
+          command: "start",
+          seat: "codex-seat",
+          cwd: workspace,
+          prompt: "complete",
+        }),
+      );
+      const retryParentRun = await settled(retryParent.id);
+      const identity = z.string().parse(retryParentRun.attributes[agentAttributes.identity]);
+      const failedResume = idRun.parse(
+        await host.bl("providers", "agent", {
+          command: "resume",
+          id: retryParentRun.id,
+          prompt: "failed",
+        }),
+      );
+      const failedContinuation = await settled(failedResume.id);
+      expect(failedContinuation.attributes[agentAttributes.state]).toBe("failed");
+      await host.bl("providers", "agent", { command: "retry", id: failedResume.id });
+      const retried = await settled(failedResume.id);
+      const launch = z
+        .object({ command: z.array(z.string()) })
+        .parse(retried.attributes[agentAttributes.launch]);
+      expect(launch.command).toContain(`BL_ACTOR=${identity}`);
+    }
+
     for (const name of ["codex", "pi", "claude"]) {
       for (const scenario of ["complete", "failed", "truncated", "no-session"]) {
         const started = idRun.parse(
@@ -131,6 +159,7 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
         }
       }
     }
+    await verifyResumedRetryIdentity();
   } finally {
     await host.close();
   }

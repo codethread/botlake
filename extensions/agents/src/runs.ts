@@ -197,6 +197,7 @@ export class Agents {
           "Retry requires a settled unassigned failure without request binding",
         );
 
+      const resumes = run.attributes[agentAttributes.resumes] === true;
       return this.advance(
         id,
         { type: "RETRY" },
@@ -207,10 +208,14 @@ export class Agents {
           [agentAttributes.handle]: null,
           [agentAttributes.launch]: null,
           [agentAttributes.custody]: null,
-          [agentAttributes.sessionId]: null,
+          [agentAttributes.sessionId]: resumes
+            ? text.parse(run.attributes[agentAttributes.sessionId])
+            : null,
           [agentAttributes.sessionConfirmed]: false,
-          [agentAttributes.resumes]: false,
-          [agentAttributes.identity]: null,
+          [agentAttributes.resumes]: resumes,
+          [agentAttributes.identity]: resumes
+            ? text.parse(run.attributes[agentAttributes.identity])
+            : null,
           [agentAttributes.integration]: "unobserved",
           [agentAttributes.observation]: null,
           [agentAttributes.activity]: null,

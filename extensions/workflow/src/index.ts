@@ -222,6 +222,7 @@ export function workflows(): Extension {
                   requireValue(selection(value.name, value.source), "Select a workflow"),
                   value.input,
                   value.parent,
+                  invocation.identity,
                 );
               case "show":
                 return service.show(value.id, {

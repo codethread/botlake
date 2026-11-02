@@ -34,6 +34,13 @@ const workDetail = z.object({
     kind: z.enum(["task", "group"]),
     title: z.string(),
     state: z.enum(["open", "closed"]),
+    assignment: z
+      .object({ id: z.string(), assignee: z.string(), by: z.string() })
+      .nullable()
+      .optional(),
+    acceptanceCriteria: z
+      .array(z.object({ id: z.string(), condition: z.string(), state: z.string() }))
+      .optional(),
   }),
   context: z.array(z.object({ id: z.string(), kind: z.literal("group") })),
   prerequisites: z.array(z.object({ id: z.string(), state: z.enum(["open", "closed"]) })),
@@ -75,6 +82,25 @@ export const machine = setup({}).createMachine({
 `,
   );
   await Bun.write(
+    join(workspace, "caller-attribution.ts"),
+    `
+import { setup } from "xstate";
+import { z } from "zod";
+export const inputSchema = z.object({});
+export const commandSchemas = { next: z.object({}), finish: z.object({}) };
+export function runBrief() { return { title: "Caller attribution", description: "Retain invocation authorship" }; }
+const authored = (instructions, assignee) => ({ instructions, acceptanceCriteria: ["Recorded"], assignee });
+export const machine = setup({}).createMachine({
+  initial: "initial",
+  states: {
+    initial: { meta: { title: "Initial attributed", commands: { next: "NEXT" }, task: () => authored("Initial", "initial-subject") }, on: { NEXT: "later" } },
+    later: { meta: { title: "Later attributed", commands: { finish: "FINISH" }, task: () => authored("Later", "later-subject") }, on: { FINISH: "done" } },
+    done: { type: "final" },
+  },
+});
+`,
+  );
+  await Bun.write(
     join(workspace, "native-values.ts"),
     `
 import { setup } from "xstate";
@@ -103,6 +129,38 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   const showRun = async (id: string) => runView.parse(await cli(["workflow", "show", id]));
   const task = (view: z.infer<typeof runView>, title: string) =>
     z.string().parse(view.tasks.find((candidate) => candidate.title === title)?.id);
+
+  const attributed = runView.parse(
+    await cli([
+      "--identity",
+      "explicit-workflow-caller",
+      "workflow",
+      "start",
+      "--source",
+      "caller-attribution.ts",
+    ]),
+  );
+  const initialAttributed = task(attributed, "Initial attributed");
+  const initialWork = workDetail.parse(await cli(["work", "show", initialAttributed]));
+  assert.deepEqual(initialWork.item.assignment, {
+    id: initialWork.item.assignment?.id,
+    assignee: "initial-subject",
+    by: "explicit-workflow-caller",
+  });
+  const initialCriterion = initialWork.item.acceptanceCriteria?.[0]?.id;
+  assert.ok(initialCriterion !== undefined);
+  await cli(["work", "criterion", "resolve", initialAttributed, initialCriterion, "Recorded"]);
+  const advanced = runView.parse(
+    await cli(["workflow", "complete", initialAttributed, "next", "--data", "{}"]),
+  );
+  const laterAttributed = task(advanced, "Later attributed");
+  const laterWork = workDetail.parse(await cli(["work", "show", laterAttributed]));
+  assert.deepEqual(laterWork.item.assignment, {
+    id: laterWork.item.assignment?.id,
+    assignee: "later-subject",
+    by: "fixture",
+  });
+  assert.equal(laterWork.item.acceptanceCriteria?.[0]?.condition, "Recorded");
 
   const started = runView.parse(await cli(["workflow", "start", "parallel"]));
   const prepare = task(started, "Prepare change");
@@ -371,6 +429,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
         ok: true,
         verified: [
           "shared Work model, private execution, prerequisite gating and common assignment ledger",
+          "normalized start and completion callers author initial and later tasks without changing assignees",
           "inert generic closure remains discoverable as a pending authored action",
           "parallel branch independence, explicit outcomes, fresh revision visits and retained findings",
           "bounded action/decision pages with explicit continuation",

@@ -91,7 +91,12 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     });
   }
 
-  async function start(selection: Selection, input: Json, parent?: string): Promise<Json> {
+  async function start(
+    selection: Selection,
+    input: Json,
+    parent: string | undefined,
+    callerIdentity: string | null,
+  ): Promise<Json> {
     const loaded = await catalogue.load(selection);
     const hint =
       loaded.locator.kind === "named"
@@ -103,6 +108,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       `Inspect the input schema: ${hint}`,
     );
     const brief = briefSchema.parse(loaded.definition.runBrief(parsed));
+    const actorName = requireValue(callerIdentity, "Supply caller identity to start a workflow");
     return graph.atomic(() => {
       if (parent !== undefined) {
         const candidate = work.get(parent);
@@ -116,6 +122,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
           title: brief.title,
           description: brief.description,
           parent,
+          by: actorName,
         });
         const run = graph.add({
           title: `Workflow execution ${context.id}`,
@@ -126,7 +133,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
             [workflowAttributes.definition]: loaded.locator,
           },
         });
-        publish(run, actor, []);
+        publish(run, actor, [], actorName);
         return view(run.id);
       } finally {
         actor.stop();
@@ -238,7 +245,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
 
   return { catalog, start, show, complete };
 
-  function publish(run: Node, actor: WorkflowActor, previous: Visit[], by?: string): void {
+  function publish(run: Node, actor: WorkflowActor, previous: Visit[], by: string): void {
     const current = frontier(actor);
     const keys = new Set(current.map((entry) => entry.key));
     for (const old of previous.toReversed()) {
@@ -263,7 +270,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         continue;
       }
       const parent = nearestGroup(run, entry, current, published, retained);
-      const node = enter(run, parent, entry, history);
+      const node = enter(run, parent, entry, history, by);
       published.set(entry.key, node);
       history.push(node);
     }
@@ -303,7 +310,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     return runContext(run);
   }
 
-  function enter(run: Node, parent: string, entry: Entry, history: Node[]): Node {
+  function enter(run: Node, parent: string, entry: Entry, history: Node[], by: string): Node {
     const meta = renderTask(entry.meta, entry.context);
     const worker = meta.commands !== undefined;
     if (
@@ -327,12 +334,14 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
           description: meta.instructions,
           parent,
           ...taskAuthorship(meta),
+          by,
         })
       : work.create({
           kind: "group",
           title: meta.title,
           description: meta.instructions,
           parent,
+          by,
         });
     graph.setAttributes(item.id, {
       [workflowAttributes.visit]: true,
@@ -350,7 +359,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     return graph.show(item.id);
   }
 
-  function closeDepartedGroup(id: string, by?: string): void {
+  function closeDepartedGroup(id: string, by: string): void {
     const item = work.get(id);
     if (item.kind !== "group" || item.state === "closed" || hasOpenDescendantTask(work, id)) return;
     work.close(id, by);
