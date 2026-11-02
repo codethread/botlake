@@ -14,6 +14,7 @@ import {
   type GraphEvent,
   type Predicate,
   type Extension,
+  type PrimerCallback,
 } from "@botlake/core";
 import { batteries } from "@botlake/extension-batteries";
 import * as v from "valibot";
@@ -696,12 +697,96 @@ test("static priming appends operation guidance and validates configured targets
   const runtime = new Runtime({ database: join(dir, "world.db") });
   try {
     expect(
-      runtime.start([priming({ author: "one" }), priming({ both: "two" }), operations]),
+      runtime.start([priming({ author: "one" }), priming({ both: () => "two" }), operations]),
     ).rejects.toThrow("Duplicate extension: @botlake/core/priming");
   } finally {
     await runtime.stop();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("callback priming uses only the current operation-prime invocation", async () => {
+  const calls: Array<{ identity: string | null; cwd: string; workspace: string }> = [];
+  const callback: PrimerCallback = (ctx, invocation) => {
+    calls.push({ identity: invocation.identity, cwd: invocation.cwd, workspace: ctx.workspace });
+    return invocation.identity === null ? "" : `Guidance for ${invocation.identity}.`;
+  };
+  const operations: Extension = {
+    name: "callback-primer-fixtures",
+    activate(ctx) {
+      for (const name of ["tailored", "throwing", "invalid", "async"])
+        ctx.register(
+          defineOp({
+            name,
+            input: z.compile(z.object({})),
+            output: z.compile(z.null()),
+            cli: { description: name, commands: { child: { description: "child" } } },
+            ...(name === "tailored" ? { primer: "Author guidance." } : {}),
+            handler: () => null,
+          }),
+        );
+    },
+  };
+  const throwing: PrimerCallback = () => {
+    throw new Error("caller-specific failure");
+  };
+  // @ts-expect-error Exercise untyped workspace modules that violate the callback contract.
+  const invalid: PrimerCallback = () => 42;
+  // @ts-expect-error Primer callbacks are deliberately synchronous.
+  const asynchronous: PrimerCallback = () => Promise.resolve("not synchronous");
+
+  await disposable(
+    async (runtime) => {
+      const primer = async (
+        name: string,
+        options: Parameters<Runtime["discovery"]>[3] = {},
+        path: string[] = [],
+      ): Promise<string> =>
+        z
+          .compile(z.array(z.object({ primer: z.string() })))
+          .parse(runtime.discovery(name, "prime", path, options))[0]?.primer ?? "";
+
+      expect(await primer("tailored", { identity: "first", cwd: "/first" })).toBe(
+        "Author guidance.\n\nGuidance for first.",
+      );
+      expect(await primer("tailored", { identity: "second", cwd: "/second" })).toBe(
+        "Author guidance.\n\nGuidance for second.",
+      );
+      expect(await primer("tailored", { cwd: "/anonymous" })).toBe("Author guidance.");
+      expect(calls).toEqual([
+        { identity: "first", cwd: "/first", workspace: runtime.context.workspace },
+        { identity: "second", cwd: "/second", workspace: runtime.context.workspace },
+        { identity: null, cwd: "/anonymous", workspace: runtime.context.workspace },
+      ]);
+
+      runtime.discovery("tailored", "help");
+      runtime.discovery("tailored", "about");
+      runtime.discovery("tailored", "schema");
+      expect(await runtime.invoke("tailored", {})).toBeNull();
+      expect(await primer("tailored", {}, ["child"])).toBe(
+        "No runbook is declared for tailored child.",
+      );
+      expect(calls).toHaveLength(3);
+
+      expect(() => runtime.discovery("throwing", "prime")).toThrow("caller-specific failure");
+      expect(() => runtime.discovery("invalid", "prime")).toThrow(
+        "Primer callback for invalid must return a string",
+      );
+      expect(() => runtime.discovery("async", "prime")).toThrow(
+        "Primer callback for async must return a string",
+      );
+      expect(await runtime.invoke("tailored", {})).toBeNull();
+    },
+    [
+      operations,
+      priming({
+        tailored: callback,
+        throwing,
+        invalid,
+        async: asynchronous,
+      }),
+    ],
+  );
 });
 
 // -- Private helpers --

@@ -44,7 +44,7 @@ export class Runtime {
   private readonly invocationEnv = new AsyncLocalStorage<Context["env"]>();
   private readonly queries = new Map<string, NamedQuery>();
   private readonly ops = new Map<string, Op>();
-  private primerAdditions: ReadonlyMap<string, string> | undefined;
+  private primerAdditions: Parameters<Context[typeof primingRegistration]>[0] | undefined;
   private readonly resources: Resource[] = [];
   private readonly started: Resource[] = [];
   private readonly subscribers: ((event: GraphEvent) => Promise<void> | void)[] = [];
@@ -112,7 +112,7 @@ export class Runtime {
 
         this.ops.set(op.name, op.cli === undefined ? op : { ...op, cli: validateCommand(op.cli) });
       },
-      [primingRegistration]: (additions: ReadonlyMap<string, string>) => {
+      [primingRegistration]: (additions) => {
         this.collecting();
         if (this.primerAdditions !== undefined)
           throw new Fault("collision", "Priming configuration is already registered");
@@ -300,7 +300,7 @@ export class Runtime {
             ...scope,
             primer:
               path.length === 0
-                ? operationPrimer(this.primerAdditions, op)
+                ? operationPrimer(this.primerAdditions, op, this.context, invocation)
                 : `No runbook is declared for ${[op.name, ...path].join(" ")}.`,
           };
         default:
