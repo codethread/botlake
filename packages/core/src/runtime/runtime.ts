@@ -14,6 +14,7 @@ import { parseArgs, validateCommand, type Command } from "./cli.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { Context, Invocation, Op, Peers, Processes, Resource, Extension } from "./context.ts";
 import { Events, nodesChanged } from "./events.ts";
+import { operationPrimer, primingRegistration, validatePriming } from "./priming.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
@@ -43,6 +44,7 @@ export class Runtime {
   private readonly invocationEnv = new AsyncLocalStorage<Context["env"]>();
   private readonly queries = new Map<string, NamedQuery>();
   private readonly ops = new Map<string, Op>();
+  private primerAdditions: ReadonlyMap<string, string> | undefined;
   private readonly resources: Resource[] = [];
   private readonly started: Resource[] = [];
   private readonly subscribers: ((event: GraphEvent) => Promise<void> | void)[] = [];
@@ -86,7 +88,7 @@ export class Runtime {
       },
     );
 
-    this.context = {
+    const context = {
       workspace: options.workspace ?? process.cwd(),
       get env() {
         return invocationEnv.getStore() ?? env;
@@ -109,6 +111,12 @@ export class Runtime {
           throw new Fault("collision", `Duplicate op: ${op.name}`);
 
         this.ops.set(op.name, op.cli === undefined ? op : { ...op, cli: validateCommand(op.cli) });
+      },
+      [primingRegistration]: (additions: ReadonlyMap<string, string>) => {
+        this.collecting();
+        if (this.primerAdditions !== undefined)
+          throw new Fault("collision", "Priming configuration is already registered");
+        this.primerAdditions = additions;
       },
       registerQuery: (name, query) => {
         this.collecting();
@@ -142,7 +150,8 @@ export class Runtime {
 
         bins.register(name, bin);
       },
-    };
+    } satisfies Context;
+    this.context = context;
 
     this.context.register(bins.operation());
     this.context.register(this.events.operations());
@@ -194,6 +203,7 @@ export class Runtime {
         for (const dependency of op.dependencies)
           if (!this.ops.has(dependency) && !metaOps.has(dependency))
             throw new Fault("dependency", `${op.name} requires ${dependency}`);
+      validatePriming(this.primerAdditions, this.ops);
       this.scheduler.validate();
 
       this.phase = "starting";
@@ -290,7 +300,7 @@ export class Runtime {
             ...scope,
             primer:
               path.length === 0
-                ? (op.primer ?? `No runbook is declared for ${op.name}.`)
+                ? operationPrimer(this.primerAdditions, op)
                 : `No runbook is declared for ${[op.name, ...path].join(" ")}.`,
           };
         default:

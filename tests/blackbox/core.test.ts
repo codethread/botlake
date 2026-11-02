@@ -8,6 +8,7 @@ import {
   Runtime,
   ManualClock,
   defineOp,
+  priming,
   q,
   isStream,
   type GraphEvent,
@@ -603,6 +604,104 @@ test("events follow commit, rollback stays silent, and nested domain authority d
       },
     ],
   );
+});
+
+test("static priming appends operation guidance and validates configured targets", async () => {
+  const operations: Extension = {
+    name: "primer-fixtures",
+    activate(ctx) {
+      for (const [name, primer] of [
+        ["author", "Author guidance."],
+        ["addition", undefined],
+        ["both", "Author guidance.  \n"],
+        ["neither", undefined],
+        ["blank", "Author only."],
+      ] as const)
+        ctx.register(
+          defineOp({
+            name,
+            input: z.compile(z.object({})),
+            output: z.compile(z.null()),
+            cli: {
+              description: `${name} description`,
+              commands: { child: { description: "child description" } },
+            },
+            ...(primer === undefined ? {} : { primer }),
+            handler: () => null,
+          }),
+        );
+      ctx.register(
+        defineOp({
+          name: "json-only",
+          input: z.compile(z.object({})),
+          output: z.compile(z.null()),
+          handler: () => null,
+        }),
+      );
+    },
+  };
+  const additions = priming({
+    addition: "  Consumer guidance.  \n",
+    both: "\n Consumer guidance. \n",
+    blank: " \n ",
+  });
+
+  await disposable(
+    async (runtime) => {
+      const primer = async (name: string, ...path: string[]): Promise<string> =>
+        z
+          .compile(z.array(z.object({ primer: z.string() })))
+          .parse(await runtime.invoke("prime", [name, ...path]))[0]?.primer ?? "";
+      expect(await primer("author")).toBe("Author guidance.");
+      expect(await primer("addition")).toBe("Consumer guidance.");
+      expect(await primer("both")).toBe("Author guidance.\n\nConsumer guidance.");
+      expect(await primer("neither")).toBe("No runbook is declared for neither.");
+      expect(await primer("blank")).toBe("Author only.");
+      expect(await primer("both", "child")).toBe("No runbook is declared for both child.");
+      const discovery = z.compile(
+        z.array(z.looseObject({ cli: z.looseObject({ description: z.string() }) })),
+      );
+      expect(discovery.parse(await runtime.invoke("help", ["both"]))[0]?.cli.description).toBe(
+        "both description",
+      );
+      expect(
+        z
+          .compile(z.array(z.looseObject({ about: z.string() })))
+          .parse(await runtime.invoke("about", ["both"]))[0]?.about,
+      ).toBe("both description");
+      expect(
+        z
+          .compile(z.array(z.looseObject({ jsonSchema: z.null() })))
+          .parse(await runtime.invoke("schema", ["both"]))[0]?.jsonSchema,
+      ).toBeNull();
+    },
+    [additions, operations],
+  );
+  await disposable(async () => {}, [operations, priming({ author: "later" })]);
+
+  for (const target of ["missing", "help", "json-only"]) {
+    const dir = await mkdtemp(join(tmpdir(), "botlake-priming-invalid-"));
+    const runtime = new Runtime({ database: join(dir, "world.db") });
+    try {
+      expect(runtime.start([priming({ [target]: "invalid" }), operations])).rejects.toThrow(
+        `Priming target is not a CLI-visible operation: ${target}`,
+      );
+    } finally {
+      await runtime.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "botlake-priming-duplicate-"));
+  const runtime = new Runtime({ database: join(dir, "world.db") });
+  try {
+    expect(
+      runtime.start([priming({ author: "one" }), priming({ both: "two" }), operations]),
+    ).rejects.toThrow("Duplicate extension: @botlake/core/priming");
+  } finally {
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // -- Private helpers --

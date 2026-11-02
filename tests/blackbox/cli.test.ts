@@ -176,6 +176,40 @@ export default {name:"commands",activate(ctx){
   }
 }, 60000);
 
+test("selected local priming configuration appends static operation guidance", async () => {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("priming", ["./priming.ts", "./operations.ts"]);
+    await Bun.write(
+      join(workspace, "operations.ts"),
+      `import {defineOp} from "@botlake/core";
+import {z} from "zod";
+export default {name:"operations",activate(ctx){
+  for(const [name,primer] of [["author","Author guidance."],["addition",undefined],["both","Author guidance."],["neither",undefined]])
+    ctx.register(defineOp({name,input:z.compile(z.object({})),output:z.compile(z.null()),cli:{description:name},primer,handler:()=>null}));
+}};`,
+    );
+    await Bun.write(
+      join(workspace, "priming.ts"),
+      `import {priming} from "@botlake/core";
+export default priming({addition:"Addition guidance.",both:"  Addition guidance.  "});`,
+    );
+
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    for (const [operation, expected] of [
+      ["author", "Author guidance."],
+      ["addition", "Addition guidance."],
+      ["both", "Author guidance.\n\nAddition guidance."],
+      ["neither", "No runbook is declared for neither."],
+    ])
+      expect(await host.cli(["--workspace", "priming", "prime", operation ?? ""])).toEqual([
+        { name: operation, path: [], primer: expected },
+      ]);
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
 test("declared bins build and execute locally with caller I/O, cwd, environment, arguments and TTY", async () => {
   const host = await system();
   try {
