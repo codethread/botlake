@@ -1,4 +1,5 @@
-import { agents } from "@botlake/extension-agents";
+import type { PrimerCallback } from "@botlake/core";
+import { agents, resolveSessionContext } from "@botlake/extension-agents";
 
 import { workspaceFlags } from "./flags.ts";
 import references from "./references.ts";
@@ -27,6 +28,16 @@ const communicationPrompts = {
     "Communicate clearly and informatively, including assumptions, actions, and next steps when they matter.",
     "Do not assume whether the recipient is a human or an agent.",
   ].join("\n"),
+};
+
+export const agentPrimer: PrimerCallback = (ctx, invocation) => {
+  const session = resolveSessionContext(ctx, invocation);
+  if (session === null) return "";
+  if (session.seat === "oracle")
+    return "State assumptions and unresolved tradeoffs in your review.";
+  if (session.model?.startsWith("deepseek/") === true)
+    return "State acceptance criteria before editing.";
+  return "";
 };
 
 export default agents({

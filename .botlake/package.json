@@ -25,6 +25,7 @@
       "./.botlake/flags.ts",
       "./.botlake/references.ts",
       "./.botlake/agents.ts",
+      "./.botlake/priming.ts",
       "./.botlake/work.ts",
       "./.botlake/work-agents.ts",
       "@botlake/extension-workflow",
