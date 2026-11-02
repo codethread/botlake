@@ -122,6 +122,10 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
           }),
         );
         const run = await settled(started.id);
+        const freshLaunch = z
+          .object({ command: z.array(z.string()) })
+          .parse(run.attributes[agentAttributes.launch]);
+        expect(freshLaunch.command.some((value) => value.startsWith("BL_ACTOR="))).toBe(false);
         expect(run.attributes[agentAttributes.state]).toBe(
           scenario === "complete" ? "stopped" : "failed",
         );
@@ -152,6 +156,11 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
             }),
           );
           const continuation = await settled(resumed.id);
+          const resumedIdentity = z.string().parse(run.attributes[agentAttributes.identity]);
+          const resumedLaunch = z
+            .object({ command: z.array(z.string()) })
+            .parse(continuation.attributes[agentAttributes.launch]);
+          expect(resumedLaunch.command).toContain(`BL_ACTOR=${resumedIdentity}`);
           expect(continuation.attributes[agentAttributes.state]).toBe("stopped");
           expect(continuation.attributes[agentAttributes.sessionId]).toBe(
             run.attributes[agentAttributes.sessionId],

@@ -22,8 +22,23 @@ const idResult = z.compile(z.object({ id: z.string() }));
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
   const host = await system();
   try {
-    const workspace = await host.workspace("nodes", ["@botlake/extension-batteries"]);
-    await host.botlake(["lake", "start", "--workspace", workspace]);
+    const workspace = await host.workspace("nodes", [
+      "@botlake/extension-batteries",
+      "./caller.ts",
+    ]);
+    await Bun.write(
+      join(workspace, "caller.ts"),
+      `import {defineOp} from "@botlake/core";import {z} from "zod";
+export default {name:"caller",activate(ctx){ctx.register(defineOp({name:"caller",input:z.compile(z.object({})),output:z.compile(z.json()),handler:(_input,_ctx,invocation)=>({identity:invocation.identity,actor:ctx.env.bl.BL_ACTOR??null,startupActor:ctx.env.lake.BL_ACTOR??null})}));}};`,
+    );
+    const started = await runCli(
+      host,
+      ["lake", "start", "--workspace", workspace],
+      "",
+      { BL_ACTOR: "lake-startup" },
+      host.botlakeBin,
+    );
+    expect(started.code).toBe(0);
 
     const committed = z
       .compile(
@@ -76,6 +91,40 @@ test("botlake controls lakes and evaluates scripts while bl commits structured n
     expect(evaluated.code).toBe(0);
     expect(evaluated.stderr).toContain("diagnostic");
     expect(JSON.parse(evaluated.stdout)).toMatchObject({ nodes: [{ id: committed.refs.root }] });
+    const evalCaller = await runCli(
+      host,
+      [
+        "lake",
+        "eval",
+        "--workspace",
+        "nodes",
+        'return {forwarded:await api.call("caller",{}),explicit:await api.call("caller",{},{identity:"programmatic"})};',
+      ],
+      "",
+      { BL_ACTOR: "eval-environment" },
+      host.botlakeBin,
+    );
+    expect(JSON.parse(evalCaller.stdout)).toEqual({
+      forwarded: {
+        identity: "eval-environment",
+        actor: "eval-environment",
+        startupActor: "lake-startup",
+      },
+      explicit: {
+        identity: "programmatic",
+        actor: "eval-environment",
+        startupActor: "lake-startup",
+      },
+    });
+    const evalIdentityFlag = await runCli(
+      host,
+      ["lake", "eval", "--workspace", "nodes", "--identity", "invalid", "return null;"],
+      "",
+      {},
+      host.botlakeBin,
+    );
+    expect(evalIdentityFlag.code).toBe(1);
+    expect(evalIdentityFlag.stderr).toContain("flag provided but not defined: -identity");
     const rejected = await runCli(host, ["--workspace", "nodes", "--json", "eval", "return 1;"]);
     expect(rejected.code).toBe(1);
     expect(rejected.stdout).toBe("");

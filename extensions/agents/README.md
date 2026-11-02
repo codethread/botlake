@@ -136,7 +136,7 @@ export default agents({
 });
 ```
 
-`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`.
+`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`. Consumer priming can call `resolveSessionContext(ctx, invocation)` dynamically; it returns `null` for anonymous or unregistered callers and reads retained Identity/Agents evidence without activating or registering either extension.
 
 Managed Botlake launches always have audience `agent`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
 

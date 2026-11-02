@@ -242,10 +242,14 @@ test("packed native plugins report tools, visible message excerpts and harness-r
       BL_NATIVE_SESSION_ID: undefined,
       BL_NATIVE_PROVIDER: undefined,
     };
-    async function run(argv: string[], input?: unknown) {
+    async function run(
+      argv: string[],
+      input?: unknown,
+      override: Record<string, string | undefined> = {},
+    ) {
       const child = Bun.spawn(argv, {
         cwd: workspace,
-        env,
+        env: { ...env, ...override },
         stdin: input === undefined ? "ignore" : new Blob([JSON.stringify(input)]),
         stdout: "pipe",
         stderr: "pipe",
@@ -270,7 +274,24 @@ test("packed native plugins report tools, visible message excerpts and harness-r
           ...(provider === "codex" ? { turn_id: "turn" } : { prompt_id: "turn" }),
           ...extra,
         });
-      await send("SessionStart");
+      const startup = await send("SessionStart");
+      const id = sessionIdentity({ provider, nativeSessionId });
+      expect(startup).toContain(`bl --identity ${id}`);
+      if (provider === "claude") {
+        const envFile = join(workspace, "claude-env");
+        await run(
+          ["bun", join(plugin, "hook.ts"), provider],
+          {
+            hook_event_name: "SessionStart",
+            session_id: nativeSessionId,
+            cwd: workspace,
+            transcript_path: `/native/${provider}.jsonl`,
+            prompt_id: "turn",
+          },
+          { CLAUDE_ENV_FILE: envFile },
+        );
+        expect(await Bun.file(envFile).text()).toContain(`export BL_ACTOR='${id}'`);
+      }
       await send("UserPromptSubmit", { prompt: `Investigate VPN access ${"x".repeat(3000)}` });
       await send("PreToolUse", {
         tool_use_id: "a",
@@ -287,7 +308,6 @@ test("packed native plugins report tools, visible message excerpts and harness-r
         tool_name: "Read",
         tool_input: { file_path: "README.md" },
       });
-      const id = sessionIdentity({ provider, nativeSessionId });
       const live = peek.parse(
         await host.bl("activity", "agent", { command: "activity", operation: "peek", id }),
       );
@@ -360,9 +380,9 @@ test("packed native plugins report tools, visible message excerpts and harness-r
       piHost,
       `import identity from "@botlake/identity/pi";
 const handlers=new Map(); identity({on(name,fn){handlers.set(name,fn)}});
-const ctx={cwd:process.cwd(),sessionManager:{getSessionId:()=>"pi-activity",getSessionFile:()=>"/native/pi.jsonl"}};
+const ctx={cwd:process.cwd(),model:{provider:"fixture",id:"model"},thinkingLevel:"high",sessionManager:{getSessionId:()=>"pi-activity",getSessionFile:()=>"/native/pi.jsonl"}};
 const emit=async(name,event={})=>await handlers.get(name)(event,ctx);
-await emit("session_start");await emit("agent_start");
+await emit("session_start");console.log(JSON.stringify({actor:process.env.BL_ACTOR,model:process.env.BL_MODEL,effort:process.env.BL_EFFORT}));await emit("agent_start");
 await emit("message_end",{message:{role:"user",content:"Investigate VPN access"}});
 await emit("tool_execution_start",{toolCallId:"pi-call",toolName:"bash",args:{command:"bun test"}});
 await emit("tool_execution_end",{toolCallId:"pi-call",toolName:"bash",isError:false});
@@ -370,8 +390,11 @@ await emit("message_end",{message:{role:"assistant",content:[],usage:{input:0,ou
 await emit("message_end",{message:{role:"assistant",content:[{type:"thinking",thinking:"private reasoning"},{type:"text",text:"VPN findings"}],usage:{input:10,output:5,cacheRead:2,cacheWrite:0,totalTokens:17,cost:{total:0.001}}}});
 await emit("agent_end");await emit("session_shutdown");`,
     );
-    await run(["bun", piHost]);
+    const piOutput = z
+      .object({ actor: z.string(), model: z.string(), effort: z.string() })
+      .parse(JSON.parse((await run(["bun", piHost])).trim()) as unknown);
     const id = sessionIdentity({ provider: "pi", nativeSessionId: "pi-activity" });
+    expect(piOutput).toEqual({ actor: id, model: "fixture/model", effort: "high" });
     const pi = peek.parse(
       await host.cli(["--workspace", "activity", "agent", "activity", "peek", id]),
     );

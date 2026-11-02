@@ -336,6 +336,20 @@ test("invocation identity is normalized per ordinary, streaming and discovery re
       };
     },
   });
+  let currentRuntime: Runtime;
+  const scopedDiscovery = defineOp({
+    name: "scoped-discovery",
+    input: z.compile(z.object({})),
+    output: z.compile(z.string()),
+    cli: { description: "direct discovery scope" },
+    handler() {
+      const [result] = z
+        .compile(z.array(z.object({ primer: z.string() })))
+        .parse(currentRuntime.discovery("identity", "prime"));
+      if (result === undefined) throw new Error("Identity primer was not discovered");
+      return result.primer;
+    },
+  });
   const stream = defineOp({
     name: "identity-stream",
     input: z.compile(z.object({})),
@@ -351,6 +365,7 @@ test("invocation identity is normalized per ordinary, streaming and discovery re
 
   await disposable(
     async (runtime) => {
+      currentRuntime = runtime;
       const first = runtime.invoke("identity", { wait: true }, { identity: " alpha " });
       const second = runtime.invoke("identity", { wait: true }, { env: { BL_ACTOR: " beta " } });
       while (entered.length < 2) await Promise.resolve();
@@ -394,15 +409,20 @@ test("invocation identity is normalized per ordinary, streaming and discovery re
           env: { BL_ACTOR: "other" },
         }),
       ).toBeArray();
+      expect(await runtime.invoke("scoped-discovery", {}, { identity: "outer-caller" })).toBe(
+        "anonymous",
+      );
     },
     [
       {
         name: "identity-test",
         activate(ctx) {
           ctx.register(identity);
+          ctx.register(scopedDiscovery);
           ctx.register(stream);
         },
       },
+      priming({ identity: (_ctx, invocation) => invocation.identity ?? "anonymous" }),
     ],
   );
 });
@@ -646,6 +666,16 @@ test("static priming appends operation guidance and validates configured targets
     both: "\n Consumer guidance. \n",
     blank: " \n ",
   });
+
+  await disposable(
+    async (runtime) => {
+      const result = z
+        .compile(z.array(z.object({ primer: z.string() })))
+        .parse(await runtime.invoke("prime", ["author"]));
+      expect(result[0]?.primer).toBe("Author guidance.");
+    },
+    [operations],
+  );
 
   await disposable(
     async (runtime) => {
