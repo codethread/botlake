@@ -125,6 +125,9 @@ export default agents({providers:names.map(name=>{const base=provider(name);retu
         const freshLaunch = z
           .object({ command: z.array(z.string()) })
           .parse(run.attributes[agentAttributes.launch]);
+        const actorScrub = freshLaunch.command.findIndex((value) => value === "BL_ACTOR");
+        expect(actorScrub).toBeGreaterThan(0);
+        expect(freshLaunch.command[actorScrub - 1]).toBe("-u");
         expect(freshLaunch.command.some((value) => value.startsWith("BL_ACTOR="))).toBe(false);
         expect(run.attributes[agentAttributes.state]).toBe(
           scenario === "complete" ? "stopped" : "failed",

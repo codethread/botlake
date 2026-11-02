@@ -3,10 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, ManualClock, sql, type Processes } from "@botlake/core";
-import { agents, runActivityRelations } from "@botlake/extension-agents";
+import { Runtime, ManualClock, sql, type Invocation, type Processes } from "@botlake/core";
+import { agents, resolveSessionContext, runActivityRelations } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
-import { identity } from "@botlake/extension-identity";
+import { identity, identityAttributes } from "@botlake/extension-identity";
 import { sessionIdentity } from "@botlake/native-session";
 import { z } from "zod";
 
@@ -55,6 +55,93 @@ const processes: Processes = {
 async function unavailable(): Promise<never> {
   throw new Error("No processes in this native session fixture");
 }
+
+test("native metadata producers preserve value, clear and omission semantics on one identity", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "botlake-native-metadata-"));
+  const runtime = new Runtime({ database: join(dir, "lake.sqlite"), processes });
+  try {
+    await runtime.start([identity(), configureFlags([]), agents()]);
+    const session = { provider: "pi" as const, nativeSessionId: "metadata-session", cwd: dir };
+    const startup = binding.pick({ identity: true, nodeId: true }).parse(
+      await runtime.invoke("identity", {
+        command: "startup",
+        provider: session.provider,
+        nativeSessionId: session.nativeSessionId,
+        agentSeat: "startup-seat",
+        model: "startup-model",
+        thinkingLevel: "startup-effort",
+      }),
+    );
+    const produced = binding.parse(
+      await runtime.invoke("agent", {
+        command: "native",
+        ...session,
+        event: "metadata",
+        audience: "unknown",
+        capabilities: ["model", "effort"],
+        agentSeat: "reported-seat",
+        model: "reported-model",
+        thinkingLevel: "reported-effort",
+      }),
+    );
+    expect(produced).toMatchObject(startup);
+    const shown = z
+      .object({ attributes: z.record(z.string(), z.unknown()) })
+      .parse(await runtime.invoke("identity", { command: "show", identity: startup.identity }));
+    expect(shown.attributes).toMatchObject({
+      [identityAttributes.agentSeat]: "reported-seat",
+      [identityAttributes.model]: "reported-model",
+      [identityAttributes.thinkingLevel]: "reported-effort",
+    });
+
+    await runtime.invoke("agent", {
+      command: "native",
+      ...session,
+      event: "metadata",
+      audience: "unknown",
+      capabilities: ["model", "effort"],
+      agentSeat: null,
+      model: null,
+      thinkingLevel: null,
+    });
+    await runtime.invoke("agent", {
+      command: "native",
+      ...session,
+      event: "metadata",
+      audience: "unknown",
+      capabilities: ["model", "effort"],
+    });
+
+    const final = z
+      .object({ attributes: z.record(z.string(), z.unknown()) })
+      .parse(await runtime.invoke("identity", { command: "show", identity: startup.identity }));
+    expect(final.attributes[identityAttributes.agentSeat]).toBeUndefined();
+    expect(final.attributes[identityAttributes.model]).toBeUndefined();
+    expect(final.attributes[identityAttributes.thinkingLevel]).toBeUndefined();
+    const invocation = {
+      identity: startup.identity,
+      signal: new AbortController().signal,
+      requestId: "metadata-semantics",
+      deadline: null,
+      cwd: dir,
+      terminal: { isTTY: false, columns: null },
+      output: { format: "json", text: (value: string) => value },
+    } satisfies Invocation;
+    expect(resolveSessionContext(runtime.context, invocation)).toMatchObject({
+      model: null,
+      seat: null,
+      effort: null,
+    });
+    const identities = z
+      .object({ identities: z.array(z.object({ identity: z.string() })), total: z.number() })
+      .parse(await runtime.invoke("identity", { command: "list", limit: 20, offset: 0 }));
+    expect(identities.total).toBe(1);
+    expect(identities.identities).toEqual([{ identity: startup.identity }]);
+  } finally {
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("run activity pages and searches SQL events, preserves live streams, and expires to one linked tombstone across restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "botlake-activity-"));
