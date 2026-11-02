@@ -43,9 +43,9 @@ func (p *payloadFlags) Set(value string) error {
 }
 
 type invocationFlags struct {
-	workspace, cwd, worktree, common, timeout, input         string
-	stdin, dryRun, version, help, json, inputSet, timeoutSet bool
-	payloads                                                 payloadFlags
+	workspace, cwd, worktree, common, timeout, input, identity            string
+	stdin, dryRun, version, help, json, inputSet, timeoutSet, identitySet bool
+	payloads                                                              payloadFlags
 }
 
 func BL(args []string) int {
@@ -57,6 +57,7 @@ func BL(args []string) int {
 	flags.StringVar(&p.worktree, "worktree-root", "", "explicit Git worktree root")
 	flags.StringVar(&p.common, "git-common-dir", "", "explicit Git common directory")
 	flags.StringVar(&p.timeout, "timeout", "", "override operation deadline")
+	flags.StringVar(&p.identity, "identity", "", "explicit caller identity (overrides BL_ACTOR)")
 	flags.StringVar(&p.input, "input", "", "JSON input, @file, or - for stdin")
 	flags.Var(&p.payloads, "payload", "named text payload: name=path (repeatable)")
 	flags.BoolVar(&p.stdin, "stdin", false, "read stdin into the stdin payload")
@@ -77,7 +78,17 @@ func BL(args []string) int {
 		if f.Name == "timeout" {
 			p.timeoutSet = true
 		}
+		if f.Name == "identity" {
+			p.identitySet = true
+		}
 	})
+
+	if p.identitySet {
+		p.identity = strings.TrimSpace(p.identity)
+		if p.identity == "" {
+			return cliFailure(errors.New("--identity must not be blank"), p.json)
+		}
+	}
 
 	args = flags.Args()
 	if p.version {
@@ -200,6 +211,9 @@ func BL(args []string) int {
 		"cwd": cwd, "is_tty": isTTY, "tty_col": columns,
 		"env": environment(),
 	}
+	if p.identitySet {
+		payload["identity"] = p.identity
+	}
 	if p.json {
 		payload["output_format"] = "json"
 	}
@@ -307,6 +321,7 @@ Global flags (before the operation):
   --payload NAME=PATH     Attach a named text file (repeatable); use :payload/NAME
   --input JSON|@FILE|-     Supply the entire JSON operation input; - reads stdin
   --timeout DURATION      Override the operation deadline (normally 30s; e.g. 5s)
+  --identity NAME         Set caller identity, overriding nonblank BL_ACTOR
   --json                  Force JSON output, including help and errors
   --dry-run               Print the request without invoking it
   --version               Print CLI/build/protocol versions
@@ -337,7 +352,8 @@ Shared conventions:
   Pages are not snapshots. Read each command's default filters and limits.
   Boolean flags enable with --flag; use --flag=false to disable. Repeat only
   repeatable flags. JSON arguments accept inline JSON, @FILE or attached payloads.
-  -- ends operation flag parsing; global flags must precede the operation.
+  -- ends operation flag parsing; global flags, including --identity, must precede
+  the operation. Operation-owned flags after it retain their declared meaning.
 
 Help is formatted for a terminal; redirected help and data remain JSON/NDJSON.
 --json forces JSON, including errors on stderr; failures exit nonzero.

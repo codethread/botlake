@@ -353,10 +353,10 @@ export default {name:"payloads",activate(ctx){
     cli:{description:"Echo text",positionals:[{name:"value",type:"string",required:true}]},handler:input=>input.value}));
   ctx.register(defineOp({name:"json",input:z.compile(z.object({value:z.json()})),output:z.compile(z.json()),
     cli:{description:"JSON",flags:{value:{type:"json",required:true}}},handler:input=>input.value}));
-  ctx.register(defineOp({name:"owned",input:z.compile(z.object({workspace:z.string(),timeout:z.string()})),output:z.compile(z.json()),
-    cli:{description:"Extension-owned flags",flags:{workspace:{type:"string",required:true},timeout:{type:"string",required:true}}},handler:input=>input}));
+  ctx.register(defineOp({name:"owned",input:z.compile(z.object({workspace:z.string(),timeout:z.string(),identity:z.string()})),output:z.compile(z.json()),
+    cli:{description:"Extension-owned flags",flags:{workspace:{type:"string",required:true},timeout:{type:"string",required:true},identity:{type:"string",required:true}}},handler:input=>input}));
   ctx.register(defineOp({name:"context",input:z.compile(z.object({})),output:z.compile(z.json()),cli:{description:"Invocation context"},
-    handler:(_,ctx,request)=>({cwd:request.cwd,root:request.worktreeRoot??null,common:request.gitCommonDir??null,terminal:request.terminal})}));
+    handler:(_,ctx,request)=>({cwd:request.cwd,root:request.worktreeRoot??null,common:request.gitCommonDir??null,identity:request.identity,actor:ctx.env.bl.BL_ACTOR??null,terminal:request.terminal})}));
 }};`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
@@ -387,8 +387,40 @@ export default {name:"payloads",activate(ctx){
     );
     expect(JSON.parse(nested.stdout)).toEqual({ body: "raw text" });
     expect(
-      await host.cli([...prefix, "owned", "--workspace", "domain", "--timeout", "domain-time"]),
-    ).toEqual({ workspace: "domain", timeout: "domain-time" });
+      await host.cli([
+        ...prefix,
+        "owned",
+        "--workspace",
+        "domain",
+        "--timeout",
+        "domain-time",
+        "--identity",
+        "domain-identity",
+      ]),
+    ).toEqual({ workspace: "domain", timeout: "domain-time", identity: "domain-identity" });
+    expect(await host.cli([...prefix, "--identity", " explicit-caller ", "context"])).toMatchObject(
+      {
+        identity: "explicit-caller",
+        actor: "fixture",
+      },
+    );
+    expect(
+      await host.cli([...prefix, "--input", "{}", "--identity", "json-caller", "context"]),
+    ).toMatchObject({ identity: "json-caller", actor: "fixture" });
+    expect(
+      JSON.parse(
+        (
+          await runCli(host, [
+            ...prefix,
+            "--identity",
+            "prime-caller",
+            "--dry-run",
+            "prime",
+            "context",
+          ])
+        ).stdout,
+      ),
+    ).toMatchObject({ payload: { name: "prime", identity: "prime-caller", argv: ["context"] } });
     expect((await runCli(host, [...prefix, "--stdin", "echo", "unused"], "text")).stderr).toContain(
       "Unused payload",
     );
@@ -433,8 +465,17 @@ export default {name:"payloads",activate(ctx){
       cwd: await realpath(nestedDir),
       root: workspace,
       common: join(workspace, ".git"),
+      identity: "fixture",
+      actor: "fixture",
       terminal: { isTTY: false, columns: null },
     });
+    expect(await runCli(host, [...prefix, "context"], "", { BL_ACTOR: "  " })).toMatchObject({
+      code: 0,
+      stderr: "",
+    });
+    expect(
+      JSON.parse((await runCli(host, [...prefix, "context"], "", { BL_ACTOR: "  " })).stdout),
+    ).toMatchObject({ identity: null, actor: "  " });
     const terminalContext = await runTerminal(host, [...prefix, "--json", "context"]);
     expect(terminalContext.code).toBe(0);
     expect(JSON.parse(terminalContext.output)).toMatchObject({
@@ -453,6 +494,24 @@ export default {name:"payloads",activate(ctx){
       payload: { name: "echo", argv: [":stdin"], payloads: { stdin: "attached" }, is_tty: false },
     });
     const unavailable = { BL_HOME: join(host.dir, "absent") };
+    expect((await runCli(host, ["--help"], "", unavailable)).stdout).toContain("--identity");
+    expect((await runCli(host, ["--identity", "offline", "--help"], "", unavailable)).code).toBe(0);
+    const completion = (
+      await runCli(host, ["completions", "zsh"], "", unavailable, host.botlakeBin)
+    ).stdout;
+    expect(completion).toContain("--identity=[Set caller identity (overrides BL_ACTOR)]");
+    expect(completion).toContain("for key in workspace cwd worktree-root git-common-dir identity");
+    const blankIdentity = await runCli(
+      host,
+      ["--workspace", "not-running", "--identity", "  ", "help"],
+      "",
+      unavailable,
+    );
+    expect(blankIdentity.code).toBe(1);
+    expect(blankIdentity.stderr).toContain("--identity must not be blank");
+    expect((await runCli(host, ["--identity"], "", unavailable)).stderr).toContain(
+      "flag needs an argument",
+    );
     expect((await runCli(host, ["--help"], "", unavailable)).stdout).toContain("--stdin");
     expect(
       JSON.parse((await runCli(host, ["--json", "--help"], "", unavailable)).stdout),

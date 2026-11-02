@@ -78,6 +78,7 @@ _bl() {
     '--worktree-root=[Override Git worktree context]:directory:_directories' \
     '--git-common-dir=[Override Git common directory]:directory:_directories' \
     '--timeout=[Override operation deadline]:duration:' \
+    '--identity=[Set caller identity (overrides BL_ACTOR)]:identity:' \
     '--input=[Supply JSON, @file or -]:input:_bl_value json' \
     '*--payload=[Attach a named text file]:name=path:_bl_value payload' \
     '--stdin[Attach stdin as text]' \
@@ -88,9 +89,10 @@ _bl() {
     '1:operation:->operation' \
     '*::arguments:->arguments' && ret=0
 
-  # Only selection/context flags belong on the help request: input, payloads and
-  # dry-run would change its meaning. _arguments has removed global options here.
-  for key in workspace cwd worktree-root git-common-dir; do
+  # Only selection/context flags and explicit caller identity belong on the help
+  # request: input, payloads and dry-run would change its meaning. _arguments has
+  # removed global options here.
+  for key in workspace cwd worktree-root git-common-dir identity; do
     [[ -n ${opt_args[--$key]} ]] && context_flags+=( "--$key" "${(Q)opt_args[--$key]}" )
   done
 
