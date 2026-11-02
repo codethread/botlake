@@ -17,6 +17,7 @@ import { Events, nodesChanged } from "./events.ts";
 import { Scheduler } from "./scheduler.ts";
 
 const operationNameSchema = z.compile(z.string().trim().min(1));
+const identitySchema = z.compile(z.string().trim().min(1, "Identity must not be blank"));
 const queryNameSchema = z.compile(z.string().min(1));
 const argvSchema = z.compile(z.array(z.string()));
 
@@ -214,7 +215,34 @@ export class Runtime {
     }
   }
 
-  discovery(name?: string, tier = "help", path: string[] = []): unknown {
+  discovery(
+    name?: string,
+    tier = "help",
+    path: string[] = [],
+    options: {
+      identity?: string;
+      env?: Record<string, string | undefined>;
+      requestId?: string;
+      signal?: AbortSignal;
+      cwd?: string;
+      worktreeRoot?: string;
+      gitCommonDir?: string;
+      terminal?: Invocation["terminal"];
+      outputFormat?: Invocation["output"]["format"];
+    } = {},
+  ): unknown {
+    const env = { lake: this.context.env.lake, bl: { ...options.env } };
+    const invocation = this.createInvocation(options, null);
+    return this.invocationEnv.run(env, () => this.discover(name, tier, path, invocation));
+  }
+
+  private discover(
+    name: string | undefined,
+    tier: string,
+    path: string[],
+    invocation: Invocation,
+  ): unknown {
+    invocation.signal.throwIfAborted();
     if (tier !== "help" && name === undefined)
       throw new Fault("discovery", `${tier} requires an operation: bl ${tier} OP`);
     if (tier === "schema" && path.length > 0)
@@ -274,6 +302,7 @@ export class Runtime {
     name: string,
     input: unknown,
     options: {
+      identity?: string;
       argv?: boolean;
       timeoutMs?: number;
       requestId?: string;
@@ -301,7 +330,7 @@ export class Runtime {
         : typeof input === "string"
           ? [input]
           : [];
-      return this.discovery(path[0], name, path.slice(1));
+      return this.discovery(path[0], name, path.slice(1), options);
     }
 
     if (options.argv === true) {
@@ -313,7 +342,7 @@ export class Runtime {
             "argv",
             "Use help OP [SUBCOMMAND...] without operation flags or payloads",
           );
-        return this.discovery(name, "help", path);
+        return this.discovery(name, "help", path, options);
       }
     }
 
@@ -376,13 +405,7 @@ export class Runtime {
           signal.throwIfAborted();
           return this.invocationEnv.run(env, () =>
             op.invoke(payload, this.context, {
-              signal,
-              deadline,
-              requestId: options.requestId ?? crypto.randomUUID(),
-              cwd: options.cwd ?? this.context.workspace,
-              worktreeRoot: options.worktreeRoot,
-              gitCommonDir: options.gitCommonDir,
-              terminal: options.terminal ?? { isTTY: false, columns: null },
+              ...this.createInvocation(options, deadline, signal),
               output: {
                 format: options.outputFormat ?? "auto",
                 text(value) {
@@ -464,6 +487,47 @@ export class Runtime {
   }
 
   // -- Private helpers --
+
+  private createInvocation(
+    options: {
+      identity?: string;
+      env?: Record<string, string | undefined>;
+      requestId?: string;
+      signal?: AbortSignal;
+      cwd?: string;
+      worktreeRoot?: string;
+      gitCommonDir?: string;
+      terminal?: Invocation["terminal"];
+      outputFormat?: Invocation["output"]["format"];
+    },
+    deadline: number | null,
+    signal = options.signal ?? new AbortController().signal,
+  ): Invocation {
+    const actor = options.env?.["BL_ACTOR"]?.trim();
+    const identity =
+      options.identity === undefined
+        ? actor === undefined || actor.length === 0
+          ? null
+          : actor
+        : identitySchema.parse(options.identity);
+
+    return {
+      identity,
+      signal,
+      deadline,
+      requestId: options.requestId ?? crypto.randomUUID(),
+      cwd: options.cwd ?? this.context.workspace,
+      worktreeRoot: options.worktreeRoot,
+      gitCommonDir: options.gitCommonDir,
+      terminal: options.terminal ?? { isTTY: false, columns: null },
+      output: {
+        format: options.outputFormat ?? "auto",
+        text(value) {
+          return value;
+        },
+      },
+    };
+  }
 
   private collecting(): void {
     if (this.phase !== "registering") throw new Fault("lifecycle", "Registrations are closed");

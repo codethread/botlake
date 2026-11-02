@@ -72,6 +72,7 @@ port.on("message", (raw: unknown) => {
           ...(request.argv === undefined ? {} : { argv: true }),
           ...(request.timeout_ms === undefined ? {} : { timeoutMs: request.timeout_ms }),
           requestId: request.request_id,
+          ...(request.identity === undefined ? {} : { identity: request.identity }),
           env: request.env,
           ...(request.payloads === undefined ? {} : { payloads: request.payloads }),
           ...(request.cwd === undefined ? {} : { cwd: request.cwd }),

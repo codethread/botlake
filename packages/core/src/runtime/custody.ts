@@ -172,7 +172,12 @@ export function botlakeServices(
         return peerCall(
           "invoke",
           target,
-          { name, input, timeout_ms: options?.timeoutMs ?? 30_000 },
+          {
+            name,
+            input,
+            timeout_ms: options?.timeoutMs ?? 30_000,
+            ...(options?.identity === undefined ? {} : { identity: options.identity }),
+          },
           options,
         );
       },

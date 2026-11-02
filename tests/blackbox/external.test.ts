@@ -87,7 +87,7 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
       );
       await Bun.write(
         join(workspace, "deps.ts"),
-        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"peer-echo",input:z.compile(z.object({value:z.string()})),output:z.compile(z.string().min(1)),handler:input=>input.value}));ctx.register(defineOp({name:"relay",input:z.compile(z.object({value:z.string(),operation:z.string().default("echo")})),output:z.compile(z.string()),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value});}}));}};`,
+        `import {value} from "private-value";import {defineOp} from "@botlake/core";import {z} from "zod";export default {name:"deps",activate(ctx){ctx.register(defineOp({name:"dep",input:z.compile(z.object({})),output:z.compile(z.string()),cli:{description:"dependency"},handler:()=>value}));ctx.register(defineOp({name:"peer-echo",input:z.compile(z.object({value:z.string()})),output:z.compile(z.string().min(1)),handler:input=>input.value}));ctx.register(defineOp({name:"caller",input:z.compile(z.object({})),output:z.compile(z.string().nullable()),handler:(_input,_ctx,request)=>request.identity}));ctx.register(defineOp({name:"relay",input:z.compile(z.object({value:z.string(),operation:z.string().default("echo"),identity:z.string().optional()})),output:z.compile(z.string().nullable()),cli:{description:"peer roundtrip"},async handler(input){return await ctx.peers.call("beta",input.operation,{value:input.value},input.identity===undefined?undefined:{identity:input.identity});}}));}};`,
       );
       await host.botlake(["lake", "start", "--workspace", workspace]);
       expect(await host.bl(name, "dep", {})).toBe(name);
@@ -96,6 +96,27 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     expect(await host.bl("alpha", "relay", { value: "peer JSON", operation: "peer-echo" })).toBe(
       "peer JSON",
     );
+    expect(await host.bl("alpha", "relay", { value: "", operation: "caller" })).toBeNull();
+    expect(
+      await host.bl("alpha", "relay", {
+        value: "",
+        operation: "caller",
+        identity: "forwarded",
+      }),
+    ).toBe("forwarded");
+    expect(
+      z.compile(z.object({ ok: z.literal(true), result: z.literal("wire-caller") })).parse(
+        JSON.parse(
+          await host.wire({
+            protocol_version: 1,
+            request_id: "identity",
+            operation: "invoke",
+            workspace: "beta",
+            payload: { name: "caller", input: {}, identity: " wire-caller " },
+          }),
+        ),
+      ).result,
+    ).toBe("wire-caller");
     expect(await host.bl("beta", "peer-echo", { value: 1 }, false)).toContain(
       "input schema validation failed",
     );

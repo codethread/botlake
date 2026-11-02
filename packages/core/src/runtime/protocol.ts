@@ -8,6 +8,7 @@ export const invocationSchema = z.compile(
       workspace: z.string(),
       request_id: z.string().min(1),
       name: z.string().min(1),
+      identity: z.string().optional(),
       input: z.unknown().optional(),
       argv: z.array(z.string()).optional(),
       payloads: z.record(z.string().min(1), z.string()).optional(),

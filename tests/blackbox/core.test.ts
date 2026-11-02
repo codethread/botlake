@@ -317,6 +317,94 @@ test("batches compose local refs and ordered edges, enforce relation invariants 
   );
 });
 
+test("invocation identity is normalized per ordinary, streaming and discovery request", async () => {
+  const release = Promise.withResolvers<void>();
+  const entered: string[] = [];
+  const identity = defineOp({
+    name: "identity",
+    input: z.compile(z.object({ wait: z.boolean().default(false) })),
+    output: z.compile(z.object({ identity: z.string().nullable(), actor: z.string().optional() })),
+    cli: { description: "caller identity" },
+    async handler(input, ctx, invocation) {
+      entered.push(invocation.identity ?? "anonymous");
+      if (input.wait) await release.promise;
+      return {
+        identity: invocation.identity,
+        ...(ctx.env.bl["BL_ACTOR"] === undefined ? {} : { actor: ctx.env.bl["BL_ACTOR"] }),
+      };
+    },
+  });
+  const stream = defineOp({
+    name: "identity-stream",
+    input: z.compile(z.object({})),
+    output: z.compile(z.string().nullable()),
+    stream: true,
+    cli: { description: "stream caller identity" },
+    async *handler(_input, _ctx, invocation) {
+      yield invocation.identity;
+      await release.promise;
+      yield invocation.identity;
+    },
+  });
+
+  await disposable(
+    async (runtime) => {
+      const first = runtime.invoke("identity", { wait: true }, { identity: " alpha " });
+      const second = runtime.invoke("identity", { wait: true }, { env: { BL_ACTOR: " beta " } });
+      while (entered.length < 2) await Promise.resolve();
+      release.resolve();
+      expect(await Promise.all([first, second])).toEqual([
+        { identity: "alpha" },
+        { identity: "beta", actor: " beta " },
+      ]);
+
+      expect(await runtime.invoke("identity", {})).toEqual({ identity: null });
+      expect(await runtime.invoke("identity", {}, { env: { BL_ACTOR: "  " } })).toEqual({
+        identity: null,
+        actor: "  ",
+      });
+      expect(
+        await runtime.invoke(
+          "identity",
+          {},
+          {
+            identity: "explicit",
+            env: { BL_ACTOR: "environment" },
+          },
+        ),
+      ).toEqual({ identity: "explicit", actor: "environment" });
+      expect(
+        (await rejected(runtime.invoke("identity", {}, { identity: "  " }))).message,
+      ).toContain("Identity must not be blank");
+
+      const streamed = await runtime.invoke("identity-stream", {}, { identity: "streamer" });
+      const values: unknown[] = [];
+      if (isStream(streamed)) for await (const value of streamed) values.push(value);
+      expect(values).toEqual(["streamer", "streamer"]);
+      expect(runtime.discovery("identity")).toBeArray();
+      expect(() => runtime.discovery("identity", "help", [], { identity: " " })).toThrow(
+        "Identity must not be blank",
+      );
+      expect(
+        await runtime.invoke("identity", ["--help"], {
+          argv: true,
+          identity: "helper",
+          env: { BL_ACTOR: "other" },
+        }),
+      ).toBeArray();
+    },
+    [
+      {
+        name: "identity-test",
+        activate(ctx) {
+          ctx.register(identity);
+          ctx.register(stream);
+        },
+      },
+    ],
+  );
+});
+
 test("async Zod and Valibot transformations, discovery, output validation and stream framing", async () => {
   const zod = defineOp({
     name: "zod",

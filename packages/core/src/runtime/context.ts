@@ -11,6 +11,8 @@ import type { EventDefinition, EventFrame, EventHandler, EventPhase } from "./ev
 import type { Scheduler } from "./scheduler.ts";
 
 export interface Invocation {
+  /** Normalized opaque caller name, or null for an anonymous invocation. */
+  identity: string | null;
   signal: AbortSignal;
   requestId: string;
   /** Absolute clock time, or null when only caller cancellation applies. */
@@ -61,6 +63,8 @@ export interface Processes {
 }
 
 export interface PeerCallOptions {
+  /** Explicit caller identity to forward; omitted calls remain anonymous. */
+  identity?: string;
   /** Abort the request and its transport when the caller stops waiting. */
   signal?: AbortSignal;
   /** Relative request deadline in milliseconds; defaults to 30 seconds. */

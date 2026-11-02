@@ -21,7 +21,7 @@ const memberSchema = z.compile(z.object({ path: z.string() }));
 const operationNameSchema = z.compile(z.string().min(1));
 
 interface EvalAPI {
-  call(name: string, input: Json): Promise<Json>;
+  call(name: string, input: Json, options?: { identity?: string }): Promise<Json>;
 }
 
 try {
@@ -59,10 +59,11 @@ async function run(): Promise<Json> {
     botlakeCall(options.socket, { operation, workspace, cwd: options.cwd, payload }, signal);
   const member = memberSchema.parse(await call("lake-resolve", options.workspace, {}));
   const api: EvalAPI = {
-    call(name, input) {
+    call(name, input, callOptions) {
       return call("invoke", member.path, {
         name: operationNameSchema.parse(name),
         input: jsonSchema.parse(input),
+        ...(callOptions?.identity === undefined ? {} : { identity: callOptions.identity }),
         cwd: options.cwd,
         env,
         is_tty: false,
