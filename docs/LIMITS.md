@@ -9,7 +9,7 @@
 
 ## Agents
 
-Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration, arbitrary overlays and per-run model/argv/system-prompt overrides are not implemented.
+Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration and arbitrary overlays are not implemented.
 
 `agent catalog` inspects seats; `agent list` returns paged run summaries, and `agent show ID` expands full records. All managed seats, including `tui`, remain headless. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
 

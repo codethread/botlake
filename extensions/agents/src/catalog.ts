@@ -16,6 +16,12 @@ const settings = {
   extraArgs: z.array(z.string()).optional(),
 };
 
+export const seatOverridesSchema = z.compile(
+  z.strictObject({ ...settings, systemPrompt: z.string().optional() }),
+);
+
+export type SeatOverrides = z.input<typeof seatOverridesSchema>;
+
 export const seatSchema = z.compile(
   z.strictObject({
     provider: providerSchema,
@@ -188,14 +194,14 @@ export class Catalog {
   resolve(
     name: string,
     context: { cwd: string; workspace: string },
-    effort?: string,
+    overrides: SeatOverrides = {},
   ): z.output<typeof seatSchema> {
     const resolved = this.availability(name);
     if (!resolved.available) throw new Fault("seat", `Seat unavailable: ${name}`, resolved.reasons);
 
     const selected = {
       ...resolved.settings,
-      ...(effort === undefined ? {} : { effort }),
+      ...Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined)),
     };
     return {
       ...selected,
