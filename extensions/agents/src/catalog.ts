@@ -185,11 +185,18 @@ export class Catalog {
     };
   }
 
-  resolve(name: string, context: { cwd: string; workspace: string }): z.output<typeof seatSchema> {
+  resolve(
+    name: string,
+    context: { cwd: string; workspace: string },
+    effort?: string,
+  ): z.output<typeof seatSchema> {
     const resolved = this.availability(name);
     if (!resolved.available) throw new Fault("seat", `Seat unavailable: ${name}`, resolved.reasons);
 
-    const selected = resolved.settings;
+    const selected = {
+      ...resolved.settings,
+      ...(effort === undefined ? {} : { effort }),
+    };
     return {
       ...selected,
       systemPrompt: resolveSystemPrompt(selected.systemPrompt, {

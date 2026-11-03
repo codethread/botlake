@@ -327,6 +327,11 @@ export function registerAgent(ctx: Context, service: Agents): void {
                 description: 'Existing directory; pass an absolute path such as "$PWD"',
               },
               prompt: { type: "string", required: true, description: "Instructions for this run" },
+              effort: {
+                type: "string",
+                description:
+                  "Override seat effort for this run (provider-specific); retained on retry and resume",
+              },
               target: { type: "string", description: "Optional task or node ID served by the run" },
               "request-id": {
                 key: "requestId",

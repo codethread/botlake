@@ -41,6 +41,7 @@ export const startSchema = z.compile(
     seat: text,
     cwd: text,
     prompt: text,
+    effort: seatSchema.shape.effort,
     requestId: text.optional(),
     target: text.optional(),
     policy: policy.default("stop-on-complete"),
@@ -365,7 +366,7 @@ export class Agents {
 
       const seat =
         parent === undefined
-          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
+          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace }, input.effort)
           : seatSchema.parse(parent.attributes[agentAttributes.settings]);
       if (!this.providers.has(seat.provider))
         throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
