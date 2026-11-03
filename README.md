@@ -24,17 +24,17 @@ Core does not import or install extensions. Extensions import core and sibling p
 
 Packages export Bun-native TypeScript without a build step. Run `bun pm pack` inside a package to create its standalone tarball; Bun rewrites workspace dependency ranges for publication. These package names are publishing coordinates, not a claim that they are already on a registry. For offline tarball installs, set consumer `overrides` for every `@botlake/*` peer to its tarball path as well as listing it in `dependencies`.
 
-## Run from this checkout
+## Development
 
-Requires Bun and Go (see `packageManager` and `cli/go.mod` for versions).
+Requires Bun, Go, mise, both `botlake` and `botlake-ui` cloned under `~/dev/projects`, and a running Botlake supervisor.
 
 ```sh
-bun install
-GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl
-export PATH="$HOME/.local/bin:$PATH"
-botlake start # Foreground supervisor; leave running in its own terminal.
-# In another terminal, from this checkout:
-botlake lake start
+mise run setup
+```
+
+## Use
+
+```sh
 bl node add 'My first node' --attributes '{"stuff":"data"}'
 bl node list
 bl work create 'My first task' --description 'What done means'
@@ -44,7 +44,7 @@ bl work show ID
 
 The installed binaries use this checkout's core; keep the checkout and its dependencies in place. Re-run the Go install command after Go changes. After TypeScript/configuration changes, use `botlake lake restart` (or `botlake restart-host` for host changes).
 
-The private `.botlake` dogfood package uses `workspace:*` dependencies and selects Work, Workflow, Agents, Diary, Flags and Cron. Root `bun install` links everything; no package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, Cron has no jobs until configured, and Work Agents remains an explicit optional configuration.
+The private `.botlake` dogfood package uses `workspace:*` dependencies and selects Work, Workflow, Agents, Diary, Flags, Cron and the sibling UI extension. Root `bun install` installs its dependencies without building UI. `mise run setup` also starts the lake and runs `botlake bin build ui`; the UI server is shared across lakes and starts separately from the UI checkout. No package is published. Git discovery works from subdirectories and linked worktrees; all use the main checkout's configuration and `.botlake/world.db`, ignored by Git. Agents starts no agents automatically, Cron has no jobs until configured, and Work Agents remains an explicit optional configuration.
 
 [Local agents](.botlake/agents.ts) define model seats and role aliases. `grunt` prefers DeepSeek then Luna; `reviewer` prefers Sol then Opus; `oracle` uses Astra. [Flag defaults](.botlake/flags.ts) configure exported `agentFlags` and local DeepSeek/Fable definitions; Claude remains registered but disabled. Managed launches are headless. Explicitly install the [native identity adapter](plugins/identity/README.md) before launching.
 

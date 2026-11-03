@@ -1,0 +1,16 @@
+[tasks.install]
+description = "Install workspace dependencies and the Botlake CLIs"
+run = '''
+bun install --frozen-lockfile
+GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl
+'''
+
+[tasks.setup]
+alias = "default"
+description = "Install Botlake, start this checkout's lake and build its UI bin (requires a running supervisor)"
+depends = ["install"]
+run = '''
+export PATH="$HOME/.local/bin:$PATH"
+botlake lake start --workspace "{{ config_root }}"
+botlake bin build --workspace "{{ config_root }}" ui
+'''
