@@ -149,7 +149,7 @@ human pi
 
 Botlake only scrubs processes it launches. Other provider/tool subprocesses may inherit `BL_AUDIENCE`. Audience describes the intended recipient, not whether a session has a UI.
 
-Managed runs use the start request's `systemPrompt` when supplied, otherwise only the selected alias candidate's explicit prompt. Alias prompt omission or `""` adds none, even when the parent has a prompt; string aliases do not inherit prompts either. Callbacks run after model/effort resolution and their text is frozen across replay, retry and resume. Catalog inspection does not evaluate callbacks; detail marks them `{ "dynamic": true }`.
+Managed runs use only the selected alias candidate's explicit prompt. Omission or `""` adds none, even when the parent has a prompt; string aliases do not inherit prompts either. Callbacks run after model/effort resolution and their text is frozen across replay, retry and resume. Catalog inspection does not evaluate callbacks; detail marks them `{ "dynamic": true }`.
 
 Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed native adapter and a reachable lake. Pi refreshes before each turn; Claude/Codex deliver at session startup. Native metadata takes precedence over caller environment defaults. Managed sessions never receive this unmanaged prompt. Identity, task guidance and the host's base prompt remain separate.
 

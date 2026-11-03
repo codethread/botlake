@@ -16,9 +16,7 @@ const settings = {
   extraArgs: z.array(z.string()).optional(),
 };
 
-export const seatOverridesSchema = z.compile(
-  z.strictObject({ ...settings, systemPrompt: z.string().optional() }),
-);
+export const seatOverridesSchema = z.compile(z.strictObject(settings));
 
 export type SeatOverrides = z.input<typeof seatOverridesSchema>;
 

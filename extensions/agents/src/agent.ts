@@ -342,12 +342,6 @@ export function registerAgent(ctx: Context, service: Agents): void {
                 description:
                   "JSON string array replacing seat extraArgs; [] clears; retained on retry and resume",
               },
-              "system-prompt": {
-                key: "systemPrompt",
-                type: "string",
-                description:
-                  'Replace the seat system prompt for this run; "" clears; retained on retry and resume',
-              },
               target: { type: "string", description: "Optional task or node ID served by the run" },
               "request-id": {
                 key: "requestId",

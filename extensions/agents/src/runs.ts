@@ -379,7 +379,6 @@ export class Agents {
                 model: input.model,
                 effort: input.effort,
                 extraArgs: input.extraArgs,
-                systemPrompt: input.systemPrompt,
               },
             )
           : seatSchema.parse(parent.attributes[agentAttributes.settings]);
