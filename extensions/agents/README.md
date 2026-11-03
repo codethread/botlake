@@ -103,7 +103,7 @@ TypeScript consumers call `Agents.follow({ workspace, nodeId }, signal)` through
 
 `agentConfigSchema` validates aliases and unmanaged configuration, including callbacks. `agentConfigJsonSchema()` describes JSON configuration (string prompts only). Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 
-Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes, per-run settings overrides and interactive launch are not implemented.
+Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes and interactive launch are not implemented.
 
 ## System prompts
 

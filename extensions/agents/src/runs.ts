@@ -25,7 +25,13 @@ import {
 import { z } from "zod";
 
 import { RunActivity, type ActivityRead } from "./activity.ts";
-import { Catalog, agentConfigSchema, seatSchema, type AgentConfig } from "./catalog.ts";
+import {
+  Catalog,
+  agentConfigSchema,
+  seatSchema,
+  seatOverridesSchema,
+  type AgentConfig,
+} from "./catalog.ts";
 import { initialLifecycleAttributes, runLifecycle, transitionRun } from "./lifecycle.ts";
 import { NativeSessions } from "./native.ts";
 import { agentAttributes, agentRelations, agentLaunchSchema } from "./node-model.ts";
@@ -41,6 +47,7 @@ export const startSchema = z.compile(
     seat: text,
     cwd: text,
     prompt: text,
+    ...seatOverridesSchema.shape,
     requestId: text.optional(),
     target: text.optional(),
     policy: policy.default("stop-on-complete"),
@@ -365,7 +372,15 @@ export class Agents {
 
       const seat =
         parent === undefined
-          ? this.seats.resolve(input.seat, { cwd, workspace: this.ctx.workspace })
+          ? this.seats.resolve(
+              input.seat,
+              { cwd, workspace: this.ctx.workspace },
+              {
+                model: input.model,
+                effort: input.effort,
+                extraArgs: input.extraArgs,
+              },
+            )
           : seatSchema.parse(parent.attributes[agentAttributes.settings]);
       if (!this.providers.has(seat.provider))
         throw new Fault("provider", `Provider unavailable: ${seat.provider}`);
