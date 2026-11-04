@@ -76,6 +76,7 @@ export async function system(): Promise<System> {
     "agents",
     "work",
     "work-agents",
+    "work-gates",
     "workflow",
   ])
     packages[`@botlake/extension-${name}`] = await pack(`extensions/${name}`, name);
