@@ -403,3 +403,5 @@ function requireInstance(ctx: Context): Instance {
     throw new Fault("work-gates", "The work-gates extension is not selected");
   return instance;
 }
+
+export default workGates();

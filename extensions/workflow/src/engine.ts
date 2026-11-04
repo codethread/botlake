@@ -447,6 +447,26 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       ].some((value) => value !== undefined)
     )
       throw new Fault("workflow", "Commandless context groups cannot declare task fields");
+    const reusableGate = gateVisit
+      ? history
+          .toReversed()
+          .find(
+            (node) =>
+              node.attributes[workflowAttributes.key] === entry.key &&
+              node.attributes[workflowAttributes.gate] === true &&
+              work.gates.get(node.id).state === "open",
+          )
+      : undefined;
+    if (reusableGate !== undefined) {
+      graph.atomic(() => {
+        graph.setAttributes(reusableGate.id, { [workflowAttributes.consumed]: false });
+        graph.connect(run.id, reusableGate.id, workflowRelations.active);
+      }, authority);
+      if (work.gates.get(reusableGate.id).status.status === "exhausted")
+        gateService(ctx).retry(reusableGate.id, by, "Workflow gate state re-entered");
+      return graph.show(reusableGate.id);
+    }
+
     const number =
       history.filter((node) => node.attributes[workflowAttributes.key] === entry.key).length + 1;
     const item = gateVisit
@@ -476,6 +496,17 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
             parent,
             by,
           });
+    if (worker)
+      for (const gate of taskMeta?.gates ?? [])
+        await gateService(ctx).create({
+          title: gate.title,
+          ...(gate.description === undefined ? {} : { description: gate.description }),
+          parent,
+          probe: resolveGateProbe(run, definition.probes, gate.probe),
+          params: gate.params,
+          dependents: [item.id],
+          by,
+        });
     graph.atomic(() => {
       graph.setAttributes(item.id, {
         [workflowAttributes.visit]: true,
@@ -539,6 +570,10 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
 
   function taskSummary(node: Node) {
     const summary = work.summary(node.id);
+    const gates = work.inspect(node.id, { limit: 100 }).prerequisites.flatMap((prerequisite) => {
+      const item = work.get(prerequisite.id);
+      return item.kind === "gate" ? [{ id: item.id, title: item.title, status: item.status }] : [];
+    });
     return {
       id: summary.id,
       title: summary.title,
@@ -547,6 +582,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       audience: summary.audience,
       priority: summary.priority,
       actionPending: node.attributes[workflowAttributes.consumed] !== true,
+      gates,
     };
   }
 
@@ -748,8 +784,12 @@ function protectWorkflow(graph: Graph, authority: symbol): void {
         (before.state !== after.state || before.title !== after.title)
       )
         throw new Fault("workflow", "Workflow execution lifecycle is private");
-      if (before?.attributes[workflowAttributes.consumed] === true && after.state === "active")
-        throw new Fault("workflow", "Consumed workflow visits cannot be reopened");
+      if (
+        before?.attributes[workflowAttributes.consumed] === true &&
+        after.state === "active" &&
+        before.attributes[workflowAttributes.gate] !== true
+      )
+        throw new Fault("workflow", "Consumed workflow worker visits cannot be reopened");
     }
   });
 }

@@ -11,7 +11,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./examples/parallel": "./examples/parallel.ts",
-    "./examples/nested-machines": "./examples/nested-machines.ts"
+    "./examples/nested-machines": "./examples/nested-machines.ts",
+    "./examples/gate-escalation": "./examples/gate-escalation.ts"
   },
   "publishConfig": {
     "access": "public"

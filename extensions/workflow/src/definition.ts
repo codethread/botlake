@@ -16,6 +16,7 @@ const resolvedGateInputSchema = z.strictObject({
   params: z.record(z.string(), jsonSchema),
   description: z.string().optional(),
 });
+const resolvedTaskGateSchema = resolvedGateInputSchema.extend({ title: text });
 
 export const resolvedTaskSchema = z.compile(
   z
@@ -29,6 +30,7 @@ export const resolvedTaskSchema = z.compile(
       origin: z.enum(["planned", "unplanned"]).optional(),
       priority: z.enum(["P0", "P1", "P2", "P3", "P4"]).optional(),
       title: text,
+      gates: z.array(resolvedTaskGateSchema).optional(),
     })
     .catchall(jsonSchema),
 );
@@ -64,6 +66,8 @@ export interface TaskMetadata {
   commands?: Record<string, string> | undefined;
   /** Render instructions and JSON metadata once per published visit. */
   task: (input: TaskContext) => unknown;
+  /** Render prerequisite gates together with the worker task. */
+  gates?: ((input: TaskContext) => unknown) | undefined;
   gate?: never;
   /** Inert author metadata retained in the resolved task. */
   [key: string]: unknown;
@@ -86,6 +90,7 @@ export const metadataSchema = z.compile(
     z
       .object({
         commands: commandsSchema.optional(),
+        gates: z.custom<NonNullable<TaskMetadata["gates"]>>(callable).optional(),
         task: z.custom<TaskMetadata["task"]>(callable),
         title: text,
       })
@@ -134,7 +139,11 @@ export function definitionUsesGates(definition: Definition): boolean {
   while (pending.length > 0) {
     const node = requireValue(pending.pop(), "Missing workflow state node");
     const metadata = metadataSchema.safeParse(node.meta);
-    if (metadata.success && "gate" in metadata.data) return true;
+    if (
+      metadata.success &&
+      ("gate" in metadata.data || ("gates" in metadata.data && metadata.data.gates !== undefined))
+    )
+      return true;
     pending.push(...Object.values(node.states));
   }
   return false;
@@ -145,8 +154,12 @@ export function renderVisit(metadata: Metadata, context: Record<string, unknown>
     const { gate, ...defaults } = metadata;
     return resolvedGateSchema.parse({ ...defaults, gate: renderedObject(gate({ context })) });
   }
-  const { task, ...defaults } = metadata;
-  return resolvedTaskSchema.parse({ ...defaults, ...renderedObject(task({ context })) });
+  const { task, gates, ...defaults } = metadata;
+  return resolvedTaskSchema.parse({
+    ...defaults,
+    ...renderedObject(task({ context })),
+    ...(gates === undefined ? {} : { gates: gates({ context }) }),
+  });
 }
 
 export function actorFor(
