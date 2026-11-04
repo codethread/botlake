@@ -8,19 +8,30 @@ import {
   type Json,
   type Node,
 } from "@botlake/core";
-import { workStore, type Page, type WorkStore, type WorkSummary } from "@botlake/extension-work";
+import {
+  workStore,
+  type GateStatus,
+  type Page,
+  type WorkStore,
+  type WorkSummary,
+} from "@botlake/extension-work";
+import { gateService, type ProbeDefinition } from "@botlake/extension-work-gates";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { type Catalogue, type Selection } from "./catalogue.ts";
 import {
   currentStatus,
+  definitionUsesGates,
   initialActor,
-  renderTask,
+  renderVisit,
+  resolvedGateSchema,
   resolvedTaskSchema,
   restoredActor,
   snapshotFor,
   targetActor,
   type Definition,
+  type ResolvedVisit,
   type WorkflowActor,
 } from "./definition.ts";
 import { frontier, type Entry } from "./frontier.ts";
@@ -50,7 +61,7 @@ interface Visit {
   key: string;
   path: string[];
   context: Record<string, unknown>;
-  meta: z.infer<typeof resolvedTaskSchema>;
+  meta: ResolvedVisit;
 }
 
 interface Submission {
@@ -76,6 +87,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     workflowAttributes.visit,
     workflowAttributes.task,
     workflowAttributes.group,
+    workflowAttributes.gate,
   ])
     graph.declareImmutable(marker);
   protectWorkflow(graph, authority);
@@ -108,8 +120,9 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       `Inspect the input schema: ${hint}`,
     );
     const brief = briefSchema.parse(loaded.definition.runBrief(parsed));
+    if (definitionUsesGates(loaded.definition)) gateService(ctx);
     const actorName = requireValue(callerIdentity, "Supply caller identity to start a workflow");
-    return graph.atomic(() => {
+    const runId = graph.atomic(() => {
       if (parent !== undefined) {
         const candidate = work.get(parent);
         if (candidate.kind !== "group" || candidate.state !== "open")
@@ -133,12 +146,25 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
             [workflowAttributes.definition]: loaded.locator,
           },
         });
-        publish(run, actor, [], actorName);
-        return view(run.id);
+        graph.update(run.id, {
+          attributes: {
+            [workflowAttributes.snapshot]: JSON.stringify(snapshotFor(actor)),
+            [workflowAttributes.checkpointBy]: actorName,
+          },
+        });
+        return run.id;
       } finally {
         actor.stop();
       }
     }, authority);
+    const run = workflowRun(graph, runId);
+    const actor = restore(run.id, loaded.definition);
+    try {
+      await publish(run, actor, [], actorName, loaded.definition);
+      return view(run.id);
+    } finally {
+      actor.stop();
+    }
   }
 
   async function show(
@@ -151,10 +177,28 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         : containingRun(id);
     if (id === run.id) return view(run.id, showOptionsSchema.parse(options));
     const node = graph.show(id);
-    if (node.attributes[workflowAttributes.task] !== true)
-      throw new Fault("workflow", "Show a workflow run or worker task");
-    const loaded = await loadRun(run);
+    if (
+      node.attributes[workflowAttributes.task] !== true &&
+      node.attributes[workflowAttributes.gate] !== true
+    )
+      throw new Fault("workflow", "Show a workflow run, worker task or gate visit");
     const visit = visitFor(node);
+    if (isGateVisit(visit)) {
+      const gate = work.gates.get(node.id);
+      return serialise({
+        run: runSummary(run),
+        gates: [
+          {
+            id: gate.id,
+            title: gate.title,
+            status: gate.status,
+            stateNode: node.attributes[workflowAttributes.state],
+            visit: node.attributes[workflowAttributes.number],
+          },
+        ],
+      });
+    }
+    const loaded = await loadRun(run);
     const { commands, ...metadata } = visit.meta;
     const detail = work.inspect(id, { history: true, limit: 20 });
     return serialise({
@@ -197,11 +241,13 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       return view(run.id);
     }
     const loaded = await loadRun(run);
-    return graph.atomic(() => {
+    let alreadyCompleted = false;
+    graph.atomic(() => {
       const current = graph.show(taskId);
       if (current.attributes[workflowAttributes.consumed] === true) {
         assertMatchingResult(current, choice, data);
-        return view(run.id);
+        alreadyCompleted = true;
+        return;
       }
       assertRunning(graph.show(run.id));
       assertDirectPrerequisitesClosed(work, taskId);
@@ -230,33 +276,96 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
           [workflowAttributes.completedBy]: actorName,
         });
         graph.disconnect(run.id, taskId, workflowRelations.active);
-        publish(
-          run,
-          actor,
-          previous.filter((entry) => entry.node.id !== taskId),
-          actorName,
-        );
-        return view(run.id);
+        graph.update(run.id, {
+          attributes: {
+            [workflowAttributes.snapshot]: JSON.stringify(snapshotFor(actor)),
+            [workflowAttributes.checkpointBy]: actorName,
+          },
+        });
       } finally {
         actor.stop();
       }
     }, authority);
+    if (alreadyCompleted) return view(run.id);
+    const actor = restore(run.id, loaded.definition);
+    try {
+      await publish(
+        run,
+        actor,
+        active(run.id).filter((entry) => entry.node.id !== taskId),
+        requireValue(callerIdentity, "Supply caller identity to attribute completion"),
+        loaded.definition,
+      );
+      return view(run.id);
+    } finally {
+      actor.stop();
+    }
   }
 
-  return { catalog, start, show, complete };
+  async function reactToGate(id: string, status?: GateStatus): Promise<void> {
+    const node = graph.show(id);
+    if (node.attributes[workflowAttributes.gate] !== true) return;
+    const run = containingRun(id);
+    const loaded = await loadRun(run);
+    const current = work.gates.get(id).status;
+    if (status !== undefined && canonical(serialise(status)) !== canonical(serialise(current)))
+      return;
+    const visit = visitFor(node);
+    if (!isGateVisit(visit)) return;
+    const event = mappedGateEvent(visit, current);
+    if (event === undefined || node.attributes[workflowAttributes.consumed] === true) return;
+    const by = text.parse(run.attributes[workflowAttributes.checkpointBy]);
+    const actor = restore(run.id, loaded.definition);
+    try {
+      advanceGate(actor, visit, event, id);
+      graph.atomic(() => {
+        const fresh = graph.show(id);
+        if (fresh.attributes[workflowAttributes.consumed] === true) return;
+        graph.setAttributes(id, {
+          [workflowAttributes.result]: { choice: current.status, data: { gate: id } },
+          [workflowAttributes.consumed]: true,
+          [workflowAttributes.completionOrder]:
+            memberNodes(run.id).filter(
+              (item) => item.attributes[workflowAttributes.consumed] === true,
+            ).length + 1,
+          [workflowAttributes.completedBy]: by,
+        });
+        graph.disconnect(run.id, id, workflowRelations.active);
+        graph.update(run.id, {
+          attributes: {
+            [workflowAttributes.snapshot]: JSON.stringify(snapshotFor(actor)),
+            [workflowAttributes.checkpointBy]: by,
+          },
+        });
+      }, authority);
+      await publish(run, actor, active(run.id), by, loaded.definition);
+    } finally {
+      actor.stop();
+    }
+  }
 
-  function publish(run: Node, actor: WorkflowActor, previous: Visit[], by: string): void {
+  return { catalog, start, show, complete, reactToGate };
+
+  async function publish(
+    run: Node,
+    actor: WorkflowActor,
+    previous: Visit[],
+    by: string,
+    definition: Definition,
+  ): Promise<void> {
     const current = frontier(actor);
     const keys = new Set(current.map((entry) => entry.key));
-    for (const old of previous.toReversed()) {
-      if (keys.has(old.key)) continue;
-      if (old.meta.commands !== undefined)
-        throw new Fault("workflow", "Transition would discard unconsumed work", {
-          task: old.node.id,
-        });
-      graph.disconnect(run.id, old.node.id, workflowRelations.active);
-      closeDepartedGroup(old.node.id, by);
-    }
+    graph.atomic(() => {
+      for (const old of previous.toReversed()) {
+        if (keys.has(old.key)) continue;
+        if (old.meta.commands !== undefined)
+          throw new Fault("workflow", "Transition would discard unconsumed work", {
+            task: old.node.id,
+          });
+        graph.disconnect(run.id, old.node.id, workflowRelations.active);
+        closeDepartedGroup(old.node.id, by);
+      }
+    }, authority);
 
     const retained = new Map(previous.map((visit) => [visit.key, visit]));
     const published = new Map<string, Node>();
@@ -270,20 +379,22 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         continue;
       }
       const parent = nearestGroup(run, entry, current, published, retained);
-      const node = enter(run, parent, entry, history, by);
+      const node = await enter(run, parent, entry, history, by, definition);
       published.set(entry.key, node);
       history.push(node);
     }
-    graph.update(run.id, {
-      attributes: {
-        [workflowAttributes.snapshot]: JSON.stringify(snapshotFor(actor)),
-        [workflowAttributes.checkpointBy]: by ?? null,
-      },
-    });
-    if (currentStatus(actor) === "done") {
-      graph.update(run.id, { state: "closed" });
-      closeDepartedGroup(runContext(run), by);
-    }
+    graph.atomic(() => {
+      graph.update(run.id, {
+        attributes: {
+          [workflowAttributes.snapshot]: JSON.stringify(snapshotFor(actor)),
+          [workflowAttributes.checkpointBy]: by ?? null,
+        },
+      });
+      if (currentStatus(actor) === "done") {
+        graph.update(run.id, { state: "closed" });
+        closeDepartedGroup(runContext(run), by);
+      }
+    }, authority);
   }
 
   function nearestGroup(
@@ -310,9 +421,20 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     return runContext(run);
   }
 
-  function enter(run: Node, parent: string, entry: Entry, history: Node[], by: string): Node {
-    const meta = renderTask(entry.meta, entry.context);
-    const worker = meta.commands !== undefined;
+  async function enter(
+    run: Node,
+    parent: string,
+    entry: Entry,
+    history: Node[],
+    by: string,
+    definition: Definition,
+  ): Promise<Node> {
+    const meta = renderVisit(entry.meta, entry.context);
+    const parsedGate = resolvedGateSchema.safeParse(meta);
+    const gateMeta = parsedGate.success ? parsedGate.data : undefined;
+    const gateVisit = gateMeta !== undefined;
+    const taskMeta = gateVisit ? undefined : resolvedTaskSchema.parse(meta);
+    const worker = taskMeta?.commands !== undefined;
     if (
       !worker &&
       [
@@ -327,35 +449,52 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       throw new Fault("workflow", "Commandless context groups cannot declare task fields");
     const number =
       history.filter((node) => node.attributes[workflowAttributes.key] === entry.key).length + 1;
-    const item = worker
-      ? work.create({
-          kind: "task",
-          title: meta.title,
-          description: meta.instructions,
+    const item = gateVisit
+      ? await gateService(ctx).create({
+          title: gateMeta.title,
+          ...(gateMeta.gate.description === undefined
+            ? {}
+            : { description: gateMeta.gate.description }),
           parent,
-          ...taskAuthorship(meta),
+          probe: resolveGateProbe(run, definition.probes, gateMeta.gate.probe),
+          params: gateMeta.gate.params,
           by,
         })
-      : work.create({
-          kind: "group",
-          title: meta.title,
-          description: meta.instructions,
-          parent,
-          by,
-        });
-    graph.setAttributes(item.id, {
-      [workflowAttributes.visit]: true,
-      [worker ? workflowAttributes.task : workflowAttributes.group]: true,
-      [workflowAttributes.state]: entry.node,
-      [workflowAttributes.key]: entry.key,
-      [workflowAttributes.path]: entry.path,
-      [workflowAttributes.number]: number,
-      [workflowAttributes.order]: history.length + 1,
-      [workflowAttributes.context]: serialise(entry.context),
-      [workflowAttributes.meta]: serialise(meta),
-    });
-    graph.connect(run.id, item.id, workflowRelations.member);
-    graph.connect(run.id, item.id, workflowRelations.active);
+      : worker
+        ? work.create({
+            kind: "task",
+            title: requireValue(taskMeta, "Missing task metadata").title,
+            description: requireValue(taskMeta, "Missing task metadata").instructions,
+            parent,
+            ...taskAuthorship(requireValue(taskMeta, "Missing task metadata")),
+            by,
+          })
+        : work.create({
+            kind: "group",
+            title: requireValue(taskMeta, "Missing group metadata").title,
+            description: requireValue(taskMeta, "Missing group metadata").instructions,
+            parent,
+            by,
+          });
+    graph.atomic(() => {
+      graph.setAttributes(item.id, {
+        [workflowAttributes.visit]: true,
+        [gateVisit
+          ? workflowAttributes.gate
+          : worker
+            ? workflowAttributes.task
+            : workflowAttributes.group]: true,
+        [workflowAttributes.state]: entry.node,
+        [workflowAttributes.key]: entry.key,
+        [workflowAttributes.path]: entry.path,
+        [workflowAttributes.number]: number,
+        [workflowAttributes.order]: history.length + 1,
+        [workflowAttributes.context]: serialise(entry.context),
+        [workflowAttributes.meta]: serialise(meta),
+      });
+      graph.connect(run.id, item.id, workflowRelations.member);
+      graph.connect(run.id, item.id, workflowRelations.active);
+    }, authority);
     return graph.show(item.id);
   }
 
@@ -391,7 +530,10 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       key: text.parse(node.attributes[workflowAttributes.key]),
       path: z.array(z.string()).parse(node.attributes[workflowAttributes.path]),
       context: contextSchema.parse(node.attributes[workflowAttributes.context]),
-      meta: resolvedTaskSchema.parse(node.attributes[workflowAttributes.meta]),
+      meta:
+        node.attributes[workflowAttributes.gate] === true
+          ? resolvedGateSchema.parse(node.attributes[workflowAttributes.meta])
+          : resolvedTaskSchema.parse(node.attributes[workflowAttributes.meta]),
     };
   }
 
@@ -431,9 +573,16 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
 
   function view(id: string, options = showOptionsSchema.parse({})): Json {
     const run = workflowRun(graph, id);
-    const tasks = active(id)
+    const visits = active(id);
+    const tasks = visits
       .filter((visit) => visit.node.attributes[workflowAttributes.task] === true)
       .map((visit) => taskSummary(visit.node));
+    const gates = visits
+      .filter((visit) => visit.node.attributes[workflowAttributes.gate] === true)
+      .map((visit) => {
+        const gate = work.gates.get(visit.node.id);
+        return { id: gate.id, title: gate.title, status: gate.status };
+      });
     const history = memberNodes(id)
       .filter((node) => node.attributes[workflowAttributes.consumed] === true)
       .toSorted(
@@ -444,6 +593,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     return serialise({
       run: runSummary(run),
       tasks: tasks.slice(options.offset, options.offset + options.limit),
+      gates: gates.slice(options.offset, options.offset + options.limit),
       taskPage: {
         total: tasks.length,
         nextOffset:
@@ -491,6 +641,40 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     if (roots.length !== 1) throw new Fault("workflow", `Expected one workflow run for ${id}`);
     return requireValue(roots[0], "Missing workflow run");
   }
+}
+
+function isGateVisit(visit: Visit): visit is Visit & { meta: z.infer<typeof resolvedGateSchema> } {
+  return "gate" in visit.meta;
+}
+
+function mappedGateEvent(
+  visit: Visit & { meta: z.infer<typeof resolvedGateSchema> },
+  status: GateStatus,
+) {
+  return match(status)
+    .with({ status: "pending" }, () => visit.meta.on.pending)
+    .with({ status: "waiting" }, () => visit.meta.on.waiting)
+    .with({ status: "exhausted" }, () => visit.meta.on.exhausted)
+    .with({ status: "cleared" }, () => visit.meta.on.cleared)
+    .with({ status: "dismissed" }, () => visit.meta.on.dismissed)
+    .exhaustive();
+}
+
+function advanceGate(root: WorkflowActor, visit: Visit, type: string, gate: string): void {
+  const actor = targetActor(root, visit.path);
+  const event = { type, data: { gate } };
+  if (!actor.getSnapshot().can(event))
+    throw new Fault("workflow", `Gate status event ${type} is unavailable for ${visit.node.id}`);
+  actor.send(event);
+  if (root.getSnapshot().status === "error")
+    throw new Fault("workflow", `XState transition failed: ${String(root.getSnapshot().error)}`);
+}
+
+function resolveGateProbe(run: Node, probes: ProbeDefinition[], key: string): string {
+  const locator = workflowLocatorSchema.parse(run.attributes[workflowAttributes.definition]);
+  if (locator.kind === "named" && !key.includes("/") && probes.some((probe) => probe.name === key))
+    return `${locator.name}/${key}`;
+  return key;
 }
 
 function taskAuthorship(meta: z.infer<typeof resolvedTaskSchema>) {
@@ -595,7 +779,11 @@ function commandSchema(definition: Definition, choice: string): z.ZodType {
 }
 
 function taskEntry(visit: Visit) {
-  return { bead: visit.node.id, context: visit.context, meta: visit.meta };
+  return {
+    bead: visit.node.id,
+    context: visit.context,
+    meta: resolvedTaskSchema.parse(visit.meta),
+  };
 }
 
 function validateResult(
@@ -604,9 +792,10 @@ function validateResult(
   choice: string,
   data: unknown,
 ): unknown {
-  if (visit.meta.commands?.[choice] === undefined)
+  const meta = resolvedTaskSchema.parse(visit.meta);
+  if (meta.commands?.[choice] === undefined)
     throw new Fault("workflow", `Choice ${choice} is unavailable for ${visit.node.id}`, {
-      choices: Object.keys(visit.meta.commands ?? {}),
+      choices: Object.keys(meta.commands ?? {}),
     });
   const parsed = parseInput(commandSchema(definition, choice), data);
   definition.validateCommand?.(taskEntry(visit), choice, parsed);
@@ -623,13 +812,14 @@ function advance(root: WorkflowActor, submission: Submission): void {
 function submissionTarget(root: WorkflowActor, submission: Submission) {
   const { visit, choice, data } = submission;
   const actor = targetActor(root, visit.path);
+  const meta = resolvedTaskSchema.parse(visit.meta);
   const type = requireValue(
-    visit.meta.commands?.[choice],
+    meta.commands?.[choice],
     `Choice ${choice} is unavailable for ${visit.node.id}`,
   );
   if (!actor.getSnapshot().can({ type, data }))
     throw new Fault("workflow", `Choice ${choice} is unavailable for ${visit.node.id}`, {
-      choices: Object.keys(visit.meta.commands ?? {}),
+      choices: Object.keys(meta.commands ?? {}),
     });
   return { actor, type };
 }

@@ -1,4 +1,5 @@
 import { Fault, jsonSchema, requireValue, type Json } from "@botlake/core";
+import type { ProbeDefinition } from "@botlake/extension-work-gates";
 import type { ActorRefFrom, AnyStateMachine, Snapshot } from "xstate";
 import { createActor } from "xstate";
 import { z } from "zod";
@@ -8,6 +9,13 @@ const text = z.string().min(NONEMPTY);
 const commandsSchema = z.record(z.string(), text);
 const commandSchemasSchema = z.record(z.string(), z.instanceof(z.ZodType));
 const contextSchema = z.compile(z.record(z.string(), z.unknown()));
+const gateStatuses = ["pending", "waiting", "exhausted", "cleared", "dismissed"] as const;
+const gateEventsSchema = z.partialRecord(z.enum(gateStatuses), text);
+const resolvedGateInputSchema = z.strictObject({
+  probe: text,
+  params: z.record(z.string(), jsonSchema),
+  description: z.string().optional(),
+});
 
 export const resolvedTaskSchema = z.compile(
   z
@@ -27,6 +35,14 @@ export const resolvedTaskSchema = z.compile(
 
 export type ResolvedTask = z.infer<typeof resolvedTaskSchema>;
 
+export const resolvedGateSchema = z.compile(
+  z
+    .object({ title: text, gate: resolvedGateInputSchema, on: gateEventsSchema })
+    .catchall(jsonSchema),
+);
+export type ResolvedGate = z.infer<typeof resolvedGateSchema>;
+export type ResolvedVisit = ResolvedTask | ResolvedGate;
+
 export interface TaskContext<Context = Record<string, unknown>> {
   /** Context when this task visit enters the published frontier. */
   context: Context;
@@ -39,26 +55,49 @@ export interface TaskEntry extends TaskContext {
   meta: ResolvedTask;
 }
 
-export interface Metadata {
-  /** Titled states project into graph work nodes. */
+export type Metadata = TaskMetadata | GateMetadata;
+
+export interface TaskMetadata {
+  /** Titled task and group states project into graph work nodes. */
   title: string;
   /** Named choices mapped to XState events. */
   commands?: Record<string, string> | undefined;
   /** Render instructions and JSON metadata once per published visit. */
   task: (input: TaskContext) => unknown;
+  gate?: never;
   /** Inert author metadata retained in the resolved task. */
+  [key: string]: unknown;
+}
+
+export interface GateMetadata {
+  /** Titled gate states project into graph work gates. */
+  title: string;
+  /** Render the probe invocation once per published visit. */
+  gate: (input: TaskContext) => unknown;
+  /** Gate statuses mapped to XState events. */
+  on: Partial<Record<(typeof gateStatuses)[number], string>>;
+  task?: never;
   [key: string]: unknown;
 }
 
 // Adapted from Busy Bee's dynamic definition seam.
 export const metadataSchema = z.compile(
-  z
-    .object({
-      commands: commandsSchema.optional(),
-      task: z.custom<Metadata["task"]>(callable),
-      title: text,
-    })
-    .catchall(z.unknown()),
+  z.union([
+    z
+      .object({
+        commands: commandsSchema.optional(),
+        task: z.custom<TaskMetadata["task"]>(callable),
+        title: text,
+      })
+      .catchall(z.unknown()),
+    z
+      .object({
+        gate: z.custom<GateMetadata["gate"]>(callable),
+        on: gateEventsSchema,
+        title: text,
+      })
+      .catchall(z.unknown()),
+  ]),
 );
 
 const machineContract = z.compile(
@@ -78,6 +117,7 @@ export const definitionSchema = z.compile(
     inputSchema: z.instanceof(z.ZodType),
     resumeSchema: z.instanceof(z.ZodType).optional(),
     machine: z.custom<AnyStateMachine>(machineLike),
+    probes: z.array(z.custom<ProbeDefinition>()).default([]),
     runBrief: z.custom<(input: unknown) => unknown>(callable),
     validateCommand: z
       .custom<(entry: TaskEntry, command: string, data: unknown) => void>(callable)
@@ -89,10 +129,24 @@ export type Definition = z.infer<typeof definitionSchema>;
 export type WorkflowActor = ActorRefFrom<AnyStateMachine>;
 export type WorkflowNode = AnyStateMachine["root"];
 
-export function renderTask(metadata: Metadata, context: Record<string, unknown>): ResolvedTask {
+export function definitionUsesGates(definition: Definition): boolean {
+  const pending = [definition.machine.root];
+  while (pending.length > 0) {
+    const node = requireValue(pending.pop(), "Missing workflow state node");
+    const metadata = metadataSchema.safeParse(node.meta);
+    if (metadata.success && "gate" in metadata.data) return true;
+    pending.push(...Object.values(node.states));
+  }
+  return false;
+}
+
+export function renderVisit(metadata: Metadata, context: Record<string, unknown>): ResolvedVisit {
+  if ("gate" in metadata && metadata.gate !== undefined) {
+    const { gate, ...defaults } = metadata;
+    return resolvedGateSchema.parse({ ...defaults, gate: renderedObject(gate({ context })) });
+  }
   const { task, ...defaults } = metadata;
-  const rendered = task({ context });
-  return resolvedTaskSchema.parse({ ...defaults, ...renderedObject(rendered) });
+  return resolvedTaskSchema.parse({ ...defaults, ...renderedObject(task({ context })) });
 }
 
 export function actorFor(
