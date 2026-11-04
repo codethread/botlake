@@ -10,15 +10,18 @@ import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
 import { treeInput } from "./topology.ts";
 
-export { workAssignmentEstablished, workChanged } from "./events.ts";
+export { workAssignmentEstablished, workChanged, workGateChanged } from "./events.ts";
 export {
   assignmentSchema,
+  gatePolicySchema,
+  gateStatusSchema,
   storedCriterionSchema,
   workAttributes,
   workDataSchema,
   workRelations,
 } from "./node-model.ts";
 export type { StoredCriterion, WorkData, WorkLinkRelation } from "./node-model.ts";
+export { transitionGate } from "./gates.ts";
 export { workStore } from "./store.ts";
 export { workLinks, type WorkLink, type WorkLinkResult } from "./links.ts";
 export { diagnoseWork, workDependencies } from "./diagnostics.ts";
@@ -36,6 +39,10 @@ export type {
   CreateItem,
   Criterion,
   CriterionChange,
+  Gate,
+  GateCommand,
+  GatePolicy,
+  GateStatus,
   Group,
   ListOptions,
   Page,
@@ -53,7 +60,7 @@ export type {
 } from "./types.ts";
 
 export const brief = [
-  "Use Botlake to track tasks and shared context groups.",
+  "Use Botlake to track tasks, shared context groups, and machine-checked gates.",
   "Before tracking work, run `bl prime work` once per session.",
 ].join("\n");
 
@@ -165,7 +172,7 @@ export function work(configuration: WorkOptions = {}): Extension {
       const links = workLinks(ctx, configuration.references?.get(ctx));
       ctx.registerQuery("work-items", {
         where: q.eq(q.attr(workAttributes.item), true),
-        description: "Tasks and context groups",
+        description: "Tasks, context groups and machine-checked gates",
       });
       ctx.register(
         defineOp({
@@ -174,11 +181,11 @@ export function work(configuration: WorkOptions = {}): Extension {
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
           about:
-            "Tasks express work; groups supply shared context. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks or groups and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
+            "Tasks express work; groups supply shared context; gates record trusted named probe results without executing probes. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks or groups and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
           primer:
-            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to the invocation caller. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
+            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. Gates never enter queues; selected evaluator extensions create and transition them through the Work gate API. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to the invocation caller. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks or groups and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
           cli: {
-            description: "Create, route, inspect and close tasks and context groups",
+            description: "Create, route, inspect and close tasks, context groups and gates",
             examples: [
               'bl work create "Investigate alternatives" --description "Answer with supporting evidence"',
               'bl work create "Delivery context" --kind group',
@@ -206,6 +213,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                 ],
                 flags: {
                   kind: { type: "string", description: "task (default) or group" },
+                  probe: {
+                    type: "string",
+                    description: "Trusted configured probe name; required for gates",
+                  },
                   description: { type: "string", description: "Local brief (default empty)" },
                   notes: { type: "string", description: "Initial task findings (default absent)" },
                   parent: {
@@ -297,7 +308,10 @@ export function work(configuration: WorkOptions = {}): Extension {
                     description:
                       "open (default), closed or all; search defaults to all in view=all; queue views are open-only",
                   },
-                  kind: { type: "string", description: "task or group; no kind filter by default" },
+                  kind: {
+                    type: "string",
+                    description: "task, group or gate; no kind filter by default",
+                  },
                   assignee: {
                     type: "string",
                     description:
@@ -405,18 +419,6 @@ export function work(configuration: WorkOptions = {}): Extension {
                   offset: {
                     type: "number",
                     description: "Continue at nextOffset (default 0); pages are not snapshots",
-                  },
-                },
-              },
-              close: {
-                description:
-                  "Close after criteria resolve or contained tasks close; releases assignment and returns closure attribution, not success or workflow completion",
-                examples: ["bl work close TASK"],
-                positionals: [{ name: "id", type: "string", required: true }],
-                flags: {
-                  by: {
-                    type: "string",
-                    description: "Attribution; defaults to the invocation caller",
                   },
                 },
               },

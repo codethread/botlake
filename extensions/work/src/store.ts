@@ -2,6 +2,7 @@ import {
   canonical,
   dependencyAttributes,
   Fault,
+  jsonSchema,
   q,
   requireValue,
   type Attributes,
@@ -13,7 +14,8 @@ import {
 } from "@botlake/core";
 import { z } from "zod";
 
-import { workAssignmentEstablished } from "./events.ts";
+import { workAssignmentEstablished, workGateChanged } from "./events.ts";
+import { transitionGate } from "./gates.ts";
 import {
   taskDataSchema,
   text,
@@ -21,6 +23,8 @@ import {
   workDataSchema,
   workNamespace,
   workRelations,
+  gatePolicySchema,
+  jsonObjectSchema,
   type StoredCriterion,
   type TaskData,
   type WorkData,
@@ -37,6 +41,11 @@ import type {
   Assignment,
   CreateItem,
   Criterion,
+  Gate,
+  GateCommand,
+  GatePolicy,
+  JsonObject,
+  GateTransition,
   Group,
   ListOptions,
   Page,
@@ -54,8 +63,12 @@ import type {
 const authority = Symbol("work");
 const stores = new WeakMap<Graph, WorkStore>();
 const workRelationLabels: readonly string[] = Object.values(workRelations);
-const requiredReferenceKinds = ["work/task", "work/group"] as const;
-const requiredReferenceKindsSchema = z.tuple([z.literal("work/task"), z.literal("work/group")]);
+const requiredReferenceKinds = ["work/task", "work/group", "work/gate"] as const;
+const requiredReferenceKindsSchema = z.tuple([
+  z.literal("work/task"),
+  z.literal("work/group"),
+  z.literal("work/gate"),
+]);
 const createCommon = {
   title: text,
   description: z.string().default(""),
@@ -78,6 +91,31 @@ export const createInput = z.compile(
     z.strictObject({ kind: z.literal("group"), ...createCommon }),
   ]),
 );
+const gateCommandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("attempt"),
+    round: z.number().int().positive(),
+    attempt: z.number().int().positive(),
+    at: z.iso.datetime(),
+    by: text,
+    result: z.discriminatedUnion("outcome", [
+      z.object({
+        outcome: z.literal("passed"),
+        message: text,
+        evidence: jsonObjectSchema.optional(),
+      }),
+      z.object({
+        outcome: z.enum(["failed", "errored"]),
+        at: z.iso.datetime(),
+        message: text,
+        evidence: jsonObjectSchema.optional(),
+      }),
+    ]),
+  }),
+  z.object({ type: z.literal("retry"), at: z.iso.datetime(), by: text, reason: text }),
+  z.object({ type: z.literal("clear"), at: z.iso.datetime(), by: text, message: text }),
+  z.object({ type: z.literal("dismiss"), at: z.iso.datetime(), by: text, reason: text }),
+]);
 export const updateInput = z.compile(
   z.strictObject({
     title: text.optional(),
@@ -97,7 +135,7 @@ export const listInput = z.compile(
   z.strictObject({
     view: z.enum(["all", "ready", "available", "assigned", "waiting", "human"]).default("all"),
     state: z.enum(["open", "closed", "all"]).optional(),
-    kind: z.enum(["task", "group"]).optional(),
+    kind: z.enum(["task", "group", "gate"]).optional(),
     assignee: text.optional(),
     origin: taskDataSchema.shape.origin.optional(),
     audience: taskDataSchema.shape.audience.optional(),
@@ -170,6 +208,15 @@ export function workStore(ctx: Context): WorkStore {
       closedAt: closed?.at ?? null,
     };
     if (data.kind === "group") return { ...base, kind: "group" };
+    if (data.kind === "gate")
+      return {
+        ...base,
+        kind: "gate",
+        probe: data.probe,
+        params: data.params,
+        policy: data.policy,
+        status: data.status,
+      };
     const assignment = currentAssignment(data);
     return {
       ...base,
@@ -189,6 +236,8 @@ export function workStore(ctx: Context): WorkStore {
     return graph.atomic(() => {
       const item = get(id);
       const data = read(graph.show(id));
+      if (item.kind === "gate")
+        throw new Fault("work-gate", "Gates are changed only through the gate API");
       if (Object.keys(input).every((key) => key === "expectedRevision"))
         throw new Fault("work", "Supply a field to update");
       if (
@@ -197,12 +246,12 @@ export function workStore(ctx: Context): WorkStore {
       )
         throw new Fault("work", "Preserve completed scope; reopen for recovery or create new work");
       if (
-        data.kind === "group" &&
+        data.kind !== "task" &&
         [input.notes, input.audience, input.origin, input.priority].some(
           (value) => value !== undefined,
         )
       )
-        throw new Fault("work", "Groups supply context, not task fields");
+        throw new Fault("work", "Only tasks have task fields");
       if (input.description !== undefined) data.description = input.description;
       if (data.kind === "task") {
         if (input.notes !== undefined) data.notes = input.notes;
@@ -294,6 +343,7 @@ export function workStore(ctx: Context): WorkStore {
       origin: item.kind === "task" ? item.origin : null,
       priority: item.kind === "task" ? item.priority : null,
       parent: parentOf(id),
+      gate: item.kind === "gate" ? { probe: item.probe, status: item.status } : null,
     };
   }
 
@@ -329,6 +379,7 @@ export function workStore(ctx: Context): WorkStore {
         )
           return false;
         if (input.view === "all") return true;
+        if (item.kind === "gate") return false;
         if (item.state !== "open") return false;
         if (input.view === "ready") return ready(item.id);
         if (input.view === "waiting") return !ready(item.id);
@@ -430,6 +481,7 @@ export function workStore(ctx: Context): WorkStore {
         origin: data.kind === "task" ? data.origin : null,
         priority: data.kind === "task" ? data.priority : null,
         parent: parents.get(node.id) ?? null,
+        gate: data.kind === "gate" ? { probe: data.probe, status: data.status } : null,
       };
     });
     return { summaries, parentEdges, dependencyEdges };
@@ -460,6 +512,8 @@ export function workStore(ctx: Context): WorkStore {
   function close(id: string, by?: string): WorkItem {
     return graph.atomic(() => {
       const item = get(id);
+      if (item.kind === "gate")
+        throw new Fault("work-gate", "Gates are updated only by gate record");
       if (item.state === "closed") return item;
       const data = read(graph.show(id));
       if (data.kind === "task") {
@@ -483,12 +537,87 @@ export function workStore(ctx: Context): WorkStore {
     }, authority);
   }
 
+  function createGate(input: {
+    title: string;
+    description?: string;
+    parent?: string;
+    probe: string;
+    params: JsonObject;
+    policy: GatePolicy;
+    dependents?: string[];
+    by: string;
+  }): Gate {
+    const parsed = z
+      .strictObject({
+        title: text,
+        description: z.string().default(""),
+        parent: text.optional(),
+        probe: text,
+        params: jsonObjectSchema,
+        policy: gatePolicySchema,
+        dependents: z.array(text).default([]),
+        by: text,
+      })
+      .parse(input);
+    return graph.atomic(() => {
+      const data: WorkData = {
+        kind: "gate",
+        description: parsed.description,
+        closures: [],
+        reopenings: [],
+        probe: parsed.probe,
+        params: parsed.params,
+        policy: parsed.policy,
+        status: { status: "pending", round: 1 },
+      };
+      const node = graph.add({
+        title: parsed.title,
+        attributes: { [workAttributes.item]: true, ...attributesFor(data) },
+      });
+      if (parsed.parent !== undefined) move(node.id, parsed.parent);
+      for (const dependent of parsed.dependents) link(dependent, node.id, workRelations.dependsOn);
+      return getGate(node.id);
+    }, authority);
+  }
+
+  function getGate(id: string): Gate {
+    const item = get(id);
+    if (item.kind !== "gate") throw new Fault("work-gate", "Expected a gate");
+    return item;
+  }
+
+  function applyGate(id: string, raw: GateCommand): GateTransition {
+    const command = gateCommandSchema.parse(raw);
+    return graph.atomic(() => {
+      const gate = getGate(id);
+      const transition = transitionGate(gate, command);
+      if (transition.kind === "refused") return transition;
+      const data = read(graph.show(id));
+      if (data.kind !== "gate") throw new Fault("work-gate", "Expected a gate");
+      data.status = transition.to;
+      if (transition.to.status === "cleared" || transition.to.status === "dismissed") {
+        data.closures.push({ by: transition.to.by, at: transition.to.at });
+      }
+      graph.update(id, {
+        state:
+          transition.to.status === "cleared" || transition.to.status === "dismissed"
+            ? "closed"
+            : "active",
+        attributes: attributesFor(data),
+      });
+      ctx.emit(workGateChanged, { id, from: transition.from, to: transition.to });
+      return transition;
+    }, authority);
+  }
+
   function reopen(id: string, reason: string, by?: string): WorkItem {
     text.parse(reason);
     return graph.atomic(() => {
       const item = get(id);
       if (item.state !== "closed") throw new Fault("work", "Only closed work can reopen");
       const data = read(graph.show(id));
+      if (data.kind === "gate")
+        throw new Fault("work-gate", "Gates are updated only by gate record");
       data.reopenings.push({ ...attribution(by), reason });
       graph.update(id, {
         state: "active",
@@ -620,7 +749,9 @@ export function workStore(ctx: Context): WorkStore {
 
   function link(from: string, to: string, relation: WorkLinkRelation): void {
     graph.atomic(() => {
-      get(from);
+      const source = get(from);
+      if (source.kind === "gate")
+        throw new Fault("work-gate", "Gates cannot have prerequisites or references");
       const target = graph.show(to);
       if (target.reference === null) get(to);
       graph.connect(
@@ -717,6 +848,7 @@ export function workStore(ctx: Context): WorkStore {
     tree,
     graph: topologyGraph,
     close,
+    gates: { create: createGate, apply: applyGate, get: getGate },
     reopen,
     addCriterion,
     resolveCriterion,
@@ -752,6 +884,10 @@ function read(node: Node): WorkData {
     audience: attributes[workAttributes.audience],
     origin: attributes[workAttributes.origin],
     priority: attributes[workAttributes.priority],
+    probe: attributes[workAttributes.probe],
+    params: attributes[workAttributes.params],
+    policy: attributes[workAttributes.policy],
+    status: attributes[workAttributes.status],
     criteria: attributes[workAttributes.criteria],
     assignments: attributes[workAttributes.assignments],
   });
@@ -770,6 +906,14 @@ function attributesFor(data: WorkData): Attributes {
     [workAttributes.reopenings]: data.reopenings,
   };
   if (data.kind === "group") return common;
+  if (data.kind === "gate")
+    return {
+      ...common,
+      [workAttributes.probe]: data.probe,
+      [workAttributes.params]: data.params,
+      [workAttributes.policy]: data.policy,
+      [workAttributes.status]: jsonSchema.parse(data.status),
+    };
   return {
     ...common,
     ...(data.notes === null ? {} : { [workAttributes.notes]: data.notes }),

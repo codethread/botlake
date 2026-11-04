@@ -1,5 +1,7 @@
 import { requireValue } from "@botlake/core";
+import { match } from "ts-pattern";
 
+import type { GateStatus } from "./types.ts";
 import type { WorkTopology, WorkTopologyNode } from "./types.ts";
 
 interface Branch {
@@ -122,11 +124,19 @@ function renderDetails(
   const metadata = [
     ...(node.priority === null ? [] : [node.priority]),
     ...(node.kind === "group" ? ["group"] : []),
+    ...(node.kind === "gate" ? ["gate"] : []),
     node.state,
     ...(node.state === "open" ? [node.ready ? "ready" : "waiting"] : []),
     ...(context ? ["context"] : []),
   ];
   lines.push(details + metadata.join(" · "));
+  if (node.kind === "gate" && node.gate !== null) {
+    const status = node.gate.status;
+    lines.push(
+      `${details}Probe: ${inline(node.gate.probe)}`,
+      `${details}Gate: ${renderGateStatus(status)}`,
+    );
+  }
   if ("description" in node && node.description !== undefined && node.description.length > 0) {
     lines.push(stem.trimEnd());
     appendProse(lines, node.description, details, columns);
@@ -143,6 +153,25 @@ function renderDetails(
         appendProse(lines, criterion.resolution.text, `${details}    `, columns);
     }
   }
+}
+
+function renderGateStatus(status: GateStatus): string {
+  return match(status)
+    .with({ status: "pending" }, (value) => `pending · round ${value.round}`)
+    .with(
+      { status: "waiting" },
+      (value) => `waiting · ${inline(value.last.message)} · next ${value.nextAt}`,
+    )
+    .with({ status: "exhausted" }, (value) => `exhausted · ${inline(value.last.message)}`)
+    .with(
+      { status: "cleared" },
+      (value) => `cleared via ${value.via} by ${inline(value.by)} · ${inline(value.message)}`,
+    )
+    .with(
+      { status: "dismissed" },
+      (value) => `dismissed by ${inline(value.by)} · ${inline(value.reason)}`,
+    )
+    .exhaustive();
 }
 
 function appendProse(lines: string[], value: string, prefix: string, columns: number | null): void {

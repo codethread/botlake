@@ -1,7 +1,7 @@
 import { defineEvent, type Context, type Graph, type Mutation } from "@botlake/core";
 import { z } from "zod";
 
-import { assignmentSchema, workAttributes, workRelations } from "./node-model.ts";
+import { assignmentSchema, gateStatusSchema, workAttributes, workRelations } from "./node-model.ts";
 
 const workRelationLabels: readonly string[] = Object.values(workRelations);
 
@@ -17,9 +17,16 @@ export const workAssignmentEstablished = defineEvent({
   schema: z.object({ task: z.string(), assignment: assignmentSchema }),
 });
 
+export const workGateChanged = defineEvent({
+  name: "work.gate-changed",
+  phase: "afterCommit",
+  schema: z.object({ id: z.string(), from: gateStatusSchema, to: gateStatusSchema }),
+});
+
 export function registerWorkEvents(ctx: Context): void {
   ctx.registerEvent(workChanged);
   ctx.registerEvent(workAssignmentEstablished);
+  ctx.registerEvent(workGateChanged);
   ctx.subscribe((event) => {
     const ids = changedWorkIds(event.changes, ctx.graph);
     if (ids.length > 0) ctx.emit(workChanged, { ids });

@@ -1,4 +1,6 @@
-import type { Reference } from "@botlake/core";
+import type { Json, Reference } from "@botlake/core";
+
+export type JsonObject = Record<string, Json>;
 
 import type { WorkLinkRelation } from "./node-model.ts";
 
@@ -76,7 +78,61 @@ export interface Group extends ItemBase {
   kind: "group";
 }
 
-export type WorkItem = Task | Group;
+export interface GatePolicy {
+  everyMs: number;
+  maxAttempts: number;
+  timeoutMs: number;
+}
+
+export interface GateAttempt {
+  at: string;
+  outcome: "failed" | "errored";
+  message: string;
+  evidence?: JsonObject | undefined;
+}
+
+export type GateStatus =
+  | { status: "pending"; round: number }
+  | { status: "waiting"; round: number; attempts: number; last: GateAttempt; nextAt: string }
+  | { status: "exhausted"; round: number; attempts: number; last: GateAttempt }
+  | {
+      status: "cleared";
+      at: string;
+      by: string;
+      via: "probe" | "actor";
+      message: string;
+      evidence?: JsonObject | undefined;
+    }
+  | { status: "dismissed"; at: string; by: string; reason: string };
+
+export type GateCommand =
+  | {
+      type: "attempt";
+      round: number;
+      attempt: number;
+      at: string;
+      by: string;
+      result:
+        | { outcome: "passed"; message: string; evidence?: JsonObject | undefined }
+        | GateAttempt;
+    }
+  | { type: "retry"; at: string; by: string; reason: string }
+  | { type: "clear"; at: string; by: string; message: string }
+  | { type: "dismiss"; at: string; by: string; reason: string };
+
+export type GateTransition =
+  | { kind: "moved"; from: GateStatus; to: GateStatus }
+  | { kind: "refused"; code: "closed" | "stale"; message: string };
+
+export interface Gate extends ItemBase {
+  kind: "gate";
+  probe: string;
+  params: JsonObject;
+  policy: GatePolicy;
+  status: GateStatus;
+}
+
+export type WorkItem = Task | Group | Gate;
 
 interface CreateBase {
   /** Short label for work or context. */
@@ -129,7 +185,10 @@ interface SummaryBase {
 
 export type WorkSummary = SummaryBase &
   (
-    | { kind: "task" | "group" }
+    | {
+        kind: "task" | "group" | "gate";
+        gate: Pick<Gate, "probe" | "status"> | null;
+      }
     | {
         /** Observed endpoint owned by another lake, never locally actionable. */
         kind: "reference";
@@ -141,7 +200,7 @@ export type WorkSummary = SummaryBase &
 export interface ListOptions {
   view?: "all" | "ready" | "available" | "assigned" | "waiting" | "human" | undefined;
   state?: "open" | "closed" | "all" | undefined;
-  kind?: "task" | "group" | undefined;
+  kind?: "task" | "group" | "gate" | undefined;
   assignee?: string | undefined;
   origin?: Task["origin"] | undefined;
   audience?: Task["audience"] | undefined;
@@ -238,6 +297,20 @@ export interface WorkStore {
   tree(options?: WorkTreeOptions): WorkTopology;
   graph(options?: WorkGraphOptions): WorkTopology;
   close(id: string, by?: string): WorkItem;
+  gates: {
+    create(input: {
+      title: string;
+      description?: string;
+      parent?: string;
+      probe: string;
+      params: JsonObject;
+      policy: GatePolicy;
+      dependents?: string[];
+      by: string;
+    }): Gate;
+    apply(id: string, command: GateCommand): GateTransition;
+    get(id: string): Gate;
+  };
   reopen(id: string, reason: string, by?: string): WorkItem;
   addCriterion(id: string, condition: string, by?: string): Criterion;
   resolveCriterion(

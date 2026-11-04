@@ -18,4 +18,11 @@ export const workReferenceProjections: { kind: string; where: Predicate }[] = [
       q.eq(q.attr(workAttributes.kind), "group"),
     ),
   },
+  {
+    kind: "work/gate",
+    where: q.and(
+      q.eq(q.attr(workAttributes.item), true),
+      q.eq(q.attr(workAttributes.kind), "gate"),
+    ),
+  },
 ];
