@@ -17,6 +17,17 @@ bl work close TASK
 
 Tasks are actionable leaves. Groups supply shared context and may contain groups/tasks, with one contextual parent per item. Group closure requires every contained task, including nested tasks, to be closed. Only tasks can be assigned. Groups can remain open after their tasks close; closure is explicit.
 
+## Gates
+
+A gate is a Work prerequisite whose named probe is evaluated by the explicitly selected [Work Gates extension](../work-gates/README.md). Use one when work is blocked on a machine-checkable condition:
+
+```sh
+bl gate create "GitLab is reachable" --probe vpn-ready --dependent TASK
+bl work show TASK
+```
+
+The dependent waits while the gate is open and becomes ready when the gate closes. Gate status explains evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. Gates never enter task queues and cannot be claimed, assigned, updated, reopened or closed through ordinary Work commands.
+
 ## Relationships
 
 `node-model.ts` declares `workAttributes`, `workRelations` and stored-value schemas, available from the package's public exports. Task/group facts use native `work/*` attributes; criteria, assignments and recovery history are JSON arrays. Generic queries can select fields such as `q.attr("work/priority")`; mutations still require Work operations.
@@ -27,11 +38,11 @@ Tasks are actionable leaves. Groups supply shared context and may contain groups
 flowchart LR
   ParentGroup["Group"] -- "parent-of" --> ChildGroup["Nested group"]
   ParentGroup -- "parent-of" --> TaskNode["Task"]
-  TaskNode -- "depends-on" --> Prerequisite["Prerequisite task or group"]
-  TaskNode -- references --> Related["Related task or group"]
+  TaskNode -- "depends-on" --> Prerequisite["Prerequisite task, group or gate"]
+  TaskNode -- references --> Related["Related task, group or gate"]
 ```
 
-`link FROM TO --relation depends-on` adds a direct prerequisite task or group. An open item is ready when all its direct prerequisites are closed. Containment and references do not create prerequisites; a group prerequisite does not silently become a prerequisite of its members. Closing work neither asserts success nor completes dependents. `references` retains useful non-contextual connections without adding inherited instructions.
+`link FROM TO --relation depends-on` adds a direct prerequisite task, group or gate. An open item is ready when all its direct prerequisites are closed. Containment and references do not create prerequisites; a group prerequisite does not silently become a prerequisite of its members. Closing work neither asserts success nor completes dependents. `references` retains useful non-contextual connections without adding inherited instructions.
 
 Select one shared [References library](../references/README.md) explicitly in both lakes, configured with `workReferenceProjections`, and pass that binding to `work({ references })`. The selectors and imports are inert. For module-based configuration, export the binding from a selected `references.ts` module and import it into the selected Work module. Local-only Work needs no configuration.
 
@@ -39,7 +50,7 @@ Select one shared [References library](../references/README.md) explicitly in bo
 
 The default `list` includes linked remote summaries, even when their originating local work is closed. Multiple links to one remote endpoint produce one row; unlinking its last Work relationship removes that row. State and source-kind filters apply to observations, and search matches their titles. Assignment, audience, origin and parent filters require locally owned facts; queue views (`ready`, `available`, `assigned`, `waiting`, `human`) stay local-only. `show REFERENCE_ID` returns its observed summary and owner; open the owning workspace for full detail or mutations.
 
-A reference can be a prerequisite or non-contextual target, never an assignable task or contextual parent. Only source-verified `work/task` and `work/group` observations can satisfy prerequisites, and they must be current and closed. Stale, missing or replaced-source observations leave dependents waiting. Agent lifecycle states do not substitute for Work completion.
+A reference can be a prerequisite or non-contextual target, never an assignable task or contextual parent. Only source-verified `work/task`, `work/group` and `work/gate` observations can satisfy prerequisites, and they must be current and closed. Stale, missing or replaced-source observations leave dependents waiting. Agent lifecycle states do not substitute for Work completion.
 
 Work links record their accepted projection kinds on the dependency edge. Generic edge writes must preserve the exact Work constraint; use `work link` to supply it automatically. Losing the source classification blocks both Work queues and generic readiness used for targeted agent launch, even when the last observed node state is closed.
 
@@ -77,10 +88,10 @@ bl work graph --lean --format json   # All open dependency components
 
 Output defaults to a static text outline on a terminal and JSON otherwise. `--format text|json` overrides detection; global `bl --json` forces JSON. Both formats default to summaries. `--show-description` (`-sd`) and `--show-criteria` (`-ss`) expand local briefs and criterion assessments. `--lean` overrides expansions and keeps only `id`, `title`, `state` per node, preserving edges and topology metadata.
 
-Remote endpoints retain reference identity and observation status even in lean graph output. Trees and local Work queues contain only locally owned tasks and groups.
+Remote endpoints retain reference identity and observation status even in lean graph output. Trees contain locally owned tasks, groups and gates. Local Work queues contain only tasks.
 
 `--state open|closed|all` defaults to `open`. An explicit root stays visible. Trees retain required nonmatching ancestors as context; graphs never bridge hidden nodes with invented edges. `omittedLinks` counts scoped links crossing the state filter. Readiness always considers actual prerequisites. JSON stores nodes once with typed edges, entry roots and component membership; text marks repeated branches as shown above.
 
-[Workflow](../workflow/README.md) publishes this same task/group model. Only explicit authored workflow actions advance execution; ordinary Work closure never does. No agents launch automatically.
+[Workflow](../workflow/README.md) publishes this same task, group and gate model. Only explicit authored workflow actions advance execution; ordinary Work closure never does. No agents launch automatically.
 
 Verify the packaged CLI against disposable SQLite lakes with `bun scripts/work-smoke.ts` and `bun scripts/work-topology-smoke.ts`.

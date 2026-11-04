@@ -209,6 +209,8 @@ function gateOperation(probes: Map<string, ProbeDefinition>, service: GateServic
     output: jsonSchema,
     jsonSchema: { input: gateInput, output: jsonSchema },
     about: "Create and evaluate Work gates backed by trusted named probes.",
+    primer:
+      "Use a gate when work is blocked on a machine-checkable condition: `bl gate create TITLE --probe KEY --dependent TASK`. The dependent waits while the gate is open. Pending is due now, waiting has a retry scheduled, and exhausted needs retry, clear or dismissal. Cleared and dismissed are terminal closed outcomes; both satisfy readiness. Status explains evaluation and never affects readiness directly. Probe code is trusted configuration; inspect available probes with `bl gate probes`.",
     cli: {
       description: "Manage machine-checked Work gates",
       commands: {
