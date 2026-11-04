@@ -113,7 +113,6 @@ export function workDependencies(
 ): WorkDependencyPage {
   const { limit, offset } = pageInput.parse(options);
   const node = ctx.graph.summaries([id])[0];
-  const fullNode = ctx.graph.show(id);
   const owner = { lakeId: ctx.graph.lakeId, workspace: ctx.workspace };
   if (node === undefined) throw new Fault("not-found", `Unknown work item: ${id}`, owner);
   if (
@@ -124,6 +123,7 @@ export function workDependencies(
     }) === 0
   )
     throw new Fault("work", "Dependency frontiers require a locally owned task or group", owner);
+  const fullNode = ctx.graph.show(id);
   const { total } = countSchema.parse(
     ctx.graph.db
       .query(sql`
