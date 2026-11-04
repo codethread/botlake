@@ -27,7 +27,7 @@ The `setup` mise task also requests `botlake bin build ui`; the UI server itself
 
 ## Development lake
 
-The private `.botlake` package uses workspace dependencies and explicitly selected extensions. Source configuration lives in its [manifest](../../.botlake/package.json), [agent seats](../../.botlake/agents.ts) and [flag defaults](../../.botlake/flags.ts). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` package uses workspace dependencies and explicitly selected extensions. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 

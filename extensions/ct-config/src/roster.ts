@@ -1,9 +1,11 @@
 import { brief as coreBrief, type PrimerCallback } from "@botlake/core";
-import { agents, brief as agentBrief, resolveSessionContext } from "@botlake/extension-agents";
+import {
+  brief as agentBrief,
+  resolveSessionContext,
+  type AgentConfig,
+} from "@botlake/extension-agents";
+import { flags } from "@botlake/extension-flags";
 import { brief as workBrief } from "@botlake/extension-work";
-
-import { workspaceFlags } from "./flags.ts";
-import references from "./references.ts";
 
 const botlakePrompt = ["## Botlake", coreBrief, workBrief].join("\n");
 
@@ -20,6 +22,19 @@ const communicationPrompts = {
   unknown: [].join("\n"),
 };
 
+export const rosterFlags = flags({
+  deepseek: {
+    name: "agents/deepseek",
+    description: "Allow DeepSeek models.",
+    default: true,
+  },
+  fable: {
+    name: "agents/fable",
+    description: "Enable Fable.",
+    default: true,
+  },
+});
+
 export const agentPrimer: PrimerCallback = (ctx, invocation) => {
   const session = resolveSessionContext(ctx, invocation);
   if (session === null) return "";
@@ -30,8 +45,7 @@ export const agentPrimer: PrimerCallback = (ctx, invocation) => {
   return "";
 };
 
-export default agents({
-  references,
+export const roster = {
   unmanaged: {
     systemPrompt: ({ audience }) =>
       [communicationPrompts[audience], botlakePrompt, agentBrief].join("\n"),
@@ -42,7 +56,7 @@ export default agents({
       parent: "pi",
       model: "deepseek/deepseek-flash",
       effort: "max",
-      when: workspaceFlags.deepseek.name,
+      when: rosterFlags.deepseek.name,
       systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
     luna: {
@@ -71,7 +85,7 @@ export default agents({
       parent: "claude",
       model: "claude-fable-5",
       effort: "high",
-      when: workspaceFlags.fable.name,
+      when: rosterFlags.fable.name,
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     astra: {
@@ -131,4 +145,4 @@ export default agents({
       },
     ],
   },
-});
+} satisfies AgentConfig;
