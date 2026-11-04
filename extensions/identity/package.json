@@ -1,6 +1,7 @@
 {
   "name": "@botlake/extension-identity",
   "version": "0.1.0",
+  "description": "Native session identity, activity observations and attribution.",
   "files": [
     "src",
     "README.md"

@@ -1,6 +1,7 @@
 {
   "name": "@botlake/extension-references",
   "version": "0.1.0",
+  "description": "Source-owned node summaries and cross-lake subscriptions.",
   "files": [
     "src",
     "README.md"

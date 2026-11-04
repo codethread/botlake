@@ -58,6 +58,7 @@ export type {
 export function agents(options: AgentOptions = {}): Extension {
   return {
     name: "agents",
+    source: import.meta.url,
     requires: [
       "identity",
       "flags",

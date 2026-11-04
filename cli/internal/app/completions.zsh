@@ -170,7 +170,7 @@ _botlake() {
       _arguments -C '1:command:(init start status stop restart-host host-status lake bin completions)' '*::arguments:->topic'
       [[ $state == topic ]] || return
       case ${(Q)words[1]} in
-        lake) _arguments '1:command:(start restart stop status list eval)' ;;
+        lake) _arguments '1:command:(start restart stop status info list eval)' ;;
         bin) _arguments '1:command:(list build run)' ;;
         completions) _arguments '1:shell:(zsh)' ;;
       esac
@@ -180,18 +180,18 @@ _botlake() {
       ;;
     lake)
       _arguments -C -A '-*' "${help[@]}" \
-        '1:action:(start restart stop status list eval help)' \
+        '1:action:(start restart stop status info list eval help)' \
         '*::arguments:->lake'
       [[ $state == lake ]] || return
       case ${(Q)words[1]} in
-        start|restart|stop|status)
+        start|restart|stop|status|info)
           _arguments -S -A '-*' "${help[@]}" "$workspace"
           ;;
         list)
           _arguments -S "${help[@]}"
           ;;
         help)
-          _arguments '1:command:(start restart stop status list eval)'
+          _arguments '1:command:(start restart stop status info list eval)'
           ;;
         eval)
           _arguments -S -A '-*' "${help[@]}" "$workspace" \

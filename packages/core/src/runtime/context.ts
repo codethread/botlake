@@ -87,6 +87,8 @@ export interface Resource {
 
 export interface Extension {
   name: string;
+  /** Defining module's file URL; preserves package provenance through configuration wrappers. */
+  source?: string | undefined;
   requires?: string[];
   activate(ctx: Context): void | Promise<void>;
 }

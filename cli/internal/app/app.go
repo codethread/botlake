@@ -648,6 +648,22 @@ func (d *Daemon) handle(conn net.Conn) {
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true}})
 		}
+	case "lake-info":
+		d.lifecycle.Lock()
+		member, err := d.resolve(req.Workspace, req.CWD)
+		var response net.Conn
+		if err == nil {
+			response, err = d.hostCall("/control", map[string]any{"action": "member-info", "workspace": member.Path})
+		}
+		if err != nil {
+			d.lifecycle.Unlock()
+			encode(conn, errFrame(err))
+
+			return
+		}
+		defer d.lifecycle.Unlock()
+		defer response.Close()
+		_, _ = io.Copy(conn, response)
 	case "status", "lake-list":
 		d.mu.Lock()
 		members := make([]Member, 0, len(d.members))

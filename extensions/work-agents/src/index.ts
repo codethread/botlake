@@ -39,6 +39,7 @@ export function workAgents(raw: WorkAgentsOptions): Extension {
 
   return {
     name: "work-agents",
+    source: import.meta.url,
     requires: ["work", "agents", "identity"],
     activate(ctx) {
       const service = createService(ctx, options);

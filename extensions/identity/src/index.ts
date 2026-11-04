@@ -177,6 +177,7 @@ export function recordParticipation(
 export function identity(): Extension {
   return {
     name: "identity",
+    source: import.meta.url,
     activate(ctx) {
       ctx.graph.protect((changes, token) => {
         if (token === authority) return;

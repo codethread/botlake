@@ -1,6 +1,7 @@
 {
   "name": "@botlake/extension-batteries",
   "version": "0.1.0",
+  "description": "Everyday node, edge, query, batch and wait operations.",
   "files": [
     "src",
     "README.md"

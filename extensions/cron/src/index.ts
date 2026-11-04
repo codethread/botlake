@@ -478,6 +478,7 @@ export class Cron {
 export function cron(options: { jobs: Job[]; actions: Record<string, Action> }): Extension {
   return {
     name: "cron",
+    source: import.meta.url,
     activate(ctx) {
       const service = new Cron(ctx, options.jobs, options.actions);
       ctx.resource(service);

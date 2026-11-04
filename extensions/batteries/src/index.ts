@@ -84,6 +84,7 @@ const guidance = {
 export function batteries(queries: Record<string, NamedQuery> = {}): Extension {
   return {
     name: "batteries",
+    source: import.meta.url,
     activate(ctx) {
       for (const [name, query] of [
         ...Object.entries(coordinationQueries),

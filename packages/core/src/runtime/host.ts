@@ -3,6 +3,7 @@ import { Worker } from "node:worker_threads";
 import { z } from "zod";
 
 import { Fault } from "../core/json.ts";
+import { workspaceInfoSchema, type WorkspaceInfo } from "./config.ts";
 import { environmentSchema, invocationSchema } from "./protocol.ts";
 
 const socketPathSchema = z.compile(z.string().min(1));
@@ -27,6 +28,7 @@ const frameSchema = z.compile(
     frame: z.string().optional(),
     end: z.boolean().optional(),
     ready: z.boolean().optional(),
+    info: z.unknown().optional(),
     stopped: z.boolean().optional(),
     stop_error: z.unknown().optional(),
     fatal: z.unknown().optional(),
@@ -35,7 +37,7 @@ const frameSchema = z.compile(
 
 const controlSchema = z.compile(
   z.strictObject({
-    action: z.enum(["start", "stop", "restart", "status", "member-status"]),
+    action: z.enum(["start", "stop", "restart", "status", "member-status", "member-info"]),
     workspace: z.string().optional(),
     env: environmentSchema.default({}),
   }),
@@ -43,7 +45,7 @@ const controlSchema = z.compile(
 
 interface Member {
   worker: Worker;
-  ready: Promise<void>;
+  ready: Promise<WorkspaceInfo>;
   stopped: Promise<void>;
   closing: boolean;
   wasReady: boolean;
@@ -144,12 +146,13 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
     }
 
     const workspace = workspacePathSchema.parse(control.workspace);
-    if (control.action === "member-status") {
+    if (control.action === "member-status" || control.action === "member-info") {
       const member = members.get(workspace);
       if (member === undefined || member.closing)
         throw new Fault("member", "Workspace is not running");
-      await member.ready;
-      write(client, `${JSON.stringify({ ok: true, result: { ready: true } })}\n`, true);
+      const info = await member.ready;
+      const result = control.action === "member-info" ? info : { ready: true };
+      write(client, `${JSON.stringify({ ok: true, result })}\n`, true);
       return;
     }
 
@@ -176,7 +179,7 @@ async function start(workspace: string, env: Record<string, string>): Promise<Me
   const worker = new Worker(new URL("./worker.ts", import.meta.url), {
     workerData: { workspace, botlakeSocket, env },
   });
-  const ready = Promise.withResolvers<void>();
+  const ready = Promise.withResolvers<WorkspaceInfo>();
   const stopped = Promise.withResolvers<void>();
   const member: Member = {
     worker,
@@ -203,9 +206,10 @@ async function start(workspace: string, env: Record<string, string>): Promise<Me
   worker.on("message", (raw: unknown) => {
     const message = frameSchema.parse(raw);
     if (message.ready === true) {
+      const info = workspaceInfoSchema.parse(message.info);
       clearTimeout(timeout);
       member.wasReady = true;
-      ready.resolve();
+      ready.resolve(info);
     }
 
     if (message.stopped === true) {

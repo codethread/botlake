@@ -1,6 +1,7 @@
 {
   "name": "@botlake/extension-cron",
   "version": "0.1.0",
+  "description": "Durable calendar and interval jobs with occurrence history.",
   "files": [
     "src",
     "README.md"

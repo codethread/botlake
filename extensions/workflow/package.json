@@ -1,6 +1,7 @@
 {
   "name": "@botlake/extension-workflow",
   "version": "0.1.0",
+  "description": "Authored XState workflows projected into Work tasks and groups.",
   "files": [
     "src",
     "examples",

@@ -31,6 +31,7 @@ const entryPredicate = q.eq(q.attr(diaryAttributes.entry), true);
 export function diary(): Extension {
   return {
     name: "diary",
+    source: import.meta.url,
     requires: ["identity"],
     activate(ctx) {
       ctx.graph.protect((changes, token) => {

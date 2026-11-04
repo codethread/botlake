@@ -127,9 +127,9 @@ port.on("message", (raw: unknown) => {
   });
 });
 try {
-  const { extensions } = await loadWorkspace(data.workspace);
+  const { extensions, info } = await loadWorkspace(data.workspace);
   await runtime.start(extensions);
-  port.postMessage({ ready: true });
+  port.postMessage({ ready: true, info });
 } catch (error) {
   port.postMessage({ fatal: errorFrame(error) });
   await runtime.stop();

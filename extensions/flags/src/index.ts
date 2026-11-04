@@ -220,6 +220,7 @@ export function configureFlags(settings: readonly FlagSetting[]): Extension {
 
   return {
     name: "flags",
+    source: import.meta.url,
     activate(ctx) {
       const initial = new Map(defaults);
       ctx.graph.db.run(sql`

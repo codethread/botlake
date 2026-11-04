@@ -63,6 +63,7 @@ const input = z.compile(
 export function workflows(): Extension {
   return {
     name: "workflow",
+    source: import.meta.url,
     requires: ["identity", "work"],
     activate(ctx) {
       const service = workflowService(ctx, workflowFiles(ctx.workspace));

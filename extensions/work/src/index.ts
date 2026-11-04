@@ -154,6 +154,7 @@ export interface WorkOptions {
 export function work(configuration: WorkOptions = {}): Extension {
   return {
     name: "work",
+    source: import.meta.url,
     requires: [
       "identity",
       ...(configuration.references === undefined ? [] : [configuration.references.name]),

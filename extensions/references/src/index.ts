@@ -36,6 +36,7 @@ export function references(options: ReferenceOptions = {}): ReferenceLibrary {
   }
   return {
     name: "references",
+    source: import.meta.url,
     get(ctx) {
       const instance = instances.get(ctx);
       if (instance === undefined)

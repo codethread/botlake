@@ -42,11 +42,12 @@ Commands:
   restart     Reload its configuration and restart it
   stop        Stop a workspace lake
   status      Inspect a workspace lake
+  info        Show active-lake package and extension metadata
   list        List active lakes
   eval        Run trusted JavaScript against a running lake
 
-For start, restart, stop and status, --workspace PATH|NAME defaults to the
-main Git checkout. Outside Git, pass --workspace. New lakes require a path;
+For start, restart, stop, status and info, --workspace PATH|NAME defaults to
+the main Git checkout. Outside Git, pass --workspace. New lakes require a path;
 published names select active lakes. "botlake help lake COMMAND" shows details.
 `
 
@@ -86,7 +87,7 @@ func helpCLI(path []string) int {
 		}
 		if len(path) == 2 {
 			switch path[1] {
-			case "start", "restart", "stop", "status", "list", "eval":
+			case "start", "restart", "stop", "status", "info", "list", "eval":
 				return writeHelp(lakeCommandHelp(path[1]))
 			}
 		}
@@ -182,6 +183,22 @@ Report whether the selected lake is ready. Without --workspace, use the main
 Git checkout.
 
 ` + common
+	case "info":
+		return `Usage:
+  botlake lake info [--workspace PATH|NAME]
+
+Show the running lake's startup snapshot as JSON:
+{path,name,packageJson,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
+
+Extensions follow selection order. Their name is the runtime extension name,
+not the package name. description comes from package.json, or null when absent.
+Paths are absolute; packageJson and readme
+are null when absent. module is the selected entry; source is its defining
+module, preserved by configured factories. Configuration edits appear after
+restart. This command neither loads modules nor starts inactive lakes.
+Without --workspace, select the main Git checkout.
+
+` + common
 	case "list":
 		return `Usage:
   botlake lake list
@@ -267,7 +284,7 @@ func Botlake(args []string) int {
 			return Relay(request("lake-list", "", nil))
 		}
 		switch action {
-		case "start", "restart", "stop", "status":
+		case "start", "restart", "stop", "status", "info":
 		default:
 			return fail(fmt.Errorf("unknown lake command: %s", action))
 		}
