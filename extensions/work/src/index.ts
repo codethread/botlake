@@ -52,6 +52,11 @@ export type {
   WorkTopologyOptions,
 } from "./types.ts";
 
+export const brief = [
+  "Use Botlake to track tasks and shared context groups.",
+  "Before tracking work, run `bl prime work` once per session.",
+].join("\n");
+
 const text = z.string().trim().min(1);
 const attribution = { by: text.optional() };
 const item = { id: text };

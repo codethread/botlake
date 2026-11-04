@@ -38,6 +38,7 @@ export { Agents } from "./runs.ts";
 
 export type { AgentOptions, StartRun } from "./runs.ts";
 
+export { brief } from "./prompt.ts";
 export type { SessionContext, SystemPrompt } from "./prompt.ts";
 export { resolveSessionContext } from "./session-context.ts";
 

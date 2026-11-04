@@ -47,7 +47,7 @@ export type {
   PeerCallOptions,
 } from "./runtime/context.ts";
 export { defineOp } from "./runtime/ops.ts";
-export { priming } from "./runtime/priming.ts";
+export { brief, priming } from "./runtime/priming.ts";
 export type { PrimerCallback } from "./runtime/priming.ts";
 export { defineEvent } from "./runtime/events.ts";
 export type { EventDefinition, EventHandler, EventPhase } from "./runtime/events.ts";

@@ -2,6 +2,8 @@
 
 Explicitly select Identity and Work. Imports are inert; `work()` selects the extension and `workStore(ctx)` exposes the same operations to other extensions.
 
+Import `brief` from `@botlake/extension-work` for reusable work-tracking guidance to compose with Core's `brief` in agent prompts.
+
 ```sh
 bl prime work
 bl work create "Delivery context" --kind group --description "Shared purpose and constraints"

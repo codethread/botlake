@@ -107,10 +107,13 @@ Caller-sensitive allow/deny visibility, live alias registration/unregistration, 
 
 ## System prompts
 
+Import `brief` from `@botlake/extension-agents` for reusable delegation guidance to compose with Core's `brief` in agent prompts. Briefs are opt-in strings; importing them neither activates extensions nor installs prompts.
+
 `systemPrompt` accepts a string or synchronous `(context: SessionContext) => string`. Use `audience` to tailor communication without guessing who receives the response:
 
 ```ts
-import { agents, type SessionContext } from "@botlake/extension-agents";
+import { brief as coreBrief } from "@botlake/core";
+import { agents, brief as agentBrief, type SessionContext } from "@botlake/extension-agents";
 
 function projectPrompt({ audience, model }: SessionContext): string {
   const communication =
@@ -122,7 +125,8 @@ function projectPrompt({ audience, model }: SessionContext): string {
 
   return [
     communication,
-    "This project uses Botlake. Use `bl prime agent` before delegating work.",
+    coreBrief,
+    agentBrief,
     ...(model?.startsWith("deepseek/") ? ["State acceptance criteria before editing."] : []),
   ].join("\n\n");
 }

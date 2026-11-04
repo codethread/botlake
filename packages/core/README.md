@@ -25,6 +25,8 @@ Use `isFault(error)` to recognize core faults across separately installed packag
 
 `peers.resolve` and `peers.call` accept `{ signal, timeoutMs }`, defaulting to a 30-second deadline. Calls retain structured owner faults and close the request on cancellation. `peers.watch(workspace, events, signal)` streams committed notifications; wait for ready before a snapshot and refetch after reconnect. It owns no replay or reconnect policy.
 
+Import `brief` from `@botlake/core` for a short, extension-independent CLI orientation to embed in agent prompts.
+
 Select `priming({ operation: addition })` once to append consumer guidance to CLI-visible operation primers. An addition is a string or synchronous `PrimerCallback(ctx, invocation)`; callbacks run only for `prime OP`, receive that request's normalized caller and invocation coordinates, and may return blank text to add nothing. Author guidance remains first. Unknown, metadata-only and duplicate targets fail at startup, including duplicate priming selections.
 
 `Node.reference` is null for owned nodes; references carry source identity, routing and observed facts outside attributes. `graph.observeReference(source, snapshot)` imports a read-only core summary; null records confirmed absence of an existing reference. `graph.reference(lakeId, nodeId)` finds one import. `graph.references` filters/pages metadata before hydration; `graph.snapshots(ids)` returns owned core summaries and `graph.summaries(ids)` also includes reference provenance. Generic mutations cannot edit reference facts. Reopening the graph invalidates persisted live observations. The opt-in [References extension](../../extensions/references/README.md) owns subscriptions and domain projections.

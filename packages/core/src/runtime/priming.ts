@@ -1,6 +1,16 @@
 import { Fault } from "../core/json.ts";
 import type { Context, Extension, Invocation, Op } from "./context.ts";
 
+/** Terse botlake primer to inject into session context */
+export const brief = [
+  "This project uses Botlake, a local tool providing `botlake` and `bl` clis",
+  "Each project runs a 'lake' a process with custom extensions as configured in <project>/.botlake/package.json",
+  "`bl --help` explains shared CLI conventions; `bl help` lists this lake's operations.",
+  "Before using an unfamiliar operation, read `bl prime OP` for its runbook, then `bl help OP [SUBCOMMAND...]` for syntax.",
+  "Use `bl about OP` for advanced concepts when needed and `bl schema OP` for declared JSON input/output schemas.",
+  "`botlake bin list` shows additional tooling exposed in the lake, see `botlake bin -h` for details when appropriate",
+].join("\n");
+
 const extensionName = "@botlake/core/priming";
 export const primingRegistration = Symbol.for("@botlake/core/priming-registration");
 

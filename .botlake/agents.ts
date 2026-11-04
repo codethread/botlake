@@ -1,33 +1,23 @@
-import type { PrimerCallback } from "@botlake/core";
-import { agents, resolveSessionContext } from "@botlake/extension-agents";
+import { brief as coreBrief, type PrimerCallback } from "@botlake/core";
+import { agents, brief as agentBrief, resolveSessionContext } from "@botlake/extension-agents";
+import { brief as workBrief } from "@botlake/extension-work";
 
 import { workspaceFlags } from "./flags.ts";
 import references from "./references.ts";
 
-const workPrompt = [
-  "This project uses Botlake for tasks and agent runs.",
-  "Before tracking work, run `bl prime work` once per session.",
-].join("\n");
-
-const delegationPrompt = [
-  "Prefer Botlake for delegation unless the user requests native subagents.",
-  "Before delegating, run `bl prime agent` once per session.",
-].join("\n");
+const botlakePrompt = ["## Botlake", coreBrief, workBrief].join("\n");
 
 const communicationPrompts = {
   human: [
     "Communicate efficiently. Be concise, but include assumptions, actions, and next steps when they matter.",
-    "Use fenced mermaid blocks when a visual hierarchy improves pedagogy, but keep syntax minimal (the harness will only render boxes, text and arrows; no color).",
     "Always print file paths in vimgrep format, absolute from the git root (for example, `src/file.txt:42`), keeping content separate in fenced blocks.",
+    "",
   ].join("\n"),
   agent: [
     "The user you are communicating with is another agent, so be clear and informative.",
     "The user only has access to your response, not any tool calls, so provide all relevant information in your response.",
   ].join("\n"),
-  unknown: [
-    "Communicate clearly and informatively, including assumptions, actions, and next steps when they matter.",
-    "Do not assume whether the recipient is a human or an agent.",
-  ].join("\n"),
+  unknown: [].join("\n"),
 };
 
 export const agentPrimer: PrimerCallback = (ctx, invocation) => {
@@ -44,7 +34,7 @@ export default agents({
   references,
   unmanaged: {
     systemPrompt: ({ audience }) =>
-      [communicationPrompts[audience], workPrompt, delegationPrompt].join("\n"),
+      [communicationPrompts[audience], botlakePrompt, agentBrief].join("\n"),
   },
   aliases: {
     deepseek: {
@@ -53,28 +43,28 @@ export default agents({
       model: "deepseek/deepseek-flash",
       effort: "max",
       when: workspaceFlags.deepseek.name,
-      systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
     luna: {
       doc: `GPT Luna. Implementation details, scouting and tightly scoped delegated tasks. Give explicit success criteria.`,
       parent: "pi",
       model: "openai-codex/gpt-6-luna",
       effort: "xhigh",
-      systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
     "luna-codex": {
       doc: "GPT Luna through the native Codex harness.",
       parent: "codex",
       model: "gpt-6-luna",
       effort: "xhigh",
-      systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
     opus: {
       doc: `Claude Opus. Greenfield features, API design and critical seams.`,
       parent: "claude",
       model: "opus",
       effort: "low",
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     fable: {
       doc: `Claude Fable. Extreme diagnosis, top-level coordination and user-facing prose where writing is the product.`,
@@ -82,7 +72,7 @@ export default agents({
       model: "claude-fable-5",
       effort: "high",
       when: workspaceFlags.fable.name,
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     astra: {
       doc: `GPT-6 Astra. Extreme diagnosis, top-level coordination, architecture and
@@ -90,7 +80,7 @@ export default agents({
       parent: "pi",
       model: "openai-codex/gpt-6-astra",
       effort: "high",
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     sol: {
       doc: `GPT-5.6 Sol. Complex implementation, hostile-environment debugging and
@@ -98,7 +88,7 @@ export default agents({
       parent: "pi",
       model: "openai-codex/gpt-5.6-sol",
       effort: "low",
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     terra: {
       doc: `GPT-5.6 Terra. Well-defined, single-concern review and validation on
@@ -106,24 +96,24 @@ export default agents({
       parent: "pi",
       model: "openai-codex/gpt-5.6-terra",
       effort: "high",
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     oracle: {
       doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
       parent: "astra",
       effort: "high",
-      systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     reviewer: [
       {
         doc: `Default targeted review seat: prefer Sol.`,
         parent: "sol",
-        systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
       {
         doc: `Targeted review fallback: Opus when Sol is unavailable.`,
         parent: "opus",
-        systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
     grunt: [
@@ -131,13 +121,13 @@ export default agents({
         doc: `Mechanical implementation, exploration and context-heavy file/log
           searching. Prefer DeepSeek.`,
         parent: "deepseek",
-        systemPrompt: [communicationPrompts.agent, workPrompt, delegationPrompt].join("\n"),
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
       {
         doc: `Mechanical implementation, exploration and context-heavy file/log
           searching. Fall back to Luna.`,
         parent: "luna",
-        systemPrompt: [communicationPrompts.agent, workPrompt].join("\n"),
+        systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
       },
     ],
   },
