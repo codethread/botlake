@@ -17,27 +17,70 @@ try {
 }
 ```
 
-Extensions default-export `{ name, requires?, activate(ctx) }`. `activate` registers operations, queries, guards, subscriptions and resources using the explicit context. Dependencies name other selected extensions; they never auto-activate. Activation follows prerequisite order; duplicate, missing or cyclic selections fail before activation. Resource startup follows registration/validation; failed startup and shutdown dispose started resources.
+## Extension authoring
+
+Extensions default-export `{ name, source?, requires?, activate(ctx) }`. Set `source: import.meta.url` in the defining factory to retain package provenance when a consumer selects a local configuration wrapper. Without `source`, the selected module is the origin. `activate` registers operations, queries, guards, subscriptions and resources using the explicit context. Dependencies name other selected extensions; they never auto-activate. Activation follows prerequisite order; duplicate, missing or cyclic selections fail before activation. Resource startup follows registration/validation; failed startup and shutdown dispose started resources.
+
+`botlake lake info [--workspace PATH|NAME]` returns the running lake's loaded configuration snapshot. Each extension includes its runtime `name` (not its package name), package `description` (`null` when absent), configured `specifier`, resolved `module`, defining `source`, nearest `packageJson` and package-root `readme` paths. Paths are absolute; absent manifests or READMEs are `null`. Configuration edits appear after restart. `loadWorkspace(path)` exposes the same metadata as `info` alongside `config` and `extensions`.
 
 Use `isFault(error)` to recognize core faults across separately installed package copies.
 
 `defineOp` accepts Standard Schema v1 input/output validators. Omit `cli` for a JSON-only peer operation: input/output validation and deadlines still apply, while argv invocation and CLI discovery are unavailable. This controls presentation, not access. CLI metadata and optional JSON Schema export remain independent: `help` discloses syntax one level at a time, while `schema OP` exports only the declared schemas. `about OP` and `prime OP` carry concepts and runbooks. Operations default to a 30s deadline. `deadline: "unbounded"` lets a long-running operation own its wait budget; an explicit caller timeout still overrides it. Handlers must observe `request.signal` and clean up pending I/O or timers on abort. `request.deadline` is an absolute clock time, or `null` without a request deadline. `Context` provides graph, clock, scheduler, processes and peers; Botlake supplies custody/routing when running workers. `peers.resolve(pathOrName)` returns the published canonical path/name; `peers.call` invokes a single-result operation without transport replay and rejects streams.
 
+For example, a module can register a CLI-visible operation:
+
+```ts
+import { defineOp, type Extension } from "@botlake/core";
+import { z } from "zod";
+
+const length = defineOp({
+  name: "length",
+  input: z.compile(z.object({ text: z.string() })),
+  output: z.compile(z.number()),
+  cli: {
+    description: "Count characters",
+    positionals: [{ name: "text", type: "string", required: true }],
+  },
+  handler: ({ text }) => text.length,
+});
+export default {
+  name: "example",
+  source: import.meta.url,
+  activate(ctx) {
+    ctx.register(length);
+  },
+} satisfies Extension;
+```
+
+[Compile final Zod schemas](https://zod.dev/compile) after refinements or extensions; derived schemas need compiling again. Unsupported features such as recursion retain Zod's runtime parser. Select the module through [workspace configuration](../../docs/usage.md#packages-and-extension-selection).
+
 `peers.resolve` and `peers.call` accept `{ signal, timeoutMs }`, defaulting to a 30-second deadline. Calls retain structured owner faults and close the request on cancellation. `peers.watch(workspace, events, signal)` streams committed notifications; wait for ready before a snapshot and refetch after reconnect. It owns no replay or reconnect policy.
+
+### Priming
 
 Import `brief` from `@botlake/core` for a short, extension-independent CLI orientation to embed in agent prompts.
 
 Select `priming({ operation: addition })` once to append consumer guidance to CLI-visible operation primers. An addition is a string or synchronous `PrimerCallback(ctx, invocation)`; callbacks run only for `prime OP`, receive that request's normalized caller and invocation coordinates, and may return blank text to add nothing. Author guidance remains first. Unknown, metadata-only and duplicate targets fail at startup, including duplicate priming selections.
 
+### References
+
 `Node.reference` is null for owned nodes; references carry source identity, routing and observed facts outside attributes. `graph.observeReference(source, snapshot)` imports a read-only core summary; null records confirmed absence of an existing reference. `graph.reference(lakeId, nodeId)` finds one import. `graph.references` filters/pages metadata before hydration; `graph.snapshots(ids)` returns owned core summaries and `graph.summaries(ids)` also includes reference provenance. Generic mutations cannot edit reference facts. Reopening the graph invalidates persisted live observations. The opt-in [References extension](../../extensions/references/README.md) owns subscriptions and domain projections.
 
 `graph.forgetReference(id)` deliberately removes a local import; generic burn and batch deletion reject it. A `depends-on` edge can declare `dependencyAttributes.referenceKinds`, a nonempty list of accepted source projection kinds. Generic readiness then requires the reference to be current, closed and match that constraint. Work supplies its own accepted kinds; Core knows no domain kind names.
+
+### Workspace configuration
 
 Read `ctx.env.lake` for the environment captured by `botlake lake start|restart`, and `ctx.env.bl` inside an operation for the invoking `bl` or lake eval caller's environment. The namespaces stay separate, including overlapping calls and streams; missing keys are `undefined`. Activation has an empty `env.bl`. Host recovery retains each lake's environment; an explicit lake restart captures it again. Embedded runtimes accept `env` in both the `Runtime` constructor and `invoke` options.
 
 Workspace configuration lives in the required `botlake` field of `.botlake/package.json`. It accepts only optional `name` and `extensions` (default `[]`); the lake name defaults to the workspace directory basename, not the package name. `loadWorkspace` resolves package names from `.botlake` and relative file paths from the workspace root. The same manifest can own configuration dependencies. `workspaceSchema` and `configJsonSchema()` describe the manifest, allowing other package fields while keeping `botlake` strict. The `@botlake/core/host` and `@botlake/core/eval` entries are the Bun host and caller-side evaluator used by Go Botlake; `BL_CORE` selects the installed package directory.
 
+### Executables
+
 `ctx.bin(name, { description, exec: { path, env? } | { command, env? }, build?: { argv, cwd } })` declares an executable. Paths and build directories are absolute; use the extension’s module location to resolve bundled assets. Commands are bare names resolved through the caller’s PATH. `bins list|plan` exposes the registry; Botlake performs builds and local terminal execution. Registration never launches or builds programs. Keep the extension entry point loadable before its bins are built. A build recipe must work from the installed package's own sources and declared dependencies, not an assumed source checkout; callers explicitly use `botlake bin build NAME` before running it.
+
+## Events
+
+Declare typed handles in an extension's `events.ts` with `defineEvent({ name, phase, schema })`, register them during activation with `ctx.registerEvent`, and use `ctx.on` / `ctx.emit`. Transactional handlers are synchronous, return no value and join the current `graph.atomic`; errors roll it back. After-commit observers may be asynchronous; their failures are recorded in `Runtime.errors`. Subscriptions belong to one lake and return an unsubscribe function.
 
 ## Attribute mutations
 
@@ -47,7 +90,7 @@ Workspace configuration lives in the required `botlake` field of `.botlake/packa
 
 ## Queries
 
-`q` constructs serializable predicates for `graph.list/all`, named queries and [Botlake eval](../../README.md#javascript-evaluation). Declarations stay inert; register them inside the selected extension’s `activate`:
+`q` constructs serializable predicates for `graph.list/all`, named queries and [Botlake eval](#javascript-evaluation). Declarations stay inert; register them inside the selected extension’s `activate`:
 
 ```ts
 import { q, type NamedQuery } from "@botlake/core";
@@ -72,3 +115,9 @@ Builders: `and`, `or`, `not`; `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `inArray`; `
 `graph.list/all` omit archived attributes from results unless `includeArchived: true` is supplied. `graph.show(id, { includeArchived })` and `graph.subgraph(id, relation, { includeArchived })` default to full reads, including archived attributes.
 
 Selection ignores archived attributes even with `includeArchived: true`. Attribute comparisons—including negation—require present, non-null values; `missing` includes absent, archived and null paths. Builders produce data, not JavaScript callbacks executed by the lake.
+
+## JavaScript evaluation
+
+`botlake lake eval` exposes `q` and `api.call(OP, INPUT, { identity? })` to a caller-side async function body. A per-call identity overrides the caller's `BL_ACTOR`; omitting it forwards that caller identity. See `botlake help lake eval` for source forms, bindings, output and security semantics.
+
+The overall deadline includes synchronous loops and all operation calls. Timeout enforcement terminates the evaluator process; completed operations are not rolled back.

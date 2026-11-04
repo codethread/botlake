@@ -114,7 +114,7 @@ The field is called **notes**, with terse guidance that it holds conclusions, fi
 
 The reason work stopped can be recorded in notes alongside its results. A separate free-text close reason was considered and dropped because it would duplicate this role.
 
-Diary is enabled in the active lake and was inspected during this discussion. No diary entries have been added for the workshop. The existing [Diary contract](../extensions/diary/README.md) is identity-owned working history across tasks. Its primer calls for useful conclusions to be promoted into the task's current summary; diary entries are not automatically task evidence.
+Diary is enabled in the active lake and was inspected during this discussion. No diary entries have been added for the workshop. The existing [Diary contract](../../extensions/diary/README.md) is identity-owned working history across tasks. Its primer calls for useful conclusions to be promoted into the task's current summary; diary entries are not automatically task evidence.
 
 ## Common task model
 
@@ -126,7 +126,7 @@ An investigation may need explicit scope and evidence criteria; delivery may nee
 
 An agent starting an investigation should be able to discover similar previous work, inspect its findings, and reuse relevant context. Search across titles, descriptions, and notes must include closed tasks so completed investigations remain discoverable.
 
-The current lake exposes structured list, readiness, named-query, and edge operations, but no dedicated text-search operation. The [query predicates](../packages/core/src/core/query.ts) support equality, comparisons, existence, membership, and edge filters, without a text-search or substring predicate. Searching descriptions and notes is a requirement for the new model, not an existing search API.
+The current lake exposes structured list, readiness, named-query, and edge operations, but no dedicated text-search operation. The [query predicates](../../packages/core/src/core/query.ts) support equality, comparisons, existence, membership, and edge filters, without a text-search or substring predicate. Searching descriptions and notes is a requirement for the new model, not an existing search API.
 
 Search results identify potentially relevant work; an explicit relationship records a connection worth retaining. Referencing a completed investigation need not turn it into child work or an unfinished dependency. Context grouping and dependency policy remain separate questions. Exact relationship names, grouping semantics, and agent disclosure rules are still open.
 
@@ -150,4 +150,4 @@ Search results identify potentially relevant work; an explicit relationship reco
 4. Define criterion resolution/correction contracts, notes and search ergonomics, and readiness, responsibility, and agent-facing views.
 5. Choose criterion storage only after identifying whether independent identity and graph relationships are required. A status or a different assessor alone does not require a separate node.
 
-The Kanban/blockage spike used during this workshop is retained in Git history. The [approved PRD](prd/work-coordination.md) and [current workflow verification](workflow-spike.md) supersede that implementation.
+The Kanban/blockage spike used during this workshop is retained in Git history. The [approved PRD](prd/work-coordination.md) and [current workflow verification](../../extensions/workflow/README.md#persistence) supersede that implementation.

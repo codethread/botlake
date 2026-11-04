@@ -7,7 +7,7 @@ import { z } from "zod";
 import { system } from "../tests/blackbox/fixtures/system.ts";
 
 const count = z.compile(z.coerce.number().int().min(4).max(128)).parse(Bun.argv[2] ?? 24);
-const output = resolve(Bun.argv[3] ?? "docs/pool-benchmark.json");
+const output = resolve(Bun.argv[3] ?? "docs/engdocs/pool-benchmark.json");
 const statusSchema = z.compile(z.object({ memory: z.object({ rss: z.number() }) }));
 const numberSchema = z.compile(z.number());
 const responseSchema = z.compile(z.object({ ok: z.literal(true), result: z.unknown() }));

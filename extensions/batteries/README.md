@@ -8,7 +8,7 @@ Select `"@botlake/extension-batteries"` in workspace `extensions`, or default-ex
 
 Use `bl node show ID` for one full node, or `--lean=false` to expand page records. Reads omit archived attributes unless `--include-archived` is set. `show` and the explicit `subgraph` expansion also accept `--lean` to omit attributes. Archived values never participate in selection, even when returned.
 
-Use `--query NAME --params JSON` for registered queries. `bl query` lists names, descriptions and parameter names; `bl query NAME` expands the predicate. For ad hoc predicates and composition use [`botlake lake eval`](../../README.md#javascript-evaluation) or `bl --input`; both accept `where`, `params`, `limit` and `offset`. There is no `--where` shell flag.
+Use `--query NAME --params JSON` for registered queries. `bl query` lists names, descriptions and parameter names; `bl query NAME` expands the predicate. For ad hoc predicates and composition use [`botlake lake eval`](../../packages/core/README.md#javascript-evaluation) or `bl --input`; both accept `where`, `params`, `limit` and `offset`. There is no `--where` shell flag.
 
 `bl edge list [ID]` pages incident edges, or all edges when ID is omitted. It returns `{ edges, total, nextOffset }` with attributes omitted; `--lean=false` expands them. Use leaf help for defaults and filters. Graph mutations return their stored records; `batch` returns refs and committed changes atomically.
 

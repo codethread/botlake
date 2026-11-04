@@ -22,4 +22,6 @@
 ## Doc guidance
 
 - best docs are no docs, build on good DDD with well structured modules and folders.
-- where needed, apply a very terse level of connective docs in ./docs/
+- Keep maintainer docs in `docs/engdocs/`, indexed by [docs/engdocs/index.md](docs/engdocs/index.md). The rest of `docs/` is user-facing, indexed by [docs/index.md](docs/index.md).
+- Extension-specific user guidance belongs in that extension's `README.md`.
+- Keep indexes to links; only the user index needs a brief introduction to Botlake and extension authoring.
