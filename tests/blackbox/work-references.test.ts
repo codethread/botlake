@@ -13,19 +13,33 @@ type Host = Awaited<ReturnType<typeof system>>;
 const identifier = z.object({ id: z.string() });
 const owner = z.object({ lakeId: z.uuid() });
 const address = z.object({ lakeId: z.uuid(), workspace: z.string(), nodeId: z.string() });
-const observed = address.extend({ title: z.string(), state: z.enum(["open", "closed"]) });
+const gateStatus = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending"), round: z.number() }),
+  z.looseObject({ status: z.literal("cleared"), message: z.string() }),
+]);
+const observed = address.extend({
+  title: z.string(),
+  state: z.enum(["open", "closed"]),
+  gate: z.object({ probe: z.string(), status: z.unknown() }).nullable(),
+});
 const diagnosis = z.object({
   root: address,
   complete: z.boolean(),
   examined: z.object({ lakes: z.number(), nodes: z.number(), edges: z.number() }),
   cycles: z.array(z.object({ path: z.array(observed), members: z.array(observed) })),
   unavailable: z.array(z.object({ node: address, code: z.string(), reason: z.string() })),
+  blockers: z.array(observed),
   limits: z.array(z.enum(["lakes", "nodes", "edges"])),
 });
 const dependencyPage = z.strictObject({
   lakeId: z.uuid(),
   workspace: z.string(),
-  node: z.strictObject({ id: z.string(), title: z.string(), state: z.enum(["open", "closed"]) }),
+  node: z.strictObject({
+    id: z.string(),
+    title: z.string(),
+    state: z.enum(["open", "closed"]),
+    gate: z.object({ probe: z.string(), status: z.unknown() }).nullable(),
+  }),
   prerequisites: z.strictObject({
     items: z.array(address.strict()),
     total: z.number(),
@@ -140,6 +154,95 @@ test("Work imports remote link endpoints, validates their source kind and unlink
         relation: "depends-on",
       }),
     ).toBe("reference-library");
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
+test("a coordinator waits on remote gates and diagnoses their live status", async () => {
+  const host = await system();
+  try {
+    const frontend = await board(host, "gate-frontend");
+    const backend = await board(host, "gate-backend");
+    const coordinator = await board(host, "gate-coordinator");
+    for (const workspace of [frontend, backend, coordinator])
+      await host.botlake(["lake", "start", "--workspace", workspace]);
+
+    const frontendGate = identifier.parse(
+      await host.bl(frontend, "work-gate-fixture", {
+        command: "create",
+        title: "FE main CI green",
+      }),
+    );
+    const backendGate = identifier.parse(
+      await host.bl(backend, "work-gate-fixture", { command: "create", title: "BE main CI green" }),
+    );
+    const release = identifier.parse(
+      await host.bl(coordinator, "work", { command: "create", title: "Release" }),
+    );
+    const importedGates = new Map<string, string>();
+    for (const [workspace, gate] of [
+      [frontend, frontendGate],
+      [backend, backendGate],
+    ] as const) {
+      const link = z
+        .object({ to: z.string() })
+        .parse(
+          await host.cli([
+            "--workspace",
+            coordinator,
+            "work",
+            "link",
+            release.id,
+            gate.id,
+            "--to-workspace",
+            workspace,
+            "--relation",
+            "depends-on",
+          ]),
+        );
+      importedGates.set(workspace, link.to);
+    }
+
+    expect(await host.bl(coordinator, "work", { command: "show", id: release.id })).toMatchObject({
+      ready: false,
+    });
+    const pending = diagnosis.parse(
+      await host.bl(coordinator, "work", { command: "diagnose", id: release.id }),
+    );
+    expect(pending.blockers.map(({ title }) => title).toSorted()).toEqual([
+      "BE main CI green",
+      "FE main CI green",
+    ]);
+    for (const blocker of pending.blockers)
+      expect(gateStatus.parse(blocker.gate?.status)).toMatchObject({ status: "pending" });
+
+    await host.bl(frontend, "work-gate-fixture", { command: "clear", id: frontendGate.id });
+    await host.bl(coordinator, "reference-fixture", {
+      command: "refresh",
+      id: importedGates.get(frontend),
+    });
+    expect(await host.bl(coordinator, "work", { command: "show", id: release.id })).toMatchObject({
+      ready: false,
+    });
+    const partlyCleared = diagnosis.parse(
+      await host.bl(coordinator, "work", { command: "diagnose", id: release.id }),
+    );
+    expect(partlyCleared.blockers).toHaveLength(1);
+    expect(partlyCleared.blockers[0]).toMatchObject({ title: "BE main CI green" });
+
+    await host.bl(backend, "work-gate-fixture", { command: "clear", id: backendGate.id });
+    await host.bl(coordinator, "reference-fixture", {
+      command: "refresh",
+      id: importedGates.get(backend),
+    });
+    expect(await host.bl(coordinator, "work", { command: "show", id: release.id })).toMatchObject({
+      ready: true,
+    });
+    const cleared = diagnosis.parse(
+      await host.bl(coordinator, "work", { command: "diagnose", id: release.id }),
+    );
+    expect(cleared.blockers).toEqual([]);
   } finally {
     await host.close();
   }
@@ -438,7 +541,9 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
       from: linked.id,
       to: imported.id,
       relation: "depends-on",
-      attributes: { [dependencyAttributes.referenceKinds]: ["work/task", "work/group"] },
+      attributes: {
+        [dependencyAttributes.referenceKinds]: ["work/task", "work/group", "work/gate"],
+      },
     });
     await host.bl(consumer, "work", {
       command: "unlink",
@@ -467,6 +572,7 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
       expect(edges.edges[0]?.attributes[dependencyAttributes.referenceKinds]).toEqual([
         "work/task",
         "work/group",
+        "work/gate",
       ]);
     }
     const localPrerequisite = identifier.parse(
@@ -560,6 +666,7 @@ async function board(host: Host, name: string, extra: string[] = []): Promise<st
     "./work.ts",
     "./references.ts",
     "./reference-fixture.ts",
+    "./work-gate-fixture.ts",
   ]);
   await Bun.write(join(workspace, "references.ts"), workProjectionModule);
   await Bun.write(
@@ -577,6 +684,23 @@ export default {name:"reference-fixture",requires:[references.name],activate(ctx
 const refs=references.get(ctx);
 ctx.register(defineOp({name:"reference-fixture",input:z.object({command:z.literal("refresh"),id:z.string()}),output:jsonSchema,
 cli:{description:"Test-only library adapter"},async handler(input,_ctx,request){return jsonSchema.parse(await refs.refresh(input.id,request.signal));}}));}};`,
+  );
+  await Bun.write(
+    join(workspace, "work-gate-fixture.ts"),
+    `import {defineOp,jsonSchema} from "@botlake/core";
+import {workStore} from "@botlake/extension-work";
+import {z} from "zod";
+import work from "./work.ts";
+const input=z.discriminatedUnion("command",[
+  z.object({command:z.literal("create"),title:z.string()}),
+  z.object({command:z.literal("clear"),id:z.string()}),
+]);
+export default {name:"work-gate-fixture",requires:[work.name],activate(ctx){
+ctx.register(defineOp({name:"work-gate-fixture",input,output:jsonSchema,cli:{description:"Test-only gate adapter"},handler(value){
+const store=workStore(ctx);
+if(value.command==="create") return store.gates.create({title:value.title,probe:"ci-green",params:{},policy:{everyMs:1000,maxAttempts:1,timeoutMs:1000},by:"fixture"});
+return store.gates.apply(value.id,{type:"clear",at:new Date().toISOString(),by:"fixture",message:"CI passed"});
+}}));}};`,
   );
   return realpath(workspace);
 }

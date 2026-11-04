@@ -41,7 +41,9 @@ export function workLinks(ctx: Context, references?: References) {
         : await library().follow(
             { workspace: input.toWorkspace, nodeId: input.to },
             signal,
-            input.relation === "depends-on" ? { kinds: ["work/task", "work/group"] } : undefined,
+            input.relation === "depends-on"
+              ? { kinds: ["work/task", "work/group", "work/gate"] }
+              : undefined,
           );
     try {
       signal.throwIfAborted();
