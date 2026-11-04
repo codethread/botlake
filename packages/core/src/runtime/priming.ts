@@ -3,12 +3,11 @@ import type { Context, Extension, Invocation, Op } from "./context.ts";
 
 /** Terse botlake primer to inject into session context */
 export const brief = [
-  "This project uses Botlake, a local tool providing `botlake` and `bl` clis",
-  "Each project runs a 'lake' a process with custom extensions as configured in <project>/.botlake/package.json",
-  "`bl --help` explains shared CLI conventions; `bl help` lists this lake's operations.",
-  "Before using an unfamiliar operation, read `bl prime OP` for its runbook, then `bl help OP [SUBCOMMAND...]` for syntax.",
-  "Use `bl about OP` for advanced concepts when needed and `bl schema OP` for declared JSON input/output schemas.",
+  "This workspace uses Botlake, a local lake with explicitly selected extensions.",
+  "Use `bl -h` for CLI mechanics; before unfamiliar operations, run `bl prime OP`.",
   "`botlake bin list` shows additional tooling exposed in the lake, see `botlake bin -h` for details when appropriate",
+  `In a Botlake source checkout, read ${new URL("../../../../docs/index.md", import.meta.url).href} for documentation and extension authoring.`,
+  "Use `botlake lake info` to locate selected extensions' docs and source for debugging",
 ].join("\n");
 
 const extensionName = "@botlake/core/priming";
@@ -28,6 +27,7 @@ export function priming(additions: Record<string, PrimerAddition>): Extension {
 
   return {
     name: extensionName,
+    source: import.meta.url,
     activate(ctx) {
       ctx[primingRegistration](configured);
     },

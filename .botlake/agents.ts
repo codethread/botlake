@@ -24,9 +24,9 @@ export const agentPrimer: PrimerCallback = (ctx, invocation) => {
   const session = resolveSessionContext(ctx, invocation);
   if (session === null) return "";
   if (session.seat === "oracle")
-    return "State assumptions and unresolved tradeoffs in your review.";
+    return "You are the smartest agent, look for consensus from delegates not guidance";
   if (session.model?.startsWith("deepseek/") === true)
-    return "State acceptance criteria before editing.";
+    return "You are the fastest agent, you will often find answers quicker through search than delegation";
   return "";
 };
 

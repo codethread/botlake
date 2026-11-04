@@ -6,7 +6,7 @@ import type { ProviderName } from "./providers/contract.ts";
 export const brief = [
   "Prefer Botlake for delegation unless the user requests native subagents.",
   "Before delegating, run `bl prime agent` once per session.",
-  "Keep shared Botlake process and policy in delegates' system prompts; focus task prompts on inputs and expected outputs.",
+  "All agents recieve accurate botlake process and policy in their system prompt, focus your guidance to inputs and outputs of the task, not botlake mechanics",
 ].join("\n");
 
 export const systemPromptSchema = z.compile(
