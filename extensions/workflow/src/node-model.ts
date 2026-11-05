@@ -22,6 +22,8 @@ export const workflowAttributes = {
   task: "workflow/task",
   /** Marks a commandless visit that publishes a context group. */
   group: "workflow/group",
+  /** Marks a visit that publishes and waits on a Work gate. */
+  gate: "workflow/gate",
   /** Full XState state node identifier for this visit. */
   state: "workflow/state",
   /** Stable actor path and state node identity. */

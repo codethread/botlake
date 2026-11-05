@@ -1,13 +1,24 @@
 import { Fault, isFault, q, requireValue, sql, type Context } from "@botlake/core";
 import { z } from "zod";
 
-import { workAttributes, workRelations } from "./node-model.ts";
+import { gateStatusSchema, workAttributes, workRelations } from "./node-model.ts";
+import type { GateStatus } from "./types.ts";
 
 const addressSchema = z.object({ lakeId: z.string(), workspace: z.string(), nodeId: z.string() });
 const dependencySchema = z.object({
   lakeId: z.string(),
   workspace: z.string(),
-  node: z.object({ id: z.string(), title: z.string(), state: z.enum(["open", "closed"]) }),
+  node: z.object({
+    id: z.string(),
+    title: z.string(),
+    state: z.enum(["open", "closed"]),
+    gate: z
+      .object({
+        probe: z.string(),
+        status: gateStatusSchema,
+      })
+      .nullable(),
+  }),
   prerequisites: z.object({
     items: z.array(addressSchema).max(100),
     total: z.number().int().nonnegative(),
@@ -41,6 +52,11 @@ export interface ObservedWork extends WorkAddress {
   title: string;
   /** Source lifecycle observed during traversal. */
   state: "open" | "closed";
+  /** Probe evidence when this observation is a gate. */
+  gate: {
+    probe: string;
+    status: GateStatus;
+  } | null;
 }
 
 export interface WorkDependencyPage {
@@ -49,7 +65,15 @@ export interface WorkDependencyPage {
   /** Canonical route of the responding lake. */
   workspace: string;
   /** Source-owned work item; descriptions and histories are omitted. */
-  node: { id: string; title: string; state: "open" | "closed" };
+  node: {
+    id: string;
+    title: string;
+    state: "open" | "closed";
+    gate: {
+      probe: string;
+      status: GateStatus;
+    } | null;
+  };
   /** Bounded direct owner addresses; fetch that owner for current work facts. */
   prerequisites: { items: WorkAddress[]; total: number; nextOffset: number | null };
 }
@@ -75,6 +99,8 @@ export interface WorkDiagnosis {
   cycles: { path: ObservedWork[]; members: ObservedWork[] }[];
   /** Owners or work items that could not be read; no absence is inferred. */
   unavailable: { node: WorkAddress; code: string; reason: string }[];
+  /** Open machine gates reached while explaining why the root is waiting. */
+  blockers: ObservedWork[];
   /** Explicit limits reached; an empty list means no configured bound truncated traversal. */
   limits: ("lakes" | "nodes" | "edges")[];
 }
@@ -97,6 +123,7 @@ export function workDependencies(
     }) === 0
   )
     throw new Fault("work", "Dependency frontiers require a locally owned task or group", owner);
+  const fullNode = ctx.graph.show(id);
   const { total } = countSchema.parse(
     ctx.graph.db
       .query(sql`
@@ -117,7 +144,18 @@ export function workDependencies(
   return {
     lakeId: ctx.graph.lakeId,
     workspace: ctx.workspace,
-    node: { id: node.id, title: node.title, state: node.state === "closed" ? "closed" : "open" },
+    node: {
+      id: node.id,
+      title: node.title,
+      state: node.state === "closed" ? "closed" : "open",
+      gate:
+        fullNode.attributes[workAttributes.kind] === "gate"
+          ? {
+              probe: z.string().parse(fullNode.attributes[workAttributes.probe]),
+              status: awaitGateStatus(fullNode.attributes[workAttributes.status]),
+            }
+          : null,
+    },
     prerequisites: {
       items: ctx.graph.summaries(ids).map((endpoint) => ({
         lakeId: endpoint.reference?.lakeId ?? ctx.graph.lakeId,
@@ -198,6 +236,7 @@ export async function diagnoseWork(
           workspace: page.workspace,
           title: page.node.title,
           state: page.node.state,
+          gate: page.node.gate,
         });
         if (page.prerequisites.items.length > remaining) {
           limits.add("edges");
@@ -242,8 +281,15 @@ export async function diagnoseWork(
       ),
     })),
     unavailable,
+    blockers: [...observations.values()].filter(
+      (observation) => observation.state === "open" && observation.gate !== null,
+    ),
     limits: [...limits],
   };
+}
+
+function awaitGateStatus(value: unknown): GateStatus {
+  return gateStatusSchema.parse(value);
 }
 
 // -- Bounded graph analysis --

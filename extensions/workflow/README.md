@@ -4,13 +4,13 @@ Explicitly select Identity, Work and Workflow. Imports are inert; `workflows()` 
 
 ## Model
 
-A run records execution and is not a Work item. It points at one Work context group and publishes visits as Work tasks or context groups. `workflow-member` retains every published visit; `workflow-active` marks only the current frontier. Context nesting follows Work's `parent-of` tree independently of execution membership; `start --parent` nests only the context group.
+A run records execution and is not a Work item. It points at one Work context group and publishes visits as Work tasks, context groups or gates. `workflow-member` retains every published visit; `workflow-active` marks only the current frontier. Context nesting follows Work's `parent-of` tree independently of execution membership; `start --parent` nests only the context group.
 
 ```mermaid
 classDiagram
   class Run["Workflow run"]
   class Context["Context group"]
-  class Visit["Visit: task or group"]
+  class Visit["Visit: task, group or gate"]
 
   Run "1" ..> "1" Context : stored context-group reference
   Run "1" --> "*" Visit : member
@@ -27,7 +27,36 @@ description = "What this process accomplishes"
 run = "workflow.ts"
 ```
 
-Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
+Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `probes`, `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
+
+With [Work Gates](../work-gates/README.md) selected, workflows can publish gate visits and gated tasks. Export `probes` to define workflow-owned probes; their keys are `NAME/PROBE`. In a named workflow, a bare name prefers that workflow's probe and then a configured Work Gates probe. File-selected workflows can use configured probes only.
+
+A gate visit publishes one gate and maps selected statuses to XState events:
+
+```ts
+meta: {
+  title: "Frontend CI is green",
+  gate: ({ context }) => ({ probe: "ci-green", params: { sha: context.sha } }),
+  on: { cleared: "CI_GREEN", exhausted: "CI_STUCK", dismissed: "CI_WAIVED" },
+}
+```
+
+A mapped status advances the active visit once and supplies `{ type, data: { gate } }`. Unmapped statuses leave it active. `workflow show` includes each active gate and status. A transition missed while the lake was down is delivered after activation.
+
+A task can publish gates as its direct prerequisites. Work readiness is the whole contract: the task waits until every gate is closed.
+
+```ts
+meta: {
+  title: "Announce release",
+  task: ({ context }) => ({ instructions: `Announce ${context.version}` }),
+  commands: { done: "DONE" },
+  gates: ({ context }) => [
+    { title: "Frontend CI is green", probe: "ci-green", params: { sha: context.sha } },
+  ],
+}
+```
+
+Re-entering the same gate or gated-task state reuses its previous gate while that gate remains open. An exhausted reused gate starts a fresh round. Once the previous gate is closed, re-entry publishes a new gate. Leaving a gate state does not close its gate. See [gate escalation](examples/gate-escalation.ts) for an exhausted gate that creates an investigation task, then re-enters to retry or dismisses the gate and exits.
 
 The [parallel](examples/parallel.ts) and [nested-machine](examples/nested-machines.ts) examples show branch-scoped events, joins and child actors. Install authored imports (`xstate`, `zod`) in the workspace. Internal worker nesting never makes a task a contextual parent: work attaches to the nearest context group. Execution membership is private and independent of the context tree.
 

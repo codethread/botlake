@@ -1,4 +1,6 @@
-import { defineOp, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
+import { defineOp, Fault, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
+import { workGateChanged } from "@botlake/extension-work";
+import { gateProbes } from "@botlake/extension-work-gates";
 import { z } from "zod";
 
 import type { Selection } from "./catalogue.ts";
@@ -65,8 +67,24 @@ export function workflows(): Extension {
     name: "workflow",
     source: import.meta.url,
     requires: ["identity", "work"],
-    activate(ctx) {
-      const service = workflowService(ctx, workflowFiles(ctx.workspace));
+    async activate(ctx) {
+      const catalogue = workflowFiles(ctx.workspace);
+      const service = workflowService(ctx, catalogue);
+      let gatesSelected = false;
+      try {
+        gateProbes(ctx).provide(async (key) => {
+          const separator = key.indexOf("/");
+          if (separator <= 0 || separator === key.length - 1) return;
+          const name = key.slice(0, separator);
+          const probeName = key.slice(separator + 1);
+          const loaded = await catalogue.load({ kind: "named", name });
+          return loaded.definition.probes.find((probe) => probe.name === probeName);
+        });
+        ctx.on(workGateChanged, ({ id, to }) => service.reactToGate(id, to));
+        gatesSelected = true;
+      } catch (error) {
+        if (!(error instanceof Fault) || error.code !== "work-gates") throw error;
+      }
       ctx.registerQuery("workflow-runs", {
         where: q.eq(q.attr(workflowAttributes.root), true),
         description: "Private workflow execution checkpoints",
@@ -83,7 +101,7 @@ export function workflows(): Extension {
           jsonSchema: { input, output: jsonSchema },
           about: "Authored XState flow projected into Work groups and tasks.",
           primer:
-            "Start an authored definition to create a context Work group and its ready tasks. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome, checkpoints the actor and publishes the next Work atomically. Inspect a task before completion for instructions and outcome schemas.",
+            "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome, checkpoints the actor and publishes the next Work atomically. Inspect a task before completion for instructions and outcome schemas.",
           cli: {
             description: "Discover, start, inspect and explicitly advance authored workflows",
             examples: [
@@ -237,6 +255,10 @@ export function workflows(): Extension {
           },
         }),
       );
+      if (gatesSelected)
+        for (const node of ctx.graph.all({ where: q.eq(q.attr(workflowAttributes.gate), true) }))
+          if (node.attributes[workflowAttributes.consumed] !== true)
+            await service.reactToGate(node.id);
     },
   };
 }

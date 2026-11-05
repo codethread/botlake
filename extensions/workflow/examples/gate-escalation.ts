@@ -1,0 +1,91 @@
+import { existsSync } from "node:fs";
+
+import { defineProbe } from "@botlake/extension-work-gates";
+import { assign, setup } from "xstate";
+import { z } from "zod";
+
+export const inputSchema = z.object({ flag: z.string().min(1) });
+export const commandSchemas = {
+  retry: z.object({}),
+  waive: z.object({}),
+  done: z.object({}),
+};
+
+export const probes = [
+  defineProbe({
+    name: "flag-exists",
+    description: "Wait for a local flag file",
+    params: z.object({ path: z.string().min(1) }),
+    policy: { everyMs: 1_000, maxAttempts: 2, timeoutMs: 1_000 },
+    async run({ path }) {
+      return existsSync(path)
+        ? { outcome: "passed", message: `Flag exists: ${path}` }
+        : { outcome: "failed", message: `Flag does not exist: ${path}` };
+    },
+  }),
+];
+
+export function runBrief() {
+  return {
+    title: "Retry or waive a gate",
+    description: "Escalate an exhausted gate for investigation, then retry or dismiss it.",
+  };
+}
+
+// XState's setup interface uses empty runtime values to carry compile-time machine types.
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+const types = {} as {
+  input: z.infer<typeof inputSchema>;
+  context: { flag: string; gate: string | null };
+  events:
+    | { type: "EXHAUSTED"; data: { gate: string } }
+    | { type: "CLEARED"; data: { gate: string } }
+    | { type: "DISMISSED"; data: { gate: string } }
+    | { type: "RETRY" }
+    | { type: "WAIVE" }
+    | { type: "DONE" };
+};
+
+export const machine = setup({ types }).createMachine({
+  context: ({ input }) => ({ flag: input.flag, gate: null }),
+  initial: "gate",
+  states: {
+    gate: {
+      meta: {
+        title: "Required flag",
+        gate: ({ context }: { context: { flag: string } }) => ({
+          probe: "flag-exists",
+          params: { path: context.flag },
+        }),
+        on: { exhausted: "EXHAUSTED", cleared: "CLEARED", dismissed: "DISMISSED" },
+      },
+      on: {
+        EXHAUSTED: {
+          target: "investigate",
+          actions: assign({ gate: ({ event }) => event.data.gate }),
+        },
+        CLEARED: "finish",
+        DISMISSED: "finish",
+      },
+    },
+    investigate: {
+      meta: {
+        title: "Investigate exhausted gate",
+        commands: { retry: "RETRY", waive: "WAIVE" },
+        task: ({ context }: { context: { gate: string | null } }) => ({
+          instructions: `Investigate gate ${context.gate}. For retry, fix the condition and submit retry. For waive, first run \`bl gate clear ${context.gate} --dismiss --reason "Waived after investigation"\`, then submit waive.`,
+        }),
+      },
+      on: { RETRY: "gate", WAIVE: "finish" },
+    },
+    finish: {
+      meta: {
+        title: "Record outcome",
+        commands: { done: "DONE" },
+        task: () => ({ instructions: "Record the gate outcome." }),
+      },
+      on: { DONE: "done" },
+    },
+    done: { type: "final" },
+  },
+});

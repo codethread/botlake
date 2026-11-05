@@ -16,6 +16,14 @@ export const workAttributes = {
   origin: "work/origin",
   /** Task urgency from P0 through P4. */
   priority: "work/priority",
+  /** Trusted probe name for a machine-checked gate. */
+  probe: "work/probe",
+  /** Probe parameters for a machine-checked gate. */
+  params: "work/params",
+  /** Retry policy frozen when a gate is created. */
+  policy: "work/policy",
+  /** Current gate lifecycle status. */
+  status: "work/status",
   /** Acceptance conditions and their resolution history. */
   criteria: "work/criteria",
   /** Assignment generations and retained release attribution. */
@@ -66,6 +74,45 @@ const commonData = {
   closures: z.array(z.object(byAt)),
   reopenings: z.array(z.object({ ...byAt, reason: text })),
 };
+export const jsonObjectSchema = z.record(z.string(), z.json());
+export const gatePolicySchema = z.object({
+  everyMs: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().positive(),
+  timeoutMs: z.number().int().positive(),
+});
+const evidence = { evidence: jsonObjectSchema.optional() };
+export const gateAttemptSchema = z.object({
+  at: z.iso.datetime(),
+  outcome: z.enum(["failed", "errored"]),
+  message: text,
+  ...evidence,
+});
+export const gateStatusSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending"), round: z.number().int().positive() }),
+  z.object({
+    status: z.literal("waiting"),
+    round: z.number().int().positive(),
+    attempts: z.number().int().positive(),
+    last: gateAttemptSchema,
+    nextAt: z.iso.datetime(),
+  }),
+  z.object({
+    status: z.literal("exhausted"),
+    round: z.number().int().positive(),
+    attempts: z.number().int().positive(),
+    last: gateAttemptSchema,
+  }),
+  z.object({
+    status: z.literal("cleared"),
+    at: z.iso.datetime(),
+    by: text,
+    via: z.enum(["probe", "actor"]),
+    message: text,
+    ...evidence,
+  }),
+  z.object({ status: z.literal("dismissed"), at: z.iso.datetime(), by: text, reason: text }),
+]);
+
 export const taskDataSchema = z.object({
   kind: z.literal("task"),
   ...commonData,
@@ -80,6 +127,14 @@ export const workDataSchema = z.compile(
   z.discriminatedUnion("kind", [
     taskDataSchema,
     z.object({ kind: z.literal("group"), ...commonData }),
+    z.object({
+      kind: z.literal("gate"),
+      ...commonData,
+      probe: text,
+      params: jsonObjectSchema,
+      policy: gatePolicySchema,
+      status: gateStatusSchema,
+    }),
   ]),
 );
 

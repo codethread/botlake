@@ -6,7 +6,13 @@ import { join } from "node:path";
 import { Runtime, isStream, type Context } from "@botlake/core";
 import { agentsChanged } from "@botlake/extension-agents";
 import { identity } from "@botlake/extension-identity";
-import { work, workChanged, workAssignmentEstablished, workStore } from "@botlake/extension-work";
+import {
+  work,
+  workChanged,
+  workAssignmentEstablished,
+  workGateChanged,
+  workStore,
+} from "@botlake/extension-work";
 import { z } from "zod";
 
 import { rejected } from "./assert.ts";
@@ -179,6 +185,7 @@ test("public CLI lists contracts and streams filtered committed changes with a r
         agentsChanged.name,
         workAssignmentEstablished.name,
         workChanged.name,
+        workGateChanged.name,
       ].toSorted(),
     );
     expect(definitions.find((event) => event.name === workAssignmentEstablished.name)?.phase).toBe(
