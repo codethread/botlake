@@ -20,6 +20,7 @@ import {
   sessionSchema,
   type NativeObservation,
 } from "@botlake/native-session";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { identityAttributes, identityRelations, type AttributionRelation } from "./node-model.ts";
@@ -155,12 +156,11 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
       attributes[identityAttributes.capabilities] = input.capabilities;
 
     ctx.graph.update(binding.nodeId, {
-      state:
-        input.event === "session-end"
-          ? "closed"
-          : input.event === "session-start" || input.event === "agent-start"
-            ? "active"
-            : undefined,
+      state: match(input.event)
+        .with("session-end", () => "closed" as const)
+        .with("session-start", "agent-start", () => "active" as const)
+        .with("metadata", "agent-end", (): undefined => undefined)
+        .exhaustive(),
       attributes,
     });
 
