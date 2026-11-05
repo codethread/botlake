@@ -35,7 +35,7 @@ export const agents = configureAgents();
 export const priming = createPriming({
   work: [
     "The Notes field is for recording a concise outcome before closing a task.",
-    "Assign to the user via `--audience HTIL --assignee=$(whoami)`",
+    "Assign to the user via `--audience HITL --assignee=$(whoami)`",
     "Assigning to the user must only be done as a last resort when oracle can't unblock you or if given prior consent to do so",
   ].join("\n"),
   agent: agentPrimer,
