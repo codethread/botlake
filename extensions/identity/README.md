@@ -16,6 +16,10 @@ bl identity list
 
 `show [IDENTITY]` defaults to the invocation caller and returns the full identity record, including the last reported activity and metadata. `list` returns `{ identities, total, nextOffset }` summaries (default 20, maximum 100); continue with `--offset nextOffset` until `null`. Pages are ordered by creation time then ID, not a shared snapshot. Each summary contains identity, node ID, provider, last activity and observation time. Use `show IDENTITY` to expand native session paths and metadata. Activity is an observation, not a liveness guarantee.
 
+## Session lifecycle
+
+Observed `session-end` closes the identity node. `session-start` and `agent-start` reactivate the same identity when a session resumes. Metadata and turn-end (`agent-end`) observations leave node state unchanged; a finished turn is not a finished session. Plain `identity startup` only registers or recovers an identity and does not reactivate it. State reflects received observations, not verified process liveness; missing end hooks leave state unchanged.
+
 ## Relationships
 
 `node-model.ts` declares `identityAttributes` and `identityRelations`, available from the package's public exports.

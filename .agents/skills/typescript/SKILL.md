@@ -24,9 +24,11 @@ type Lookup = { user?: User };
 ```
 
 - Prefer interfaces for object shapes. Use type aliases when their features are needed, such as unions, mapped types or conditional types.
+- Prefer `as const` on literal values to retain narrow types rather than adding return-type annotations solely to prevent widening.
 
 ## Functions
 
+- Use `ts-pattern` with explicit cases and `.exhaustive()` for union branching so new variants require a compile-time handling decision.
 - Use function declarations for named module-level functions, not assignments to arrow functions.
 - Inside a function body, named local helpers may be arrows to keep their lexical context nearby.
 - A module-level arrow assignment is permitted when an existing callable type from a library or a complex generic supplies both parameter and return types.
