@@ -21,7 +21,7 @@ const runView = z.object({
     id: z.string(),
     context: z.string(),
     title: z.string(),
-    status: z.enum(["active", "blocked", "complete"]),
+    status: z.enum(["active", "waiting", "blocked", "complete", "failed"]),
   }),
   tasks: z.array(summary),
   history: z.array(z.object({ id: z.string(), title: z.string(), choice: z.string() })),
@@ -391,7 +391,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     data: null,
   });
 
-  // A failed next-publication rolls back closure, assignment release, checkpoint and authored result.
+  // A projection failure rolls back graph effects, but halts the live actor rather than replaying it.
   const rollback = runView.parse(await cli(["workflow", "start", "--source", "rollback.ts"]));
   const proof = task(rollback, "Human proof");
   const humanQueue = z
@@ -421,7 +421,20 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     /publication rejected/iu,
   );
   assert.deepEqual(await cli(["work", "show", proof, "--history"]), before);
-  assert.deepEqual(await showRun(rollback.run.id), rollback);
+  const failed = await showRun(rollback.run.id);
+  assert.equal(failed.run.status, "failed");
+  assert.deepEqual(failed.tasks, rollback.tasks);
+  assert.deepEqual(failed.history, rollback.history);
+  await host.botlake(["lake", "restart", "--workspace", workspace]);
+  assert.deepEqual(await showRun(rollback.run.id), failed);
+  assert.match(
+    z
+      .string()
+      .parse(
+        await cli(["workflow", "complete", proof, "next", "--data", '{"proof":"recorded"}'], false),
+      ),
+    /Workflow failed.*publication rejected/iu,
+  );
 
   console.log(
     JSON.stringify(
@@ -437,7 +450,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
           "nested machine routes and checkpoint restore after restart",
           "native queryable metadata, context, locator and results preserve nulls and retry equality across restart",
           "business/context groups may outlive execution without false completion",
-          "authored HITL routing and criteria, atomic rollback of all completion effects",
+          "authored HITL routing and criteria; projection failure rolls back graph writes and durably halts execution",
         ],
       },
       null,

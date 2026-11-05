@@ -1,21 +1,6 @@
 # @botlake/extension-workflow
 
-Explicitly select Identity, Work and Workflow. Imports are inert; `workflows()` is the configured extension. There are no built-in workflows and no automatic agent launches.
-
-## Model
-
-A run records execution and is not a Work item. It points at one Work context group and publishes visits as Work tasks, context groups or gates. `workflow-member` retains every published visit; `workflow-active` marks only the current frontier. Context nesting follows Work's `parent-of` tree independently of execution membership; `start --parent` nests only the context group.
-
-```mermaid
-classDiagram
-  class Run["Workflow run"]
-  class Context["Context group"]
-  class Visit["Visit: task, group or gate"]
-
-  Run "1" ..> "1" Context : stored context-group reference
-  Run "1" --> "*" Visit : member
-  Run "1" --> "0..*" Visit : active
-```
+Select Identity, Work and Workflow explicitly. Imports are inert; `workflows()` is the configured extension. There are no built-in workflows or automatic agent launches.
 
 ## Author
 
@@ -27,38 +12,37 @@ description = "What this process accomplishes"
 run = "workflow.ts"
 ```
 
-Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `probes`, `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
+Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns the title and description of the run's Work context group.
 
-With [Work Gates](../work-gates/README.md) selected, workflows can publish gate visits and gated tasks. Export `probes` to define workflow-owned probes; their keys are `NAME/PROBE`. In a named workflow, a bare name prefers that workflow's probe and then a configured Work Gates probe. File-selected workflows can use configured probes only.
+Author ordinary XState machines. Use `setup({ actors })` or `.provide({ actors })` for implementations, `invoke` for async work, and native events, guards, `onDone` and `onError` for transitions. Each run owns one live actor system in the lake worker. Promise invocations continue after a CLI command returns; their transitions publish subsequent Work automatically.
 
-A gate visit publishes one gate and maps selected statuses to XState events:
-
-```ts
-meta: {
-  title: "Frontend CI is green",
-  gate: ({ context }) => ({ probe: "ci-green", params: { sha: context.sha } }),
-  on: { cleared: "CI_GREEN", exhausted: "CI_STUCK", dismissed: "CI_WAIVED" },
-}
-```
-
-A mapped status advances the active visit once and supplies `{ type, data: { gate } }`. Unmapped statuses leave it active. `workflow show` includes each active gate and status. A transition missed while the lake was down is delivered after activation.
-
-A task can publish gates as its direct prerequisites. Work readiness is the whole contract: the task waits until every gate is closed.
+Metadata labels project states into Work:
 
 ```ts
-meta: {
-  title: "Announce release",
-  task: ({ context }) => ({ instructions: `Announce ${context.version}` }),
-  commands: { done: "DONE" },
-  gates: ({ context }) => [
-    { title: "Frontend CI is green", probe: "ci-green", params: { sha: context.sha } },
-  ],
-}
+implement: {
+  meta: {
+    title: "Implement change",
+    task: () => ({ instructions: "Implement and commit the change." }),
+    commands: { done: "IMPLEMENTED" },
+  },
+  on: { IMPLEMENTED: "checks" },
+},
+checks: {
+  invoke: {
+    id: "bun-checks",
+    src: "bunChecks",
+    input: ({ context }) => context,
+    onDone: "raisePr",
+    onError: "repairChecks",
+  },
+},
 ```
 
-Re-entering the same gate or gated-task state reuses its previous gate while that gate remains open. An exhausted reused gate starts a fresh round. Once the previous gate is closed, re-entry publishes a new gate. Leaving a gate state does not close its gate. See [gate escalation](examples/gate-escalation.ts) for an exhausted gate that creates an investigation task, then re-enters to retry or dismisses the gate and exits.
+A titled state with commands publishes a task. A titled state without commands publishes a context group. `task` renders instructions and optional acceptanceCriteria, notes, assignee, audience, origin and priority; Work applies its usual defaults. Untitled states and non-machine actors publish no Work. There is no workflow probe registry or gate metadata: private checks are ordinary invocations.
 
-The [parallel](examples/parallel.ts) and [nested-machine](examples/nested-machines.ts) examples show branch-scoped events, joins and child actors. Install authored imports (`xstate`, `zod`) in the workspace. Internal worker nesting never makes a task a contextual parent: work attaches to the nearest context group. Execution membership is private and independent of the context tree.
+While an invocation runs, the workflow can be `waiting` with no actionable tasks. `workflow show` includes the native state value, non-machine child actors and execution errors. Promise actors report lifecycle, not automatic progress logs. Catch expected failures with XState `onError`; unhandled actor or projection errors halt the run and remain visible as `failed`.
+
+See [native invocations](examples/native-invokes.ts), [parallel branches](examples/parallel.ts) and [nested machines](examples/nested-machines.ts). Nested machine Work inherits the nearest context group around its invoking state; no special child input is needed. Parallel events retain XState's normal scope—use distinct events when only one branch should advance. Install authored imports such as `xstate` and `zod` in the workspace.
 
 ## Work
 
@@ -69,22 +53,23 @@ bl workflow start NAME --input '{}'
 bl workflow show RUN_ID
 bl work show TASK_ID
 bl work claim TASK_ID
-bl workflow show TASK_ID
 bl workflow complete TASK_ID CHOICE --data '{}'
 ```
 
-Catalog and start also accept `--source FILE` instead of a name. `start --parent GROUP` puts the new context group under an existing open group; the execution record itself is not a task or context member.
+Catalog and start also accept `--source FILE`. `start --parent GROUP` nests the run's context group under an existing open Work group. The execution record is not a Work item: `workflow-member` retains published visits and `workflow-active` identifies the current projection independently of contextual containment.
 
-Run inspection returns pending authored actions and decision summaries, including closed-but-unconsumed tasks. `actionPending` describes execution, not task lifecycle. Tasks and decision history default to 20 entries, maximum 100. Continue using `taskPage.nextOffset` with `--offset`, or `historyPage.nextOffset` with `--history-offset`. Pages are not snapshots. Task inspection expands frozen instructions, choice schemas, original result and the shared Work detail/history.
+`complete` validates the choice, payload, prerequisites and Work criteria, then sends the authored event to the live actor that owns the task. Its graph writes—closure, result, checkpoint and subsequent Work—commit together. Repeating the same original choice and raw payload is idempotent; a conflicting retry fails. Generic `work close` and agent-run closure never send workflow events. Closed-but-unconsumed visits remain available for an explicit workflow action.
 
-`complete` explicitly submits an authored outcome. It validates the action schema and direct prerequisites, closes the task subject to its criteria, advances/checkpoints execution and publishes subsequent work in one transaction. Failure rolls back every persistence effect, including assignment release. Repeating the original choice and raw payload is idempotent; a conflicting retry fails. Attribution uses the normalized invocation caller.
+Revisiting a completed task publishes a fresh task and retains the earlier result. Leaving a state through another XState transition detaches its visit but does not silently close unfinished Work. Execution can therefore finish while follow-up Work keeps the context group open. An enclosing business group never closes automatically.
 
-Ordinary `work close` **never advances execution**; an explicit action may be submitted afterward. Closing an agent run likewise neither completes Work nor submits an action. Reviews can close with unfavourable findings: branching uses the explicit authored choice, not the generic closed state. Revision loops publish fresh tasks and retain earlier findings; consumed visits cannot reopen.
-
-Parallel branches advance independently. Departed generated groups close only when all contained tasks are closed. Execution can finish while ordinary follow-up tasks keep its context group open; an enclosing business group never closes automatically. Impediments are ordinary Work prerequisites, not a separate Workflow blockage or ownership ledger.
+Run task/history pages default to 20 entries, maximum 100. Continue with `taskPage.nextOffset` or `historyPage.nextOffset`; pages are not snapshots. Task inspection includes frozen instructions, choice schemas, original result and shared Work detail/history.
 
 ## Persistence
 
-Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. Definition locators, published context/metadata and original results use native JSON attributes, including authored nulls. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
+Every settled actor-system change checkpoints XState's persisted snapshot and reconciles the Work projection. Lake shutdown stops live actors. Activation restores open, nonfailed runs using the exact saved definition: named definitions require their original version and folder fingerprint; file definitions require the entry-file fingerprint. Already-imported source changes require a lake restart. A restore error fails that run visibly without restarting it with different code.
 
-Verify packed packages, real CLIs, nested/revision workflows and transaction rollback in disposable SQLite lakes with `bun scripts/workflow-smoke.ts`.
+Restoration follows XState semantics, not durable JavaScript continuation. **An unfinished promise runs again after restart.** Effects must tolerate re-execution; there is no exactly-once I/O, durable timer service or transactional rollback of external effects. Honour XState's abort signal, including terminating subprocesses when appropriate.
+
+If projection fails after an event, graph writes roll back but XState actions may already have run. The engine stops and records the failure instead of restoring an earlier actor and replaying effects. Failed runs do not automatically resume. There is no migration, cancellation/replanning or implicit approval/merge policy.
+
+Verify packaged CLIs and disposable SQLite lakes with `bun scripts/workflow-smoke.ts` and `bun scripts/workflow-invokes-smoke.ts`.

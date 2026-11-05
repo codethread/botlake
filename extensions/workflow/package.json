@@ -12,25 +12,18 @@
     ".": "./src/index.ts",
     "./examples/parallel": "./examples/parallel.ts",
     "./examples/nested-machines": "./examples/nested-machines.ts",
-    "./examples/gate-escalation": "./examples/gate-escalation.ts"
+    "./examples/native-invokes": "./examples/native-invokes.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "ts-pattern": "^5.9.2",
     "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@botlake/core": "workspace:^",
     "@botlake/extension-identity": "workspace:^",
-    "@botlake/extension-work": "workspace:^",
-    "@botlake/extension-work-gates": "workspace:^"
-  },
-  "peerDependenciesMeta": {
-    "@botlake/extension-work-gates": {
-      "optional": true
-    }
+    "@botlake/extension-work": "workspace:^"
   }
 }
