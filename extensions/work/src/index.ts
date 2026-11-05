@@ -423,6 +423,17 @@ export function work(configuration: WorkOptions = {}): Extension {
                   },
                 },
               },
+              close: {
+                description:
+                  "Close after criteria resolve or contained tasks close; releases assignment without advancing workflows",
+                positionals: [{ name: "id", type: "string", required: true }],
+                flags: {
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
+                },
+              },
               reopen: {
                 description:
                   "Reopen for recovery, retaining criterion resolutions and closure history; returns id and open state",
