@@ -4,6 +4,7 @@ import type { Context, Extension, Invocation, Op } from "./context.ts";
 /** Terse botlake primer to inject into session context */
 export const brief = [
   "This workspace uses Botlake, a local lake with explicitly selected extensions.",
+  "Botlake is machine-local; keep its node IDs out of shared docs and PR descriptions.",
   "Use `bl -h` for CLI mechanics; before unfamiliar operations, run `bl prime OP`.",
   "`botlake bin list` shows additional tooling exposed in the lake, see `botlake bin -h` for details when appropriate",
   `In a Botlake source checkout, read ${new URL("../../../../docs/index.md", import.meta.url).href} for documentation and extension authoring.`,

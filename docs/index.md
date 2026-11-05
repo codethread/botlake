@@ -13,12 +13,6 @@ Extend a lake with a TypeScript module exporting an `Extension`: register typed 
 - [Environment](usage.md#environment)
 - [Zsh completion](usage.md#zsh-completion)
 
-## Extensions
-
-- [Work](../extensions/work/README.md)
-- [Work Gates](../extensions/work-gates/README.md)
-- [Workflow](../extensions/workflow/README.md)
-
 ## Core
 
 - [Graph, operations and extension API](../packages/core/README.md)
