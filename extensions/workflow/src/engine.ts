@@ -10,19 +10,19 @@ import {
 } from "@botlake/core";
 import {
   workStore,
+  gateService,
+  type ProbeDefinition,
   type GateStatus,
   type Page,
   type WorkStore,
   type WorkSummary,
 } from "@botlake/extension-work";
-import { gateService, type ProbeDefinition } from "@botlake/extension-work-gates";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { type Catalogue, type Selection } from "./catalogue.ts";
 import {
   currentStatus,
-  definitionUsesGates,
   initialActor,
   renderVisit,
   resolvedGateSchema,
@@ -120,7 +120,6 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       `Inspect the input schema: ${hint}`,
     );
     const brief = briefSchema.parse(loaded.definition.runBrief(parsed));
-    if (definitionUsesGates(loaded.definition)) gateService(ctx);
     const actorName = requireValue(callerIdentity, "Supply caller identity to start a workflow");
     const runId = graph.atomic(() => {
       if (parent !== undefined) {

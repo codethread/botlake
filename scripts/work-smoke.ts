@@ -48,6 +48,7 @@ const summary = z.strictObject({
   origin: z.string().nullable(),
   priority: z.string().nullable(),
   parent: z.string().nullable(),
+  gate: z.object({ probe: z.string(), status: z.unknown() }).nullable(),
 });
 const page = z.object({
   items: z.array(summary),

@@ -29,7 +29,7 @@ run = "workflow.ts"
 
 Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `probes`, `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
 
-With [Work Gates](../work-gates/README.md) selected, workflows can publish gate visits and gated tasks. Export `probes` to define workflow-owned probes; their keys are `NAME/PROBE`. In a named workflow, a bare name prefers that workflow's probe and then a configured Work Gates probe. File-selected workflows can use configured probes only.
+Work probes are available to workflows without any separate extension selection. Export `probes` to define workflow-owned probes; their keys are `NAME/PROBE`. In a named workflow, a bare name prefers that workflow's probe and then a probe configured in Work. File-selected workflows can use Work-configured probes only.
 
 A gate visit publishes one gate and maps selected statuses to XState events:
 

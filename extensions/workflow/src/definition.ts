@@ -1,5 +1,5 @@
 import { Fault, jsonSchema, requireValue, type Json } from "@botlake/core";
-import type { ProbeDefinition } from "@botlake/extension-work-gates";
+import type { ProbeDefinition } from "@botlake/extension-work";
 import type { ActorRefFrom, AnyStateMachine, Snapshot } from "xstate";
 import { createActor } from "xstate";
 import { z } from "zod";
@@ -133,21 +133,6 @@ export const definitionSchema = z.compile(
 export type Definition = z.infer<typeof definitionSchema>;
 export type WorkflowActor = ActorRefFrom<AnyStateMachine>;
 export type WorkflowNode = AnyStateMachine["root"];
-
-export function definitionUsesGates(definition: Definition): boolean {
-  const pending = [definition.machine.root];
-  while (pending.length > 0) {
-    const node = requireValue(pending.pop(), "Missing workflow state node");
-    const metadata = metadataSchema.safeParse(node.meta);
-    if (
-      metadata.success &&
-      ("gate" in metadata.data || ("gates" in metadata.data && metadata.data.gates !== undefined))
-    )
-      return true;
-    pending.push(...Object.values(node.states));
-  }
-  return false;
-}
 
 export function renderVisit(metadata: Metadata, context: Record<string, unknown>): ResolvedVisit {
   if ("gate" in metadata && metadata.gate !== undefined) {

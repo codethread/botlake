@@ -7,7 +7,11 @@ import {
 } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 import { references as createReferences } from "@botlake/extension-references";
-import { work as createWork, workReferenceProjections } from "@botlake/extension-work";
+import {
+  work as createWork,
+  workReferenceProjections,
+  type WorkOptions,
+} from "@botlake/extension-work";
 import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 
 import { agentPrimer, roster, rosterFlags } from "./roster.ts";
@@ -37,9 +41,13 @@ export const priming = createPriming({
   agent: agentPrimer,
 });
 
-export const work = createWork({ references });
+export const work = configureWork();
 
 export const workAgents = createWorkAgents({ checkIntervalMs: 60_000 });
+
+export function configureWork(options: Omit<WorkOptions, "references"> = {}): Extension {
+  return createWork({ ...options, references });
+}
 
 export function configureAgents(aliases: Record<string, Alias> = {}): Extension {
   return createAgents({

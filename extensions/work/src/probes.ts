@@ -5,19 +5,15 @@ import {
   q,
   requireValue,
   type Context,
-  type Extension,
   type Json,
 } from "@botlake/core";
-import {
-  workAttributes,
-  workGateChanged,
-  workStore,
-  type Gate,
-  type GatePolicy,
-  type WorkStore,
-} from "@botlake/extension-work";
 import { match } from "ts-pattern";
 import { z } from "zod";
+
+import { workGateChanged } from "./events.ts";
+import { gatePolicySchema, workAttributes } from "./node-model.ts";
+import { workStore } from "./store.ts";
+import type { Gate, GatePolicy, GateTransition } from "./types.ts";
 
 interface JsonObject {
   [key: string]: Json;
@@ -28,14 +24,17 @@ export type ProbeVerdict =
   | { outcome: "failed"; message: string; evidence?: JsonObject | undefined };
 
 export interface ProbeDefinition<P extends z.ZodType = z.ZodType> {
+  /** Stable name stored on gates and resolved by trusted configuration. */
   name: string;
+  /** User-facing explanation exposed by `gate probes`. */
   description: string;
+  /** Parses parameters before storage and again before evaluation. */
   params: P;
+  /** Retry and timeout policy copied to each gate at creation. */
   policy: GatePolicy;
+  /** Check the condition; use the signal for cancellable I/O. */
   run(params: z.output<P>, context: { signal: AbortSignal; gate: string }): Promise<ProbeVerdict>;
 }
-
-type GateTransition = ReturnType<WorkStore["gates"]["apply"]>;
 
 interface GateService {
   create(input: {
@@ -55,18 +54,12 @@ interface GateService {
 type ProbeResolver = (key: string) => Promise<ProbeDefinition | undefined>;
 
 interface Instance {
-  probes: Map<string, ProbeDefinition>;
   resolvers: ProbeResolver[];
   service: GateService;
 }
 
 const instances = new WeakMap<Context, Instance>();
 const text = z.string().trim().min(1);
-const policySchema = z.strictObject({
-  everyMs: z.number().int().nonnegative(),
-  maxAttempts: z.number().int().positive(),
-  timeoutMs: z.number().int().positive(),
-});
 const verdictSchema = z.strictObject({
   outcome: z.enum(["passed", "failed"]),
   message: text,
@@ -100,58 +93,41 @@ const gateInput = z.discriminatedUnion("command", [
 export function defineProbe<P extends z.ZodType>(probe: ProbeDefinition<P>): ProbeDefinition<P> {
   text.parse(probe.name);
   text.parse(probe.description);
-  policySchema.parse(probe.policy);
+  gatePolicySchema.parse(probe.policy);
   return probe;
 }
 
-export function workGates(config: { probes?: ProbeDefinition[] } = {}): Extension {
-  const configured = new Map((config.probes ?? []).map((probe) => [probe.name, probe]));
-  if (configured.size !== (config.probes ?? []).length)
-    throw new Fault("work-gates", "Probe names must be unique");
+export function registerGateEvaluation(ctx: Context, probes: ProbeDefinition[]): void {
+  const configured = new Map(probes.map((probe) => [probe.name, probe]));
+  if (configured.size !== probes.length) throw new Fault("work-gate", "Probe names must be unique");
 
-  return {
-    name: "work-gates",
-    source: import.meta.url,
-    requires: ["work", "identity"],
-    activate(ctx) {
-      const resolvers: ProbeResolver[] = [];
-      const service = createService(ctx, configured, resolvers);
-      instances.set(ctx, { probes: configured, resolvers, service });
+  const resolvers: ProbeResolver[] = [];
+  const service = createService(ctx, configured, resolvers);
+  instances.set(ctx, { resolvers, service });
 
-      ctx.scheduler.register("work-gates/evaluate", async (wake) => {
-        await evaluate(ctx, wakeSchema.parse(wake.payload), configured, resolvers);
-      });
-      ctx.on(workGateChanged, ({ id, to }) => {
-        match(to)
-          .with({ status: "pending" }, () => {
-            schedule(ctx, workStore(ctx).gates.get(id));
-          })
-          .with({ status: "waiting" }, () => {
-            schedule(ctx, workStore(ctx).gates.get(id));
-          })
-          .with({ status: "exhausted" }, () => {
-            cancelGateWakes(ctx, id);
-          })
-          .with({ status: "cleared" }, () => {
-            cancelGateWakes(ctx, id);
-          })
-          .with({ status: "dismissed" }, () => {
-            cancelGateWakes(ctx, id);
-          })
-          .exhaustive();
-      });
-      ctx.register(gateOperation(configured, service));
+  ctx.scheduler.register("work/gate-evaluate", async (wake) => {
+    await evaluate(ctx, wakeSchema.parse(wake.payload), configured, resolvers);
+  });
+  ctx.on(workGateChanged, ({ id, to }) => {
+    match(to)
+      .with({ status: "pending" }, { status: "waiting" }, () => {
+        schedule(ctx, workStore(ctx).gates.get(id));
+      })
+      .with({ status: "exhausted" }, { status: "cleared" }, { status: "dismissed" }, () => {
+        cancelGateWakes(ctx, id);
+      })
+      .exhaustive();
+  });
+  ctx.register(gateOperation(configured, service));
 
-      for (const node of ctx.graph.all({ where: q.eq(q.attr(workAttributes.item), true) })) {
-        const item = workStore(ctx).get(node.id);
-        if (
-          item.kind === "gate" &&
-          (item.status.status === "pending" || item.status.status === "waiting")
-        )
-          schedule(ctx, item);
-      }
-    },
-  };
+  for (const node of ctx.graph.all({ where: q.eq(q.attr(workAttributes.item), true) })) {
+    const item = workStore(ctx).get(node.id);
+    if (
+      item.kind === "gate" &&
+      (item.status.status === "pending" || item.status.status === "waiting")
+    )
+      schedule(ctx, item);
+  }
 }
 
 export function gateProbes(ctx: Context): { provide(resolve: ProbeResolver): void } {
@@ -178,7 +154,7 @@ function createService(
   return {
     async create(input) {
       const probe = await resolveProbe(input.probe, probes, resolvers);
-      if (probe === undefined) throw new Fault("work-gates", `Unknown probe: ${input.probe}`);
+      if (probe === undefined) throw new Fault("work-gate", `Unknown probe: ${input.probe}`);
       const params = z.record(z.string(), z.json()).parse(probe.params.parse(input.params));
       const gate = gates.create({ ...input, params, policy: probe.policy });
       schedule(ctx, gate);
@@ -305,7 +281,7 @@ async function evaluate(
     round: wake.round,
     attempt: wake.attempt,
     at,
-    by: "work-gates",
+    by: "work",
     result: attemptResult,
   });
 }
@@ -340,7 +316,7 @@ function schedule(ctx: Context, gate: Gate): void {
   ctx.scheduler.schedule(
     wakeKey(gate.id, expected.round, expected.attempt),
     Math.max(ctx.clock.now(), due),
-    "work-gates/evaluate",
+    "work/gate-evaluate",
     { id: gate.id, ...expected },
   );
 }
@@ -375,7 +351,7 @@ function parseParams(values: string[]): JsonObject {
   const params: JsonObject = {};
   for (const value of values) {
     const separator = value.indexOf("=");
-    if (separator <= 0) throw new Fault("work-gates", `Expected parameter K=V: ${value}`);
+    if (separator <= 0) throw new Fault("work-gate", `Expected parameter K=V: ${value}`);
     const key = value.slice(0, separator);
     const raw = value.slice(separator + 1);
     try {
@@ -401,9 +377,6 @@ function readableError(error: unknown): string {
 
 function requireInstance(ctx: Context): Instance {
   const instance = instances.get(ctx);
-  if (instance === undefined)
-    throw new Fault("work-gates", "The work-gates extension is not selected");
+  if (instance === undefined) throw new Fault("work-gate", "The Work extension is not selected");
   return instance;
 }
-
-export default workGates();

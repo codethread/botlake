@@ -15,7 +15,6 @@
         "@botlake/extension-references": "workspace:*",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
-        "@botlake/extension-work-gates": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
         "@botlake/native-session": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -46,6 +45,7 @@
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
         "ct-config": "workspace:*",
+        "zod": "^4.6.7",
       },
     },
     "extensions/agents": {
@@ -168,19 +168,6 @@
         "@botlake/extension-work": "workspace:^",
       },
     },
-    "extensions/work-gates": {
-      "name": "@botlake/extension-work-gates",
-      "version": "0.1.0",
-      "dependencies": {
-        "ts-pattern": "^5.9.0",
-        "zod": "^4.6.7",
-      },
-      "peerDependencies": {
-        "@botlake/core": "workspace:^",
-        "@botlake/extension-identity": "workspace:^",
-        "@botlake/extension-work": "workspace:^",
-      },
-    },
     "extensions/workflow": {
       "name": "@botlake/extension-workflow",
       "version": "0.1.0",
@@ -193,11 +180,7 @@
         "@botlake/core": "workspace:^",
         "@botlake/extension-identity": "workspace:^",
         "@botlake/extension-work": "workspace:^",
-        "@botlake/extension-work-gates": "workspace:^",
       },
-      "optionalPeers": [
-        "@botlake/extension-work-gates",
-      ],
     },
     "packages/core": {
       "name": "@botlake/core",
@@ -252,8 +235,6 @@
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 
     "@botlake/extension-work-agents": ["@botlake/extension-work-agents@workspace:extensions/work-agents"],
-
-    "@botlake/extension-work-gates": ["@botlake/extension-work-gates@workspace:extensions/work-gates"],
 
     "@botlake/extension-workflow": ["@botlake/extension-workflow@workspace:extensions/workflow"],
 

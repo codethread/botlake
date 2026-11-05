@@ -15,7 +15,8 @@
     "@botlake/extension-work": "workspace:*",
     "@botlake/extension-work-agents": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",
-    "ct-config": "workspace:*"
+    "ct-config": "workspace:*",
+    "zod": "^4.6.7"
   },
   "botlake": {
     "name": "botlake",

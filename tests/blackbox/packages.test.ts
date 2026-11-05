@@ -75,7 +75,7 @@ test("packed core runs alone; installed extensions require explicit selection an
         .parse(await host.bl("board", "help", {}))
         .map((op) => op.name)
         .toSorted(),
-    ).toEqual(["bins", "events", "identity", "work"]);
+    ).toEqual(["bins", "events", "gate", "identity", "work"]);
     const task = workItem.parse(
       await host.bl("board", "work", { command: "create", title: "No Batteries" }),
     );
@@ -139,7 +139,17 @@ export default workAgents({ checkIntervalMs: 60000 });`,
         .parse(await host.bl("configured", "help", {}))
         .map((op) => op.name)
         .toSorted(),
-    ).toEqual(["agent", "bins", "cron", "events", "flag", "identity", "work", "work-agent"]);
+    ).toEqual([
+      "agent",
+      "bins",
+      "cron",
+      "events",
+      "flag",
+      "gate",
+      "identity",
+      "work",
+      "work-agent",
+    ]);
     expect(
       z
         .compile(z.object({ aliases: z.record(z.string(), z.unknown()) }))

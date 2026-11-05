@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 
-import { defineProbe } from "@botlake/extension-work-gates";
+import { defineProbe } from "@botlake/extension-work";
 import { assign, setup } from "xstate";
 import { z } from "zod";
 

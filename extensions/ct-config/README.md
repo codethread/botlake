@@ -8,7 +8,9 @@ Install `ct-config` and its peers in the lake package. Keep each selected config
 export { agents as default } from "ct-config";
 ```
 
-The configured exports are `agents`, `flags`, `references`, `priming`, `work` and `workAgents`. Select their local wrappers in `botlake.extensions`, alongside Identity and any other desired extensions. Agents and Work share the same references descriptor. Work–Agents uses a 60-second check interval. Installing the package does not select any extension.
+The configured exports are `agents`, `flags`, `references`, `priming`, `work` and `workAgents`. Select their local wrappers in `botlake.extensions`, alongside Identity and any other desired extensions. Work requires Identity. Agents and Work share the same references descriptor. Work–Agents uses a 60-second check interval. Installing the package does not select any extension.
+
+Use `configureWork({ probes })` instead of the configured `work` descriptor to add [trusted lake-local probes](../work/README.md#gates) while retaining the shared references binding.
 
 Override or add lake-local aliases without repeating the shared wiring:
 

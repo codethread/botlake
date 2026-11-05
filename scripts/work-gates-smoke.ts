@@ -1,21 +1,26 @@
-// Drive every Work gate transition against a disposable SQLite lake.
+// Drive Work gate transitions, probe evaluation and the packaged CLI against disposable SQLite lakes.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Runtime, q } from "@botlake/core";
+import { ManualClock, Runtime, q } from "@botlake/core";
 import { identity } from "@botlake/extension-identity";
 import {
+  defineProbe,
   work,
   workAttributes,
   workStore,
   type GateCommand,
   type GateStatus,
 } from "@botlake/extension-work";
+import { z } from "zod";
+
+import { system } from "../tests/blackbox/fixtures/system.ts";
+import { copyWorkflowExample } from "../tests/blackbox/fixtures/workflows.ts";
 
 const dir = await mkdtemp(join(tmpdir(), "botlake-work-gates-"));
-const runtime = new Runtime({ database: join(dir, "lake.sqlite") });
+const runtime = new Runtime({ database: join(dir, "lake.sqlite"), clock: new ManualClock() });
 const at = "2026-11-04T20:00:00.000Z";
 const policy = { everyMs: 60_000, maxAttempts: 2, timeoutMs: 5_000 };
 
@@ -120,8 +125,186 @@ try {
     true,
   );
 
-  console.log(JSON.stringify({ ok: true, transitions: "all", refusalsPreserved: true }));
+  await evaluateProbes(join(dir, "evaluated.sqlite"));
+  await packagedProbes();
+  console.log(
+    JSON.stringify({
+      ok: true,
+      transitions: "all",
+      refusalsPreserved: true,
+      evaluator: true,
+      packaged: true,
+    }),
+  );
 } finally {
   await runtime.stop();
   await rm(dir, { recursive: true, force: true });
+}
+
+async function evaluateProbes(database: string): Promise<void> {
+  const clock = new ManualClock();
+  let ready = false;
+  let attempts = 0;
+  const probe = defineProbe({
+    name: "ready",
+    description: "Wait for the smoke condition",
+    params: z.object({ label: z.string().min(1) }),
+    policy: { everyMs: 1_000, maxAttempts: 2, timeoutMs: 1_000 },
+    async run({ label }) {
+      attempts += 1;
+      return { outcome: ready ? "passed" : "failed", message: label };
+    },
+  });
+  let evaluated = new Runtime({ database, clock });
+  try {
+    await evaluated.start([identity(), work({ probes: [probe] })]);
+    const store = workStore(evaluated.context);
+    const task = store.create({ kind: "task", title: "Probe dependent" });
+    const gate = z.object({ id: z.string() }).parse(
+      await evaluated.invoke(
+        "gate",
+        {
+          command: "create",
+          title: "Check readiness",
+          probe: "ready",
+          param: ['label="Condition holds"'],
+          dependent: [task.id],
+        },
+        { identity: "smoke" },
+      ),
+    );
+    assert.equal(store.inspect(task.id).ready, false);
+    clock.advance(clock.now());
+    await evaluated.drain();
+    assert.equal(store.gates.get(gate.id).status.status, "waiting");
+    assert.equal(attempts, 1);
+
+    // Restore a missing durable wake as well as the gate state after restart.
+    for (const wake of evaluated.scheduler.pending()) evaluated.scheduler.cancel(wake.key);
+    await evaluated.stop();
+    evaluated = new Runtime({ database, clock });
+    await evaluated.start([identity(), work({ probes: [probe] })]);
+    assert.equal(evaluated.scheduler.pending().length, 1);
+    ready = true;
+    clock.advance(1_000);
+    await evaluated.drain();
+    const restored = workStore(evaluated.context);
+    assert.equal(restored.gates.get(gate.id).status.status, "cleared");
+    assert.equal(restored.inspect(task.id).ready, true);
+    assert.equal(attempts, 2);
+    assert.equal(evaluated.scheduler.pending().length, 0);
+    assert.deepEqual(evaluated.errors, []);
+  } finally {
+    await evaluated.stop();
+  }
+}
+
+async function packagedProbes(): Promise<void> {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("work-probes", [
+      "@botlake/extension-batteries",
+      "@botlake/extension-identity",
+      "@botlake/extension-workflow",
+      "./work.ts",
+    ]);
+    await Bun.write(
+      join(workspace, "work.ts"),
+      `
+import { defineProbe, work } from "@botlake/extension-work";
+import { z } from "zod";
+export default work({ probes: [defineProbe({
+  name: "ready", description: "Packaged probe", params: z.object({ label: z.string().min(1) }),
+  policy: { everyMs: 1000, maxAttempts: 1, timeoutMs: 1000 },
+  async run({ label }) { return { outcome: "passed", message: label }; },
+})] });
+`,
+    );
+    await copyWorkflowExample(workspace, "gate-escalation");
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    const cli = (args: string[]) => host.cli(["--workspace", workspace, ...args]);
+    assert.deepEqual(
+      z
+        .object({ items: z.array(z.object({ name: z.string() })) })
+        .parse(await cli(["gate", "probes"]))
+        .items.map(({ name }) => name),
+      ["ready"],
+    );
+    const gate = z
+      .object({ id: z.string() })
+      .parse(
+        await cli([
+          "gate",
+          "create",
+          "Packaged readiness",
+          "--probe",
+          "ready",
+          "--param",
+          "label=ready",
+        ]),
+      );
+    const waited = z
+      .object({ reason: z.string() })
+      .parse(
+        await cli([
+          "await",
+          "--query",
+          "node-closed",
+          "--params",
+          JSON.stringify({ id: gate.id }),
+          "--min-count",
+          "1",
+          "--timeout-secs",
+          "10",
+        ]),
+      );
+    assert.equal(waited.reason, "satisfied");
+    const shown = z
+      .object({ item: z.object({ status: z.object({ status: z.string() }) }) })
+      .parse(await cli(["work", "show", gate.id]));
+    assert.equal(shown.item.status.status, "cleared");
+
+    // Workflow-owned probes resolve through Work regardless of selection order.
+    const flag = join(workspace, "ready.flag");
+    await Bun.write(flag, "ready");
+    const gated = z
+      .object({
+        run: z.object({ id: z.string() }),
+        gates: z.array(z.object({ id: z.string() })),
+      })
+      .parse(
+        await cli(["workflow", "start", "gate-escalation", "--input", JSON.stringify({ flag })]),
+      );
+    const workflowGate = gated.gates[0];
+    assert.ok(workflowGate !== undefined);
+    const workflowWaited = z
+      .object({ reason: z.string() })
+      .parse(
+        await cli([
+          "await",
+          "--query",
+          "node-closed",
+          "--params",
+          JSON.stringify({ id: workflowGate.id }),
+          "--min-count",
+          "1",
+          "--timeout-secs",
+          "10",
+        ]),
+      );
+    assert.equal(workflowWaited.reason, "satisfied");
+    const workflowView = z.object({
+      run: z.object({ status: z.string() }),
+      tasks: z.array(z.object({ id: z.string(), title: z.string() })),
+    });
+    const afterGate = workflowView.parse(await cli(["workflow", "show", gated.run.id]));
+    const outcome = afterGate.tasks.find(({ title }) => title === "Record outcome");
+    assert.ok(outcome !== undefined);
+    const completedGate = workflowView.parse(
+      await cli(["workflow", "complete", outcome.id, "done"]),
+    );
+    assert.equal(completedGate.run.status, "complete");
+  } finally {
+    await host.close();
+  }
 }

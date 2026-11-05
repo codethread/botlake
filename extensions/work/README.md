@@ -19,14 +19,56 @@ Tasks are actionable leaves. Groups supply shared context and may contain groups
 
 ## Gates
 
-A gate is a Work prerequisite whose named probe is evaluated by the explicitly selected [Work Gates extension](../work-gates/README.md). Use one when work is blocked on a machine-checkable condition:
+A gate is a Work prerequisite whose named probe checks a machine-verifiable condition. Work requires Identity; select Work with `work()` and configure probes in trusted lake TypeScript, never in graph data. Imports are inert. A gate stores the probe name, validated parameters and the policy copied when the gate is created.
 
-```sh
-bl gate create "GitLab is reachable" --probe vpn-ready --dependent TASK
-bl work show TASK
+```ts
+import { existsSync } from "node:fs";
+
+import { defineProbe, work } from "@botlake/extension-work";
+import { z } from "zod";
+
+export default work({
+  probes: [
+    defineProbe({
+      name: "file-exists",
+      description: "Wait until a local file exists",
+      params: z.object({ path: z.string().min(1) }),
+      policy: { everyMs: 30_000, maxAttempts: 5, timeoutMs: 2_000 },
+      async run({ path }) {
+        return existsSync(path)
+          ? { outcome: "passed", message: `Found ${path}` }
+          : { outcome: "failed", message: `Waiting for ${path}` };
+      },
+    }),
+  ],
+});
 ```
 
-The dependent waits while the gate is open and becomes ready when the gate closes. Gate status explains evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. Gates never enter task queues and cannot be claimed, assigned, updated, reopened or closed through ordinary Work commands.
+`params` is a Zod schema. `run` receives parsed parameters and `{ signal, gate }`; honour the abort signal when calling APIs that support it. Return `passed` when the condition holds or `failed` when it does not yet hold. A throw, timeout, unknown probe or invalid verdict is recorded as an errored attempt. The policy sets `everyMs` (delay between attempts), `maxAttempts` (attempts in one round) and `timeoutMs` (per-attempt timeout).
+
+```sh
+bl gate probes
+bl gate create "VPN reaches GitLab" --probe vpn-ready --param host=gitlab.example --dependent TASK
+bl gate retry GATE --reason "VPN configuration fixed"
+bl gate clear GATE --reason "Verified by another check"
+bl gate clear GATE --dismiss --reason "Condition is no longer required"
+bl work show GATE
+bl work diagnose TASK
+```
+
+`probes` lists configured probe names, descriptions, parameter schemas and policies. `create` validates the probe and parameters, creates the gate, links every `--dependent` task to it and schedules evaluation. Repeat `--param K=V` and `--dependent TASK` as needed; parameters are JSON-coerced when possible. `--parent GROUP` places the gate in context. `bl work show GATE` and `bl work diagnose TASK` expose the probe, status, last result and schedule. A dependent waits while the gate is open and becomes ready when it closes.
+
+| Status      | Work state | Meaning                                                         |
+| ----------- | ---------- | --------------------------------------------------------------- |
+| `pending`   | open       | An attempt is due now.                                          |
+| `waiting`   | open       | An attempt failed or errored; the next retry is scheduled.      |
+| `exhausted` | open       | The round spent its attempt budget; retry, clear or dismiss it. |
+| `cleared`   | closed     | The probe passed or an actor confirmed the condition.           |
+| `dismissed` | closed     | An actor declared the condition no longer required.             |
+
+Gate status describes evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. `retry` starts a fresh attempt round for any open gate. `clear` closes an open gate as satisfied by the caller; `clear --dismiss` closes it as no longer required. Closed gates are terminal. Gates do not appear in task queues and ordinary Work mutation commands reject them.
+
+Evaluation uses durable Core wakes. Restarting a lake restores missing wakes for pending and waiting gates; closing a gate cancels its wake. Duplicate or late attempts are ignored after Work refuses them as stale or closed.
 
 ## Relationships
 
@@ -94,4 +136,4 @@ Remote endpoints retain reference identity and observation status even in lean g
 
 [Workflow](../workflow/README.md) publishes this same task, group and gate model. Only explicit authored workflow actions advance execution; ordinary Work closure never does. No agents launch automatically.
 
-Verify the packaged CLI against disposable SQLite lakes with `bun scripts/work-smoke.ts` and `bun scripts/work-topology-smoke.ts`.
+Verify Work against disposable SQLite lakes with `bun scripts/work-smoke.ts`, `bun scripts/work-topology-smoke.ts` and `bun scripts/work-gates-smoke.ts`.
