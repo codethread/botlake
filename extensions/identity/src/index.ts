@@ -154,7 +154,10 @@ export function observeIdentity(ctx: Context, input: NativeObservation) {
     if (input.capabilities !== undefined)
       attributes[identityAttributes.capabilities] = input.capabilities;
 
-    ctx.graph.update(binding.nodeId, { attributes });
+    let state: "active" | "closed" | undefined;
+    if (input.event === "session-end") state = "closed";
+    else if (input.event === "session-start" || input.event === "agent-start") state = "active";
+    ctx.graph.update(binding.nodeId, { state, attributes });
 
     return binding;
   }, authority);

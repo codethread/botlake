@@ -4,7 +4,8 @@
   "description": "Native session identity, activity observations and attribution.",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "backfill-ended.sql"
   ],
   "type": "module",
   "exports": {

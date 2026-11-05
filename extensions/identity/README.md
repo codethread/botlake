@@ -16,6 +16,25 @@ bl identity list
 
 `show [IDENTITY]` defaults to the invocation caller and returns the full identity record, including the last reported activity and metadata. `list` returns `{ identities, total, nextOffset }` summaries (default 20, maximum 100); continue with `--offset nextOffset` until `null`. Pages are ordered by creation time then ID, not a shared snapshot. Each summary contains identity, node ID, provider, last activity and observation time. Use `show IDENTITY` to expand native session paths and metadata. Activity is an observation, not a liveness guarantee.
 
+## Session lifecycle
+
+Observed `session-end` closes the identity node. `session-start` and `agent-start` reactivate the same identity when a session resumes. Metadata and turn-end (`agent-end`) observations leave node state unchanged; a finished turn is not a finished session. Plain `identity startup` only registers or recovers an identity and does not reactivate it. State reflects received observations, not verified process liveness; missing end hooks leave state unchanged.
+
+### Backfill existing ended identities
+
+The packaged `backfill-ended.sql` closes active identity nodes already reporting `identity/activity: ended`, including archived attributes. It leaves observation metadata and provenance unchanged, increments node revisions, excludes imported references and is safe to rerun.
+
+Stop the target lake, back up its SQLite database, then run the script against that database and restart the lake:
+
+```sh
+botlake lake stop --workspace "$WORKSPACE"
+sqlite3 -bail "$DATABASE" ".backup '$BACKUP'"
+sqlite3 -bail "$DATABASE" < "$IDENTITY_PACKAGE/backfill-ended.sql"
+botlake lake start --workspace "$WORKSPACE"
+```
+
+Set `WORKSPACE`, `DATABASE`, a fresh `BACKUP` path and `IDENTITY_PACKAGE` (the installed extension directory) for the target lake. The script reports the number closed. This is an offline database repair: it bypasses runtime events and does not immediately publish changes to subscribed lakes. Do not run it against a live lake or infer completion from idle activity or observation age.
+
 ## Relationships
 
 `node-model.ts` declares `identityAttributes` and `identityRelations`, available from the package's public exports.
