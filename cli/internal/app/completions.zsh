@@ -21,7 +21,7 @@ _bl_value() {
 _bl_command() {
   local node=$1 discovery=$2 curcontext="$curcontext" state child specs
   shift 2
-  local -a path=( "$@" ) line candidates args
+  local -a command_path=( "$@" ) line candidates args
   local -A opt_args
 
   if [[ $(command jq -r 'has("commands")' <<< "$node") == true ]]; then
@@ -37,9 +37,9 @@ _bl_command() {
         _describe command candidates
         ;;
       arguments)
-        path+=( "${(Q)words[1]}" )
-        child=$(command bl "${context_flags[@]}" help --json "${path[@]}" | command jq -ec '.[0].cli') || return 1
-        _bl_command "$child" "$discovery" "${path[@]}"
+        command_path+=( "${(Q)words[1]}" )
+        child=$(command bl "${context_flags[@]}" help --json "${command_path[@]}" | command jq -ec '.[0].cli') || return 1
+        _bl_command "$child" "$discovery" "${command_path[@]}"
         ;;
     esac
     return
