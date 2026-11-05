@@ -1,15 +1,14 @@
-import { z } from "zod";
+import { getStateNodes } from "xstate";
 
 import {
   actorContext,
   childActors,
+  isWorkflowActor,
   metadataSchema,
   type Metadata,
   type WorkflowActor,
   type WorkflowNode,
 } from "./definition.ts";
-
-const text = z.string().min(1);
 
 export interface Entry {
   /** Stable actor-path and state-node identity for an active visit. */
@@ -26,7 +25,7 @@ export interface Entry {
   meta: Metadata;
 }
 
-// Adapted from Busy Bee's XState v5 active-hierarchy projection.
+/** Project only metadata-labelled machine states; execution actors stay inside XState. */
 export function frontier(
   actor: WorkflowActor,
   path: string[] = [],
@@ -34,17 +33,19 @@ export function frontier(
 ): Entry[] {
   const snapshot = actor.getSnapshot();
   if (snapshot.status !== "active") return [];
-  const context = Object.fromEntries(
-    Object.entries(actorContext(actor)).filter(([key]) => key !== "workers"),
-  );
-  // XState v5 exposes the active hierarchy here; keep this version-specific access local.
-  // oxlint-disable-next-line no-underscore-dangle
-  const entries = workNodes(snapshot._nodes).map((node) =>
+  const context = actorContext(actor);
+  // AnyStateMachine erases the state-value type, but XState supplies it here.
+  // oxlint-disable-next-line typescript/no-unsafe-argument
+  const nodes = [...new Set(getStateNodes(snapshot.machine.root, snapshot.value))];
+  const entries = workNodes(nodes).map((node) =>
     nodeEntry(node, { context, inheritedParent, path }),
   );
   for (const child of childActors(actor)) {
-    const group = text.parse(actorContext(child)["group"]);
-    entries.push(...frontier(child, [...path, child.id], `${path.join("/")}:${group}`));
+    if (!isWorkflowActor(child)) continue;
+    const invoking = nodes.find((node) => node.invoke.some((invoke) => invoke.id === child.id));
+    const group = invoking === undefined ? undefined : titledNode(invoking);
+    const parent = group === undefined ? inheritedParent : stateKey(path, group);
+    entries.push(...frontier(child, [...path, child.id], parent));
   }
   return entries;
 }
@@ -68,21 +69,25 @@ function nodeEntry(
   input: { path: string[]; context: Record<string, unknown>; inheritedParent: string | undefined },
 ): Entry {
   const { path, context, inheritedParent } = input;
-  const ancestor = titledAncestor(node);
+  const ancestor = titledNode(node.parent);
   const entry: Entry = {
     context,
-    key: `${path.join("/")}:${node.id}`,
+    key: stateKey(path, node),
     meta: metadataSchema.parse(node.meta),
     node: node.id,
     path,
   };
-  const parent = ancestor === undefined ? inheritedParent : `${path.join("/")}:${ancestor.id}`;
+  const parent = ancestor === undefined ? inheritedParent : stateKey(path, ancestor);
   if (parent !== undefined) entry.parent = parent;
   return entry;
 }
 
-function titledAncestor(node: WorkflowNode): WorkflowNode | undefined {
-  let ancestor = node.parent;
+function stateKey(path: string[], node: WorkflowNode): string {
+  return JSON.stringify([path, node.id]);
+}
+
+function titledNode(node: WorkflowNode | undefined): WorkflowNode | undefined {
+  let ancestor = node;
   while (ancestor !== undefined) {
     // Dynamic XState node metadata is validated by nodeEntry.
     // oxlint-disable-next-line typescript/no-unsafe-member-access

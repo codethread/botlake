@@ -1,6 +1,4 @@
-import { defineOp, Fault, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
-import { workGateChanged } from "@botlake/extension-work";
-import { gateProbes } from "@botlake/extension-work-gates";
+import { defineOp, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
 import { z } from "zod";
 
 import type { Selection } from "./catalogue.ts";
@@ -70,21 +68,7 @@ export function workflows(): Extension {
     async activate(ctx) {
       const catalogue = workflowFiles(ctx.workspace);
       const service = workflowService(ctx, catalogue);
-      let gatesSelected = false;
-      try {
-        gateProbes(ctx).provide(async (key) => {
-          const separator = key.indexOf("/");
-          if (separator <= 0 || separator === key.length - 1) return;
-          const name = key.slice(0, separator);
-          const probeName = key.slice(separator + 1);
-          const loaded = await catalogue.load({ kind: "named", name });
-          return loaded.definition.probes.find((probe) => probe.name === probeName);
-        });
-        ctx.on(workGateChanged, ({ id, to }) => service.reactToGate(id, to));
-        gatesSelected = true;
-      } catch (error) {
-        if (!(error instanceof Fault) || error.code !== "work-gates") throw error;
-      }
+      ctx.resource({ start: service.resume, stop: service.stop });
       ctx.registerQuery("workflow-runs", {
         where: q.eq(q.attr(workflowAttributes.root), true),
         description: "Private workflow execution checkpoints",
@@ -101,7 +85,7 @@ export function workflows(): Extension {
           jsonSchema: { input, output: jsonSchema },
           about: "Authored XState flow projected into Work groups and tasks.",
           primer:
-            "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome, checkpoints the actor and publishes the next Work atomically. Inspect a task before completion for instructions and outcome schemas.",
+            "Start an authored XState machine to create a Work context group and its metadata-labelled tasks. XState runs continuously: native invocations and transitions publish subsequent Work automatically. Show the run to inspect waiting invocations or execution errors. Use work claim for assignment. Generic work close is inert; workflow complete submits a named event after validating prerequisites and criteria. Pending invocations restart when the lake restarts; authored effects must tolerate re-execution.",
           cli: {
             description: "Discover, start, inspect and explicitly advance authored workflows",
             examples: [
@@ -204,7 +188,7 @@ export function workflows(): Extension {
               },
               complete: {
                 description:
-                  "Submit an authored outcome, checkpoint and publish subsequent Work atomically; returns updated run view (first 20 tasks/history). Continue with workflow show RUN_ID",
+                  "Submit an authored outcome to the live actor and publish its Work projection; returns updated run view (first 20 tasks/history). Continue with workflow show RUN_ID",
                 examples: [
                   "bl workflow complete TASK_ID CHOICE --data '{}'",
                   "bl workflow show RUN_ID --history-offset 20",
@@ -255,10 +239,6 @@ export function workflows(): Extension {
           },
         }),
       );
-      if (gatesSelected)
-        for (const node of ctx.graph.all({ where: q.eq(q.attr(workflowAttributes.gate), true) }))
-          if (node.attributes[workflowAttributes.consumed] !== true)
-            await service.reactToGate(node.id);
     },
   };
 }

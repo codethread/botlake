@@ -185,7 +185,6 @@
       "name": "@botlake/extension-workflow",
       "version": "0.1.0",
       "dependencies": {
-        "ts-pattern": "^5.9.2",
         "xstate": "5.33.3",
         "zod": "^4.6.7",
       },
@@ -193,11 +192,7 @@
         "@botlake/core": "workspace:^",
         "@botlake/extension-identity": "workspace:^",
         "@botlake/extension-work": "workspace:^",
-        "@botlake/extension-work-gates": "workspace:^",
       },
-      "optionalPeers": [
-        "@botlake/extension-work-gates",
-      ],
     },
     "packages/core": {
       "name": "@botlake/core",

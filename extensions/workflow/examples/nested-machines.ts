@@ -5,8 +5,6 @@ export const inputSchema = z.object({});
 export const commandSchemas = { next: z.object({}) };
 
 interface WorkerInput {
-  /** State node ID of the native group containing this actor's visits. */
-  group: string;
   /** Branch whose work this actor coordinates. */
   branch: string;
 }
@@ -75,7 +73,7 @@ export const machine = setup({ actors: { worker } }).createMachine({
               invoke: {
                 id: "api",
                 src: "worker",
-                input: { group: "nested-bees.team.api", branch: "API" },
+                input: { branch: "API" },
                 onDone: "done",
               },
             },
@@ -95,7 +93,7 @@ export const machine = setup({ actors: { worker } }).createMachine({
               invoke: {
                 id: "interface",
                 src: "worker",
-                input: { group: "nested-bees.team.interface", branch: "interface" },
+                input: { branch: "interface" },
                 onDone: "done",
               },
             },

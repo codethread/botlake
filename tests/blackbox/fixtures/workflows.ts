@@ -1,10 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-/** Seed authored files, not engine-registered templates. Source is the unchanged Busybee example. */
+/** Seed packaged authored examples, not engine-registered templates. */
 export async function copyWorkflowExample(
   workspace: string,
-  name: "parallel" | "nested-machines" | "gate-escalation",
+  name: "parallel" | "nested-machines",
 ): Promise<string> {
   const directory = join(workspace, ".workflows", name);
   await mkdir(directory, { recursive: true });
