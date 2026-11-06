@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\"",
+            "timeout": 5,
+            "additionalContextLimit": 4096
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\"",
+            "timeout": 5,
+            "additionalContextLimit": 4096
+          }
+        ]
+      }
+    ]
+  }
+}

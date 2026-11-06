@@ -133,6 +133,28 @@
         "@botlake/core": "workspace:^",
       },
     },
+    "extensions/mail": {
+      "name": "@botlake/extension-mail",
+      "version": "0.0.0",
+      "dependencies": {
+        "ts-pattern": "^5.9.2",
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
+    "extensions/mail-identity": {
+      "name": "@botlake/extension-mail-identity",
+      "version": "0.0.0",
+      "dependencies": {
+        "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-mail": "workspace:*",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+      },
+    },
     "extensions/references": {
       "name": "@botlake/extension-references",
       "version": "0.1.0",
@@ -222,6 +244,14 @@
         "zod": "^4.6.7",
       },
     },
+    "plugins/mail": {
+      "name": "@botlake/mail",
+      "version": "0.0.0",
+      "dependencies": {
+        "@botlake/native-session": "workspace:^",
+        "zod": "^4.6.7",
+      },
+    },
   },
   "patchedDependencies": {
     "xstate@5.33.3": "patches/xstate@5.33.3.patch",
@@ -243,6 +273,10 @@
 
     "@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
 
+    "@botlake/extension-mail": ["@botlake/extension-mail@workspace:extensions/mail"],
+
+    "@botlake/extension-mail-identity": ["@botlake/extension-mail-identity@workspace:extensions/mail-identity"],
+
     "@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
 
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
@@ -254,6 +288,8 @@
     "@botlake/extension-workflow": ["@botlake/extension-workflow@workspace:extensions/workflow"],
 
     "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
+
+    "@botlake/mail": ["@botlake/mail@workspace:plugins/mail"],
 
     "@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
 

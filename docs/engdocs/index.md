@@ -9,6 +9,8 @@
 - [Limits and smoke verification](LIMITS.md)
 - [Pool measurements](pool-benchmark.json)
 
+- [Graph-native Mail experiment](mail-graph.md)
+
 ## Design
 
 - [Work coordination workshop](work-coordination-workshop.md)

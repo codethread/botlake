@@ -1,0 +1,16 @@
+{
+  "name": "@botlake/extension-mail-identity",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@botlake/extension-identity": "workspace:*",
+    "@botlake/extension-mail": "workspace:*"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^"
+  }
+}
