@@ -23,6 +23,28 @@ Extensions default-export `{ name, source?, requires?, activate(ctx) }`. Set `so
 
 `botlake lake info [--workspace PATH|NAME]` returns the running lake's loaded configuration snapshot. Each extension includes its runtime `name` (not its package name), package `description` (`null` when absent), configured `specifier`, resolved `module`, defining `source`, nearest `packageJson` and package-root `readme` paths. Paths are absolute; absent manifests or READMEs are `null`. Configuration edits appear after restart. `loadWorkspace(path)` exposes the same metadata as `info` alongside `config` and `extensions`.
 
+### Runtime bindings
+
+Use `runtimeExtension({ name, source?, requires?, activate(ctx) })` when other extensions need a typed runtime implementation. The callback registers the extension and returns its public implementation (or a promise); the factory returns `RuntimeExtension<T>`, an ordinary selectable extension with `instance(ctx): T`.
+
+```ts
+import { runtimeExtension } from "@botlake/core";
+
+export const records = runtimeExtension({
+  name: "records",
+  source: import.meta.url,
+  activate(ctx) {
+    return { count: () => ctx.graph.count() };
+  },
+});
+```
+
+Configuration creates each binding once and passes that same object to consumers. Consumers declare `requires: [records.name]` and resolve `records.instance(ctx)` during activation. Lookup never constructs or activates anything; before successful activation, or when a different same-name binding was selected, it throws. A shared binding produces separate implementations for separate contexts. Importing a binding does not select it or its prerequisites.
+
+The implementation is available after awaited activation, before resource startup. Start background work through `ctx.resource`; binding access does not establish readiness or extend the runtime lifetime. The binding holds executable wiring, not durable records: store runtime facts in the database. Workspace loading retains activation descriptors; consumers use their original imported configuration bindings, not descriptors recovered from `loadWorkspace().extensions`.
+
+### Operations
+
 Use `isFault(error)` to recognize core faults across separately installed package copies.
 
 `defineOp` accepts Standard Schema v1 input/output validators. Omit `cli` for a JSON-only peer operation: input/output validation and deadlines still apply, while argv invocation and CLI discovery are unavailable. This controls presentation, not access. CLI metadata and optional JSON Schema export remain independent: `help` discloses syntax one level at a time, while `schema OP` exports only the declared schemas. `about OP` and `prime OP` carry concepts and runbooks. Operations default to a 30s deadline. `deadline: "unbounded"` lets a long-running operation own its wait budget; an explicit caller timeout still overrides it. Handlers must observe `request.signal` and clean up pending I/O or timers on abort. `request.deadline` is an absolute clock time, or `null` without a request deadline. `Context` provides graph, clock, scheduler, processes and peers; Botlake supplies custody/routing when running workers. `peers.resolve(pathOrName)` returns the published canonical path/name; `peers.call` invokes a single-result operation without transport replay and rejects streams.

@@ -39,6 +39,7 @@ export { Runtime, isStream } from "./runtime/runtime.ts";
 export type {
   Context,
   Extension,
+  RuntimeExtension,
   Resource,
   Processes,
   ProcessFact,
@@ -46,6 +47,7 @@ export type {
   Peers,
   PeerCallOptions,
 } from "./runtime/context.ts";
+export { runtimeExtension } from "./runtime/extensions.ts";
 export { defineOp } from "./runtime/ops.ts";
 export { brief, priming } from "./runtime/priming.ts";
 export type { PrimerCallback } from "./runtime/priming.ts";

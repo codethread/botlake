@@ -53,6 +53,7 @@ bun scripts/cli-smoke.ts # Fresh lake + read-only snapshot clone of this checkou
 bun scripts/work-smoke.ts
 bun scripts/workflow-smoke.ts
 bun scripts/work-agent-smoke.ts
+bun scripts/runtime-extension-smoke.ts # Typed composition, lifecycle and restart over disposable SQLite
 ```
 
 Blackbox tests pack and install packages outside the checkout, then exercise real Go/Bun processes and disposable databases. Schema export also accepts `job`, `agents` or `flags`; each schema is owned by its package. See [Workflow verification](../../extensions/workflow/README.md#persistence), [runtime limits and native smoke verification](LIMITS.md) and [pool measurements](pool-benchmark.json).

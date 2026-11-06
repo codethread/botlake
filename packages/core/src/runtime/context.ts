@@ -93,6 +93,11 @@ export interface Extension {
   activate(ctx: Context): void | Promise<void>;
 }
 
+export interface RuntimeExtension<T> extends Extension {
+  /** Resolve this exact binding after activation in the consuming context. */
+  instance(ctx: Context): T;
+}
+
 export interface Context {
   workspace: string;
   readonly env: {
