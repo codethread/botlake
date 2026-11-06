@@ -62,6 +62,7 @@ import type {
 
 const authority = Symbol("work");
 const stores = new WeakMap<Graph, WorkStore>();
+const gateLifecycles = new WeakMap<Context, (id: string) => void>();
 const workRelationLabels: readonly string[] = Object.values(workRelations);
 const requiredReferenceKinds = ["work/task", "work/group", "work/gate"] as const;
 const requiredReferenceKindsSchema = z.tuple([
@@ -147,6 +148,11 @@ export const listInput = z.compile(
 const inspectInput = z.compile(
   z.strictObject({ history: z.boolean().default(false), ...pagination }),
 );
+
+/** Work-internal synchronous revocation after commit, before queued notifications. */
+export function registerGateLifecycle(ctx: Context, changed: (id: string) => void): void {
+  gateLifecycles.set(ctx, changed);
+}
 
 /** Shared work operations; sibling extensions use this same model and assignment ledger. */
 export function workStore(ctx: Context): WorkStore {
@@ -598,14 +604,17 @@ export function workStore(ctx: Context): WorkStore {
       if (transition.to.status === "cleared" || transition.to.status === "dismissed") {
         data.closures.push({ by: transition.to.by, at: transition.to.at });
       }
+      graph.setAttributes(id, attributesFor(data));
       graph.update(id, {
         state:
           transition.to.status === "cleared" || transition.to.status === "dismissed"
             ? "closed"
             : "active",
-        attributes: attributesFor(data),
       });
       ctx.emit(workGateChanged, { id, from: transition.from, to: transition.to });
+      graph.afterCommit(() => {
+        gateLifecycles.get(ctx)?.(id);
+      });
       return transition;
     }, authority);
   }

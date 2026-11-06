@@ -82,6 +82,8 @@ export interface Peers {
 
 export interface Resource {
   start(): void | Promise<void>;
+  /** Revoke in-flight work synchronously before scheduler drain; cleanup belongs in stop. */
+  quiesce?(): void;
   stop(): void | Promise<void>;
 }
 

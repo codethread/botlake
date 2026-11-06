@@ -8,7 +8,7 @@ import { workflowFiles } from "./files.ts";
 import { workflowAttributes } from "./node-model.ts";
 
 export { workflowRun } from "./engine.ts";
-export type { Definition, Metadata } from "./definition.ts";
+export type { Definition, GateEventData, Metadata, ResolvedTask } from "./definition.ts";
 export {
   workflowAttributes,
   workflowLocatorSchema,
@@ -66,7 +66,7 @@ export function workflows(): Extension {
     name: "workflow",
     source: import.meta.url,
     requires: ["identity", "work"],
-    async activate(ctx) {
+    activate(ctx) {
       const catalogue = workflowFiles(ctx.workspace);
       const service = workflowService(ctx, catalogue);
       gateProbes(ctx).provide(async (key) => {
@@ -94,7 +94,7 @@ export function workflows(): Extension {
           jsonSchema: { input, output: jsonSchema },
           about: "Authored XState flow projected into Work groups and tasks.",
           primer:
-            "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome, checkpoints the actor and publishes the next Work atomically. Inspect a task before completion for instructions and outcome schemas.",
+            "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome and checkpoints a frozen frontier, then publishes the next Work atomically. Pending publication resumes on activation, show or a completion retry. Inspect a task before completion for instructions and outcome schemas.",
           cli: {
             description: "Discover, start, inspect and explicitly advance authored workflows",
             examples: [
@@ -197,7 +197,7 @@ export function workflows(): Extension {
               },
               complete: {
                 description:
-                  "Submit an authored outcome, checkpoint and publish subsequent Work atomically; returns updated run view (first 20 tasks/history). Continue with workflow show RUN_ID",
+                  "Submit an authored outcome, checkpoint its frontier and reconcile atomic Work publication; returns updated run view (first 20 tasks/history). Continue with workflow show RUN_ID",
                 examples: [
                   "bl workflow complete TASK_ID CHOICE --data '{}'",
                   "bl workflow show RUN_ID --history-offset 20",
@@ -248,9 +248,17 @@ export function workflows(): Extension {
           },
         }),
       );
-      for (const node of ctx.graph.all({ where: q.eq(q.attr(workflowAttributes.gate), true) }))
-        if (node.attributes[workflowAttributes.consumed] !== true)
-          await service.reactToGate(node.id);
+      ctx.resource({
+        async start() {
+          // Configured probe providers may require Workflow; all must register before recovery.
+          for (const run of ctx.graph.all({ where: q.eq(q.attr(workflowAttributes.root), true) }))
+            if (run.state === "active") await service.reconcile(run.id);
+          for (const node of ctx.graph.all({ where: q.eq(q.attr(workflowAttributes.gate), true) }))
+            if (node.attributes[workflowAttributes.consumed] !== true)
+              await service.reactToGate(node.id);
+        },
+        stop() {},
+      });
     },
   };
 }

@@ -115,7 +115,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     task: {
       meta: {
         title: "Native JSON task", commands: { finish: "FINISH" },
-        task: () => ({ instructions: "Publish native values", evidence: { label: "native", nullable: null, nested: { value: null } } }),
+        task: () => ({ instructions: "Publish native values", attributes: { "consumer/data": { nullable: null, nested: { value: null }, items: [null] }, "consumer/opt-in": true }, evidence: { label: "native", nullable: null, nested: { value: null } } }),
       },
       on: { FINISH: "done" },
     },
@@ -334,6 +334,9 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   assert.equal(typeof runAttributes[workflowAttributes.snapshot], "string");
   const published = await attributes(nativeTask);
   assert.deepEqual(published[workflowAttributes.context], input);
+  assert.deepEqual(published["consumer/data"], input);
+  assert.equal(published["consumer/opt-in"], true);
+  assert.equal(published["evidence"], undefined);
   assert.deepEqual(
     z.object({ evidence: z.unknown() }).parse(published[workflowAttributes.meta]).evidence,
     {
@@ -435,7 +438,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
           "bounded action/decision pages with explicit continuation",
           "private checkpoint/result protection and consumed-visit recovery guard",
           "nested machine routes and checkpoint restore after restart",
-          "native queryable metadata, context, locator and results preserve nulls and retry equality across restart",
+          "native queryable attributes, inert metadata, context, locator and results preserve nulls and retry equality across restart",
           "business/context groups may outlive execution without false completion",
           "authored HITL routing and criteria, atomic rollback of all completion effects",
         ],

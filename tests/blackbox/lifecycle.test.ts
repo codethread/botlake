@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { ManualClock, Runtime } from "@botlake/core";
 import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
@@ -111,3 +114,77 @@ export default {name:"probe",activate(ctx){
     await host.close();
   }
 }, 60000);
+
+test("runtime quiesces all resources before scheduler drain and keeps dependencies alive through cleanup", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "botlake-quiesce-"));
+  const clock = new ManualClock();
+  const runtime = new Runtime({ database: join(dir, "lake.sqlite"), clock });
+  const release = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  const order: string[] = [];
+  const controller = new AbortController();
+  try {
+    await runtime.start([
+      {
+        name: "resource-lifecycle",
+        activate(ctx) {
+          ctx.scheduler.register("held", async () => {
+            started.resolve();
+            await release.promise;
+            expect(controller.signal.aborted).toBe(true);
+            ctx.graph.add({ title: "Drain still owns an open database" });
+            order.push("drained");
+          });
+          ctx.resource({
+            start() {
+              ctx.scheduler.schedule("held", 0, "held");
+            },
+            quiesce() {
+              order.push("dependency-quiesce");
+              controller.abort();
+            },
+            stop() {
+              order.push("dependency-stop");
+            },
+          });
+          ctx.resource({
+            start() {},
+            quiesce() {
+              order.push("consumer-quiesce");
+              throw new Error("quiesce failure");
+            },
+            stop() {
+              order.push("consumer-stop");
+            },
+          });
+        },
+      },
+    ]);
+    clock.advance(0);
+    await started.promise;
+    const stopping = runtime.stop();
+    expect(order).toEqual(["consumer-quiesce", "dependency-quiesce"]);
+    expect(controller.signal.aborted).toBe(true);
+    release.resolve();
+    try {
+      await stopping;
+      throw new Error("Expected quiesce error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) throw error;
+      expect(error.errors.map(String)).toEqual(["Error: quiesce failure"]);
+    }
+    expect(order).toEqual([
+      "consumer-quiesce",
+      "dependency-quiesce",
+      "drained",
+      "consumer-stop",
+      "dependency-stop",
+    ]);
+    expect(runtime.errors).toEqual([]);
+  } finally {
+    release.resolve();
+    await runtime.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

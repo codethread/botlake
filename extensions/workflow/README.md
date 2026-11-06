@@ -29,6 +29,15 @@ run = "workflow.ts"
 
 Export `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `probes`, `describe`, `validateCommand` and `inputConstraints`. `runBrief` returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
 
+`task.attributes` is an explicit JSON map copied verbatim onto the worker task node, after its prerequisite gates are attached, in the same publication transaction. Nested objects, arrays and nulls are retained. Work/Workflow namespaces (`work/*`, `workflow/*`) and declared immutable attribute keys are rejected. Commandless context groups cannot declare task attributes. Other arbitrary metadata remains inert in `workflow/meta`; it is not copied onto the node.
+
+```ts
+task: ({ context }) => ({
+  instructions: `Review ${context.change}`,
+  attributes: { "review/change": context.change, "review/dispatch": true },
+});
+```
+
 Work probes are available to workflows without any separate extension selection. Export `probes` to define workflow-owned probes; their keys are `NAME/PROBE`. In a named workflow, a bare name prefers that workflow's probe and then a probe configured in Work. File-selected workflows can use Work-configured probes only.
 
 A gate visit publishes one gate and maps selected statuses to XState events:
@@ -41,7 +50,7 @@ meta: {
 }
 ```
 
-A mapped status advances the active visit once and supplies `{ type, data: { gate } }`. Unmapped statuses leave it active. `workflow show` includes each active gate and status. A transition missed while the lake was down is delivered after activation.
+A mapped status advances the active visit once and supplies `{ type, data: { gate, status } }`. After each frontier publication commits, its active gates deliver their current mapped statuses, including initial `pending`, before the operation returns. Chained mappings publish each next frontier before advancing another gate. Failed status delivery identifies the committed run and leaves the visit unconsumed; inspection or a completion retry redelivers it without a restart. The exported `GateEventData` type pairs the gate ID with the full Work `GateStatus` snapshot: evidence, attempt counts, last failure, timestamps and attribution are retained where applicable. Guards and assignments can inspect `event.data.status` without another graph read. The same `{ gate, status }` is saved as the visit result data beside its status choice. Unmapped statuses leave it active. `workflow show` includes each active gate and status. A transition missed while the lake was down is delivered after activation.
 
 A task can publish gates as its direct prerequisites. Work readiness is the whole contract: the task waits until every gate is closed.
 
@@ -56,7 +65,7 @@ meta: {
 }
 ```
 
-Re-entering the same gate or gated-task state reuses its previous gate while that gate remains open. An exhausted reused gate starts a fresh round. Once the previous gate is closed, re-entry publishes a new gate. Leaving a gate state does not close its gate. See [gate escalation](examples/gate-escalation.ts) for an exhausted gate that creates an investigation task, then re-enters to retry or dismisses the gate and exits.
+Re-entering the same gate state reuses its previous gate while that gate remains open. An exhausted reused gate starts a fresh round. Once the previous gate is closed, re-entry publishes a new gate. Leaving a gate state does not close its gate. Re-entering a worker task publishes a fresh task and its own prerequisite gates. See [gate escalation](examples/gate-escalation.ts) for an exhausted gate that creates an investigation task, then re-enters to retry or dismisses the gate and exits.
 
 The [parallel](examples/parallel.ts) and [nested-machine](examples/nested-machines.ts) examples show branch-scoped events, joins and child actors. Install authored imports (`xstate`, `zod`) in the workspace. Internal worker nesting never makes a task a contextual parent: work attaches to the nearest context group. Execution membership is private and independent of the context tree.
 
@@ -77,7 +86,7 @@ Catalog and start also accept `--source FILE` instead of a name. `start --parent
 
 Run inspection returns pending authored actions and decision summaries, including closed-but-unconsumed tasks. `actionPending` describes execution, not task lifecycle. Tasks and decision history default to 20 entries, maximum 100. Continue using `taskPage.nextOffset` with `--offset`, or `historyPage.nextOffset` with `--history-offset`. Pages are not snapshots. Task inspection expands frozen instructions, choice schemas, original result and the shared Work detail/history.
 
-`complete` explicitly submits an authored outcome. It validates the action schema and direct prerequisites, closes the task subject to its criteria, advances/checkpoints execution and publishes subsequent work in one transaction. Failure rolls back every persistence effect, including assignment release. Repeating the original choice and raw payload is idempotent; a conflicting retry fails. Attribution uses the normalized invocation caller.
+`complete` explicitly submits an authored outcome. It validates the action schema and direct prerequisites, closes the task subject to its criteria, advances execution and renders the next frontier. Closure, assignment release, result, snapshot and a frozen publication intent commit together; rendering/validation failure rolls all of them back. A separate atomic transaction publishes the frontier with all prerequisites and task attributes. Probe-resolution or publication failure identifies the committed run in a `workflow-publication` error and leaves its checkpoint and pending intent available for reconciliation. Repeating the original choice and raw payload reconciles pending publication and is idempotent; a conflicting retry fails. Attribution uses the normalized invocation caller.
 
 Ordinary `work close` **never advances execution**; an explicit action may be submitted afterward. Closing an agent run likewise neither completes Work nor submits an action. Reviews can close with unfavourable findings: branching uses the explicit authored choice, not the generic closed state. Revision loops publish fresh tasks and retain earlier findings; consumed visits cannot reopen.
 
@@ -85,6 +94,6 @@ Parallel branches advance independently. Departed generated groups close only wh
 
 ## Persistence
 
-Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. Definition locators, published context/metadata and original results use native JSON attributes, including authored nulls. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
+Named definitions restore only with their exact version and folder fingerprint; explicit files use entry-file fingerprints. Changed already-imported modules require a lake restart. Full XState snapshots persist as JSON strings. Each checkpoint freezes the rendered frontier and durable logical visit identities before publication. Activation reconciles pending publication before replaying gate statuses; `workflow show` and `workflow complete` also reconcile it. Reconciliation neither reruns renderers nor duplicates published visits. Parallel retained visits keep their `workflow/identity`; loop re-entry gets a new identity, including when a gate reuses its Work node. Advancement and reconciliation serialize per run. Definition locators, published context/metadata and original results use native JSON attributes, including authored nulls. There is no migration, cancellation/replanning command, durable external-effect execution or implicit approval/merge policy.
 
-Verify packed packages, real CLIs, nested/revision workflows and transaction rollback in disposable SQLite lakes with `bun scripts/workflow-smoke.ts`.
+Verify packed packages, real CLIs, nested/revision workflows and render-time rollback with `bun scripts/workflow-smoke.ts`. Verify gate evidence, attribute protection and real checkpoint/publication crashes in disposable SQLite lakes with `bun scripts/workflow-recovery-smoke.ts`.

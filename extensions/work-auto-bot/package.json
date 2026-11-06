@@ -1,0 +1,24 @@
+{
+  "name": "@botlake/extension-work-auto-bot",
+  "version": "0.1.0",
+  "description": "Once-per-task admission of opted-in ready Work tasks to managed Agents.",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-agents": "workspace:^",
+    "@botlake/extension-work": "workspace:^"
+  }
+}

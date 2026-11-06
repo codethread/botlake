@@ -478,9 +478,18 @@ export class Runtime {
   async stop(): Promise<void> {
     if (this.phase === "stopped") return;
     this.phase = "stopping";
-    await this.scheduler.stop();
-
+    // Stop admission first, then let resources revoke work that scheduler drain awaits.
+    const schedulerStopped = this.scheduler.stop();
     const errors: unknown[] = [];
+    for (const resource of this.started.toReversed()) {
+      try {
+        resource.quiesce?.();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    await schedulerStopped;
+
     for (const resource of this.started.toReversed()) {
       try {
         await resource.stop();

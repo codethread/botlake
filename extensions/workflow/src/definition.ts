@@ -1,5 +1,5 @@
 import { Fault, jsonSchema, requireValue, type Json } from "@botlake/core";
-import type { ProbeDefinition } from "@botlake/extension-work";
+import type { GateStatus, ProbeDefinition } from "@botlake/extension-work";
 import type { ActorRefFrom, AnyStateMachine, Snapshot } from "xstate";
 import { createActor } from "xstate";
 import { z } from "zod";
@@ -21,6 +21,7 @@ const resolvedTaskGateSchema = resolvedGateInputSchema.extend({ title: text });
 export const resolvedTaskSchema = z.compile(
   z
     .object({
+      attributes: z.record(z.string(), jsonSchema).optional(),
       acceptanceCriteria: z.array(text).optional(),
       notes: z.string().optional(),
       assignee: text.optional(),
@@ -44,6 +45,14 @@ export const resolvedGateSchema = z.compile(
 );
 export type ResolvedGate = z.infer<typeof resolvedGateSchema>;
 export type ResolvedVisit = ResolvedTask | ResolvedGate;
+
+/** Payload delivered by an authored gate event and retained in its result. */
+export interface GateEventData {
+  /** Work gate that produced this event. */
+  gate: string;
+  /** Full status snapshot, including evidence and evaluation attribution. */
+  status: GateStatus;
+}
 
 export interface TaskContext<Context = Record<string, unknown>> {
   /** Context when this task visit enters the published frontier. */

@@ -7,12 +7,10 @@ import {
   type Context,
   type Json,
 } from "@botlake/core";
-import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { workGateChanged } from "./events.ts";
 import { gatePolicySchema, workAttributes } from "./node-model.ts";
-import { workStore } from "./store.ts";
+import { registerGateLifecycle, workStore } from "./store.ts";
 import type { Gate, GatePolicy, GateTransition } from "./types.ts";
 
 interface JsonObject {
@@ -36,16 +34,22 @@ export interface ProbeDefinition<P extends z.ZodType = z.ZodType> {
   run(params: z.output<P>, context: { signal: AbortSignal; gate: string }): Promise<ProbeVerdict>;
 }
 
+interface GateCreation {
+  title: string;
+  probe: string;
+  params: JsonObject;
+  parent?: string;
+  dependents?: string[];
+  description?: string;
+  by: string;
+}
+
+/** Synchronous publication after asynchronous trusted probe resolution. */
+type PreparedGate = (placement?: { parent?: string; dependents?: string[] }) => Gate;
+
 interface GateService {
-  create(input: {
-    title: string;
-    probe: string;
-    params: JsonObject;
-    parent?: string;
-    dependents?: string[];
-    description?: string;
-    by: string;
-  }): Promise<Gate>;
+  prepare(input: GateCreation): Promise<PreparedGate>;
+  create(input: GateCreation): Promise<Gate>;
   retry(id: string, by: string, reason: string): GateTransition;
   clear(id: string, by: string, message: string): GateTransition;
   dismiss(id: string, by: string, reason: string): GateTransition;
@@ -56,6 +60,12 @@ type ProbeResolver = (key: string) => Promise<ProbeDefinition | undefined>;
 interface Instance {
   resolvers: ProbeResolver[];
   service: GateService;
+}
+
+interface Evaluation {
+  wake: z.infer<typeof wakeSchema>;
+  controller: AbortController;
+  drained: Promise<void>;
 }
 
 const instances = new WeakMap<Context, Instance>();
@@ -102,22 +112,15 @@ export function registerGateEvaluation(ctx: Context, probes: ProbeDefinition[]):
   if (configured.size !== probes.length) throw new Fault("work-gate", "Probe names must be unique");
 
   const resolvers: ProbeResolver[] = [];
-  const service = createService(ctx, configured, resolvers);
+  const runner = createRunner(ctx, configured, resolvers);
+  const service = createService(ctx, configured, resolvers, runner.changed);
   instances.set(ctx, { resolvers, service });
 
+  ctx.resource(runner);
   ctx.scheduler.register("work/gate-evaluate", async (wake) => {
-    await evaluate(ctx, wakeSchema.parse(wake.payload), configured, resolvers);
+    await runner.evaluate(wakeSchema.parse(wake.payload));
   });
-  ctx.on(workGateChanged, ({ id, to }) => {
-    match(to)
-      .with({ status: "pending" }, { status: "waiting" }, () => {
-        schedule(ctx, workStore(ctx).gates.get(id));
-      })
-      .with({ status: "exhausted" }, { status: "cleared" }, { status: "dismissed" }, () => {
-        cancelGateWakes(ctx, id);
-      })
-      .exhaustive();
-  });
+  registerGateLifecycle(ctx, runner.changed);
   ctx.register(gateOperation(configured, service));
 
   for (const node of ctx.graph.all({ where: q.eq(q.attr(workAttributes.item), true) })) {
@@ -126,7 +129,7 @@ export function registerGateEvaluation(ctx: Context, probes: ProbeDefinition[]):
       item.kind === "gate" &&
       (item.status.status === "pending" || item.status.status === "waiting")
     )
-      schedule(ctx, item);
+      runner.changed(item.id);
   }
 }
 
@@ -149,31 +152,34 @@ function createService(
   ctx: Context,
   probes: Map<string, ProbeDefinition>,
   resolvers: ProbeResolver[],
+  changed: (id: string) => void,
 ): GateService {
   const gates = workStore(ctx).gates;
-  return {
-    async create(input) {
-      const probe = await resolveProbe(input.probe, probes, resolvers);
-      if (probe === undefined) throw new Fault("work-gate", `Unknown probe: ${input.probe}`);
-      const params = z.record(z.string(), z.json()).parse(probe.params.parse(input.params));
-      const gate = gates.create({ ...input, params, policy: probe.policy });
-      schedule(ctx, gate);
+  async function prepare(input: GateCreation): Promise<PreparedGate> {
+    const probe = await resolveProbe(input.probe, probes, resolvers);
+    if (probe === undefined) throw new Fault("work-gate", `Unknown probe: ${input.probe}`);
+    const params = z.record(z.string(), z.json()).parse(probe.params.parse(input.params));
+    return (placement = {}) => {
+      const gate = gates.create({ ...input, ...placement, params, policy: probe.policy });
+      ctx.graph.afterCommit(() => {
+        changed(gate.id);
+      });
       return gate;
+    };
+  }
+  return {
+    prepare,
+    async create(input) {
+      return (await prepare(input))();
     },
     retry(id, by, reason) {
-      const transition = gates.apply(id, { type: "retry", at: now(ctx), by, reason });
-      if (transition.kind === "moved") schedule(ctx, gates.get(id));
-      return transition;
+      return gates.apply(id, { type: "retry", at: now(ctx), by, reason });
     },
     clear(id, by, message) {
-      const transition = gates.apply(id, { type: "clear", at: now(ctx), by, message });
-      if (transition.kind === "moved") cancelGateWakes(ctx, id);
-      return transition;
+      return gates.apply(id, { type: "clear", at: now(ctx), by, message });
     },
     dismiss(id, by, reason) {
-      const transition = gates.apply(id, { type: "dismiss", at: now(ctx), by, reason });
-      if (transition.kind === "moved") cancelGateWakes(ctx, id);
-      return transition;
+      return gates.apply(id, { type: "dismiss", at: now(ctx), by, reason });
     },
   };
 }
@@ -254,27 +260,83 @@ function gateOperation(probes: Map<string, ProbeDefinition>, service: GateServic
   });
 }
 
-async function evaluate(
+function createRunner(
   ctx: Context,
-  wake: z.infer<typeof wakeSchema>,
   probes: Map<string, ProbeDefinition>,
   resolvers: ProbeResolver[],
-): Promise<void> {
-  const gate = workStore(ctx).gates.get(wake.id);
-  const expected = expectedAttempt(gate);
-  if (expected === undefined || expected.round !== wake.round || expected.attempt !== wake.attempt)
-    return;
+) {
+  const running = new Map<string, Evaluation>();
+  let stopping = false;
 
+  return {
+    start() {},
+    quiesce() {
+      stopping = true;
+      for (const evaluation of running.values())
+        evaluation.controller.abort(new Fault("cancelled", "Work gate evaluator stopped"));
+    },
+    async stop() {
+      await Promise.all([...running.values()].map(({ drained }) => drained));
+    },
+    changed(this: void, id: string) {
+      if (stopping) return;
+      // Multiple transitions in one transaction reconcile against its final authority.
+      const gate = workStore(ctx).gates.get(id);
+      const expected = expectedAttempt(gate);
+      const evaluation = running.get(id);
+      if (evaluation !== undefined && !sameAttempt(expected, evaluation.wake))
+        evaluation.controller.abort(new Fault("cancelled", "Gate evaluation superseded"));
+      cancelGateWakes(ctx, id, expected);
+      if (expected !== undefined) schedule(ctx, gate);
+    },
+    async evaluate(wake: z.infer<typeof wakeSchema>) {
+      // Cancellation revokes authority immediately, but the old probe still owns its
+      // slot until its actual promise settles (including asynchronous abort cleanup).
+      for (;;) {
+        const previous = running.get(wake.id);
+        if (previous === undefined) break;
+        await previous.drained;
+      }
+      if (stopping || !sameAttempt(expectedAttempt(workStore(ctx).gates.get(wake.id)), wake))
+        return;
+      const evaluation: Evaluation = {
+        wake,
+        controller: new AbortController(),
+        drained: Promise.resolve(),
+      };
+      running.set(wake.id, evaluation);
+      evaluation.drained = evaluate(ctx, evaluation, probes, resolvers, () => stopping).finally(
+        () => {
+          running.delete(wake.id);
+        },
+      );
+      await evaluation.drained;
+    },
+  };
+}
+
+async function evaluate(
+  ctx: Context,
+  evaluation: Evaluation,
+  probes: Map<string, ProbeDefinition>,
+  resolvers: ProbeResolver[],
+  stopping: () => boolean,
+): Promise<void> {
+  const { wake, controller } = evaluation;
+  const gate = workStore(ctx).gates.get(wake.id);
   const at = now(ctx);
   let result: ProbeVerdict | { outcome: "errored"; message: string };
   try {
     const probe = await resolveProbe(gate.probe, probes, resolvers);
+    controller.signal.throwIfAborted();
     if (probe === undefined) throw new Error(`Unknown probe: ${gate.probe}`);
     const params = probe.params.parse(gate.params);
-    result = await runWithTimeout(probe, params, gate.id, gate.policy.timeoutMs);
+    result = await runWithTimeout(ctx, probe, params, gate, controller);
   } catch (error) {
     result = { outcome: "errored", message: readableError(error) };
   }
+  // A timeout is an attempt result, but withdrawn authority must never publish.
+  if (stopping() || !sameAttempt(expectedAttempt(workStore(ctx).gates.get(gate.id)), wake)) return;
   const attemptResult = result.outcome === "passed" ? result : { ...result, at };
   workStore(ctx).gates.apply(gate.id, {
     type: "attempt",
@@ -287,43 +349,57 @@ async function evaluate(
 }
 
 async function runWithTimeout(
+  ctx: Context,
   probe: ProbeDefinition,
   params: unknown,
-  gate: string,
-  timeoutMs: number,
+  gate: Gate,
+  controller: AbortController,
 ): Promise<ProbeVerdict> {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(new Error(`Probe timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
+  let timeout: Error | undefined;
+  const cancel = ctx.clock.arm(ctx.clock.now() + gate.policy.timeoutMs, () => {
+    timeout = new Error(`Probe timed out after ${gate.policy.timeoutMs}ms`);
+    controller.abort(timeout);
   });
   try {
-    return verdictSchema.parse(
-      await Promise.race([probe.run(params, { signal: controller.signal, gate }), timeout]),
-    );
+    // Do not race away from a live probe: abort is cooperative, and the next
+    // evaluation must wait for this promise even if cancellation takes time.
+    const verdict = await probe.run(params, { signal: controller.signal, gate: gate.id });
+    if (timeout !== undefined) throw timeout;
+    return verdictSchema.parse(verdict);
+  } catch (error) {
+    throw timeout ?? error;
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    cancel();
   }
+}
+
+function sameAttempt(
+  expected: ReturnType<typeof expectedAttempt>,
+  wake: z.infer<typeof wakeSchema>,
+): boolean {
+  return expected?.round === wake.round && expected.attempt === wake.attempt;
 }
 
 function schedule(ctx: Context, gate: Gate): void {
   const expected = expectedAttempt(gate);
   if (expected === undefined) return;
   const due = gate.status.status === "waiting" ? Date.parse(gate.status.nextAt) : ctx.clock.now();
-  ctx.scheduler.schedule(
-    wakeKey(gate.id, expected.round, expected.attempt),
-    Math.max(ctx.clock.now(), due),
-    "work/gate-evaluate",
-    { id: gate.id, ...expected },
-  );
+  const key = wakeKey(gate.id, expected.round, expected.attempt);
+  if (ctx.scheduler.pending().some((wake) => wake.key === key)) return;
+  ctx.scheduler.schedule(key, Math.max(ctx.clock.now(), due), "work/gate-evaluate", {
+    id: gate.id,
+    ...expected,
+  });
 }
 
-function cancelGateWakes(ctx: Context, id: string): void {
+function cancelGateWakes(
+  ctx: Context,
+  id: string,
+  expected: ReturnType<typeof expectedAttempt>,
+): void {
+  const keep = expected === undefined ? undefined : wakeKey(id, expected.round, expected.attempt);
   for (const wake of ctx.scheduler.pending())
-    if (wake.key.startsWith(`gate/${id}/`)) ctx.scheduler.cancel(wake.key);
+    if (wake.key.startsWith(`gate/${id}/`) && wake.key !== keep) ctx.scheduler.cancel(wake.key);
 }
 
 function expectedAttempt(gate: Gate): { round: number; attempt: number } | undefined {

@@ -1,6 +1,6 @@
 # @botlake/extension-work
 
-Explicitly select Identity and Work. Imports are inert; `work()` selects the extension and `workStore(ctx)` exposes the same operations to other extensions.
+Explicitly select Identity and Work. Imports are inert; `work()` returns a typed runtime binding whose `instance(ctx)` resolves the configured `WorkStore` for consuming extensions. Internal/local synchronous graph operations also remain available through `workStore(ctx)`.
 
 Import `brief` from `@botlake/extension-work` for reusable work-tracking guidance to compose with Core's `brief` in agent prompts.
 
@@ -67,6 +67,8 @@ bl work diagnose TASK
 | `dismissed` | closed     | An actor declared the condition no longer required.             |
 
 Gate status describes evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. `retry` starts a fresh attempt round for any open gate. `clear` closes an open gate as satisfied by the caller; `clear --dismiss` closes it as no longer required. Closed gates are terminal. Gates do not appear in task queues and ordinary Work mutation commands reject them.
+
+TypeScript consumers use `gateService(ctx).create(...)` for ordinary creation. To compose atomic graph publication, `await gateService(ctx).prepare(input)` resolves the trusted probe and validates parameters without writing; its returned synchronous creator accepts `{ parent?, dependents? }` and joins a surrounding `graph.atomic`. Evaluation scheduling follows that transaction's commit.
 
 Evaluation uses durable Core wakes. Restarting a lake restores missing wakes for pending and waiting gates; closing a gate cancels its wake. Duplicate or late attempts are ignored after Work refuses them as stale or closed.
 

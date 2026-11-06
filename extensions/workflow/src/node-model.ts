@@ -16,6 +16,10 @@ export const workflowAttributes = {
   snapshot: "workflow/snapshot",
   /** Identity that last checkpointed the run. */
   checkpointBy: "workflow/checkpoint-by",
+  /** Frozen frontier awaiting atomic Work publication, or null after publication. */
+  publication: "workflow/publication",
+  /** Durable identity of this logical visit, independent of its Work node. */
+  identity: "workflow/identity",
   /** Marks a published state or child actor visit. */
   visit: "workflow/visit",
   /** Marks a visit that publishes an actionable Work task. */

@@ -15,6 +15,7 @@
         "@botlake/extension-references": "workspace:*",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
+        "@botlake/extension-work-auto-bot": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
         "@botlake/native-session": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -168,6 +169,18 @@
         "@botlake/extension-work": "workspace:^",
       },
     },
+    "extensions/work-auto-bot": {
+      "name": "@botlake/extension-work-auto-bot",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-agents": "workspace:^",
+        "@botlake/extension-work": "workspace:^",
+      },
+    },
     "extensions/workflow": {
       "name": "@botlake/extension-workflow",
       "version": "0.1.0",
@@ -235,6 +248,8 @@
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 
     "@botlake/extension-work-agents": ["@botlake/extension-work-agents@workspace:extensions/work-agents"],
+
+    "@botlake/extension-work-auto-bot": ["@botlake/extension-work-auto-bot@workspace:extensions/work-auto-bot"],
 
     "@botlake/extension-workflow": ["@botlake/extension-workflow@workspace:extensions/workflow"],
 

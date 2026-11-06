@@ -32,6 +32,7 @@
     "@botlake/extension-references": "workspace:*",
     "@botlake/extension-work": "workspace:*",
     "@botlake/extension-work-agents": "workspace:*",
+    "@botlake/extension-work-auto-bot": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",
     "@botlake/native-session": "workspace:*",
     "@types/bun": "^1.4.4",

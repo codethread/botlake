@@ -1,4 +1,4 @@
-import { q, type Extension } from "@botlake/core";
+import { q, runtimeExtension, type RuntimeExtension } from "@botlake/core";
 
 import { registerAgent } from "./agent.ts";
 import { registerAgentEvents } from "./events.ts";
@@ -55,8 +55,8 @@ export type {
   Outcome,
 } from "./providers/contract.ts";
 
-export function agents(options: AgentOptions = {}): Extension {
-  return {
+export function agents(options: AgentOptions = {}): RuntimeExtension<Agents> {
+  return runtimeExtension({
     name: "agents",
     source: import.meta.url,
     requires: [
@@ -86,8 +86,9 @@ export function agents(options: AgentOptions = {}): Extension {
       });
       ctx.resource({ start: () => service.startResource(), stop: () => service.stop() });
       registerAgent(ctx, service);
+      return service;
     },
-  };
+  });
 }
 
 export default agents();

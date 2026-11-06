@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 
-import { defineProbe } from "@botlake/extension-work";
+import { defineProbe, type GateStatus } from "@botlake/extension-work";
+import type { GateEventData } from "@botlake/extension-workflow";
 import { assign, setup } from "xstate";
 import { z } from "zod";
 
@@ -36,18 +37,18 @@ export function runBrief() {
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
 const types = {} as {
   input: z.infer<typeof inputSchema>;
-  context: { flag: string; gate: string | null };
+  context: { flag: string; gate: string | null; status: GateStatus | null };
   events:
-    | { type: "EXHAUSTED"; data: { gate: string } }
-    | { type: "CLEARED"; data: { gate: string } }
-    | { type: "DISMISSED"; data: { gate: string } }
+    | { type: "EXHAUSTED"; data: GateEventData }
+    | { type: "CLEARED"; data: GateEventData }
+    | { type: "DISMISSED"; data: GateEventData }
     | { type: "RETRY" }
     | { type: "WAIVE" }
     | { type: "DONE" };
 };
 
 export const machine = setup({ types }).createMachine({
-  context: ({ input }) => ({ flag: input.flag, gate: null }),
+  context: ({ input }) => ({ flag: input.flag, gate: null, status: null }),
   initial: "gate",
   states: {
     gate: {
@@ -62,7 +63,10 @@ export const machine = setup({ types }).createMachine({
       on: {
         EXHAUSTED: {
           target: "investigate",
-          actions: assign({ gate: ({ event }) => event.data.gate }),
+          actions: assign({
+            gate: ({ event }) => event.data.gate,
+            status: ({ event }) => event.data.status,
+          }),
         },
         CLEARED: "finish",
         DISMISSED: "finish",
@@ -72,7 +76,8 @@ export const machine = setup({ types }).createMachine({
       meta: {
         title: "Investigate exhausted gate",
         commands: { retry: "RETRY", waive: "WAIVE" },
-        task: ({ context }: { context: { gate: string | null } }) => ({
+        task: ({ context }: { context: { gate: string | null; status: GateStatus | null } }) => ({
+          evidence: context.status,
           instructions: `Investigate gate ${context.gate}. For retry, fix the condition and submit retry. For waive, first run \`bl gate clear ${context.gate} --dismiss --reason "Waived after investigation"\`, then submit waive.`,
         }),
       },

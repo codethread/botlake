@@ -1,4 +1,4 @@
-import { priming as createPriming, type Extension } from "@botlake/core";
+import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
   agentReferenceProjections,
@@ -45,11 +45,15 @@ export const work = configureWork();
 
 export const workAgents = createWorkAgents({ checkIntervalMs: 60_000 });
 
-export function configureWork(options: Omit<WorkOptions, "references"> = {}): Extension {
+export function configureWork(
+  options: Omit<WorkOptions, "references"> = {},
+): ReturnType<typeof createWork> {
   return createWork({ ...options, references });
 }
 
-export function configureAgents(aliases: Record<string, Alias> = {}): Extension {
+export function configureAgents(
+  aliases: Record<string, Alias> = {},
+): ReturnType<typeof createAgents> {
   return createAgents({
     ...roster,
     references,

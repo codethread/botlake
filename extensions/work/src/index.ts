@@ -1,5 +1,5 @@
 /* oxlint-disable import/max-dependencies -- Work composes its domain modules into one extension. */
-import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
+import { defineOp, jsonSchema, q, runtimeExtension, type RuntimeExtension } from "@botlake/core";
 import type { ReferenceLibrary } from "@botlake/extension-references";
 import { z } from "zod";
 
@@ -11,6 +11,7 @@ import { registerGateEvaluation, type ProbeDefinition } from "./probes.ts";
 import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
 import { treeInput } from "./topology.ts";
+import type { WorkStore } from "./types.ts";
 
 export { workAssignmentEstablished, workChanged, workGateChanged } from "./events.ts";
 export {
@@ -21,6 +22,7 @@ export {
   workAttributes,
   workDataSchema,
   workRelations,
+  workNamespace,
 } from "./node-model.ts";
 export type { StoredCriterion, WorkData, WorkLinkRelation } from "./node-model.ts";
 export { transitionGate } from "./gates.ts";
@@ -170,8 +172,8 @@ export interface WorkOptions {
   probes?: ProbeDefinition[] | undefined;
 }
 
-export function work(configuration: WorkOptions = {}): Extension {
-  return {
+export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStore> {
+  return runtimeExtension({
     name: "work",
     source: import.meta.url,
     requires: [
@@ -732,8 +734,9 @@ export function work(configuration: WorkOptions = {}): Extension {
           },
         }),
       );
+      return store;
     },
-  };
+  });
 }
 
 export default work();

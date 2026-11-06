@@ -99,7 +99,7 @@ bl --workspace OTHER_LAKE agent show RUN_ID
 
 Follow returns a local ID, title, core node state and source provenance. Repeating it reuses the same reference. Observations update eventually and become stale when the source disconnects. Prompts, results, detailed lifecycle and custody stay at the owner; core node state does not establish successful execution or settlement. Followed runs remain outside the local run list and cannot be started, retried or cancelled locally. `--from-workspace` names the imported node's owner; Work uses the same endpoint convention with `link --to-workspace`. Use global `--workspace` to run commands in the owning lake.
 
-TypeScript consumers call `Agents.follow({ workspace, nodeId }, signal)` through the same injected library. A source without a matching `agent/run` projection fails before creating a local import.
+`agents(options)` returns a typed runtime binding. Pass that exact configured object to consuming extensions, select it in the same lake, declare `requires: [binding.name]`, and resolve its `Agents` implementation with `binding.instance(ctx)` during consumer activation. Lookup throws before successful activation or when a different same-name binding was selected. TypeScript consumers call `Agents.follow({ workspace, nodeId }, signal)` through the resolved implementation. A source without a matching `agent/run` projection fails before creating a local import.
 
 `agentConfigSchema` validates aliases and unmanaged configuration, including callbacks. `agentConfigJsonSchema()` describes JSON configuration (string prompts only). Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
 
