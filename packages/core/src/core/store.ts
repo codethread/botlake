@@ -994,6 +994,19 @@ export class Graph {
     });
   }
 
+  /** Whether an attribute key is a declared immutable fact. */
+  isImmutable(key: string): boolean {
+    return (
+      this.db
+        .query(sql`
+          SELECT 1
+          FROM immutable_keys
+          WHERE key = ?
+        `)
+        .get(key) !== null
+    );
+  }
+
   declareImmutable(key: string): void {
     this.db
       .query(sql`

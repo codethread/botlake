@@ -86,7 +86,7 @@ Declare typed handles in an extension's `events.ts` with `defineEvent({ name, ph
 
 `graph.update(id, { title?, state?, attributes?, expectedRevision? })` applies a merge patch: attribute objects merge recursively, arrays/scalars replace, and null deletes keys.
 
-`graph.setAttributes(id, values, expectedRevision?)` replaces each supplied attribute value verbatim, including objects and nulls; omitted keys remain unchanged. Use it for authored JSON, observations and whole documents. Both methods enforce revisions, guards and immutable keys atomically.
+`graph.setAttributes(id, values, expectedRevision?)` replaces each supplied attribute value verbatim, including objects and nulls; omitted keys remain unchanged. Use it for authored JSON, observations and whole documents. Both methods enforce revisions, guards and immutable keys atomically. `graph.isImmutable(key)` lets publishers reject declared immutable fact keys before applying authored attributes.
 
 ## Queries
 

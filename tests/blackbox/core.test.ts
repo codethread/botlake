@@ -34,6 +34,10 @@ const nodePage = z.compile(
 test("graph mutations, archive selection, stale writes and atomic rollback through public ops", async () => {
   await disposable(async (runtime) => {
     const graph = runtime.graph;
+    expect(graph.isImmutable("ns/fact")).toBe(false);
+    graph.declareImmutable("ns/fact");
+    expect(graph.isImmutable("ns/fact")).toBe(true);
+    expect(graph.isImmutable(noteAttributes.text)).toBe(true);
     const a = graph.add({ title: "A", attributes: { "ns/key": "", nested: { a: 1, b: 2 } } });
     const b = graph.add({ title: "B" });
     graph.connect(a.id, b.id, "depends-on");
