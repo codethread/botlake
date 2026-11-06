@@ -16,7 +16,7 @@ import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 
 import { agentPrimer, roster, rosterFlags } from "./roster.ts";
 
-export { roster } from "./roster.ts";
+export { agentPrimer, roster, rosterFlags } from "./roster.ts";
 
 export const flags = configureFlags([
   [agentFlags.codex, true],
