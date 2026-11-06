@@ -1,6 +1,8 @@
-import { q, type Context, type Extension, type Node } from "@botlake/core";
+import { Fault, q, type Context, type Extension, type Node } from "@botlake/core";
 import { identityAttributes, resolveIdentity } from "@botlake/extension-identity";
 import { mailAttributes as a, mailPredicate, mailRelations as r } from "@botlake/extension-mail";
+
+const authority = Symbol("mail-identity");
 
 /** Explicit identity composition; mail remains usable with opaque unregistered names. */
 export function mailIdentity(): Extension {
@@ -9,6 +11,17 @@ export function mailIdentity(): Extension {
     source: import.meta.url,
     requires: ["mail", "identity"],
     activate(ctx) {
+      ctx.graph.protect((changes, token) => {
+        if (token === authority) return;
+        for (const change of changes)
+          if (
+            change.kind === "edge" &&
+            [change.before?.relation, change.after?.relation].some(
+              (relation) => relation === r.sentBy || relation === r.sentTo,
+            )
+          )
+            throw new Fault("mail-identity", "Mail attribution edges require Mail Identity");
+      });
       for (const [name, relation] of [
         ["mail-received-by-node", r.sentTo],
         ["mail-sent-by-node", r.sentBy],
@@ -54,8 +67,13 @@ function link(ctx: Context, node: Node): void {
       const name = node.attributes[key];
       if (typeof name !== "string") continue;
       const identity = resolveIdentity(ctx.graph, name);
+      for (const edge of ctx.graph.edges(node.id, relation))
+        if (edge.from_id === node.id && edge.to_id !== identity?.id)
+          ctx.graph.disconnect(node.id, edge.to_id, relation);
       if (identity !== undefined && ctx.graph.edge(node.id, identity.id, relation) === null)
         ctx.graph.connect(node.id, identity.id, relation);
     }
-  });
+  }, authority);
 }
+
+export default mailIdentity();

@@ -1,7 +1,7 @@
 {
   "name": "@botlake/extension-mail",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Graph-native direct mail and observable delivery state.",
   "files": [
     "src",
     "README.md"
@@ -9,6 +9,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "ts-pattern": "^5.9.2",

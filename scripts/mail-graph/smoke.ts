@@ -74,6 +74,25 @@ try {
     waiting.parse(await observe("mail-sent-by-node", { identityNode: alice.nodeId }, 1)).reason,
     "satisfied",
   );
+  for (const request of [
+    { command: "add", from: sent.id, to: alice.nodeId, relation: "mail/sent-to" },
+    { command: "remove", from: sent.id, to: bob.nodeId, relation: "mail/sent-to" },
+    { command: "add", from: sent.id, to: alice.nodeId, relation: "mail/replies-to" },
+  ]) {
+    const error = await fixture.cli(
+      [
+        "--workspace",
+        workspace,
+        "--identity",
+        alice.identity,
+        "--input",
+        JSON.stringify(request),
+        "edge",
+      ],
+      false,
+    );
+    assert.match(String(error), /require/u);
+  }
   const ackWait = observe("mail-acknowledged", { id: sent.id }, 1, 4);
   await Bun.sleep(150);
   await invoke(bobId, { command: "ack", id: sent.id });
@@ -181,6 +200,7 @@ try {
       "await arrival and timeout",
       "await acknowledgement",
       "late identity registration and restart links",
+      "derived edge ownership",
       "reply and context queries",
       "lean offset paging",
       "atomic recipient receipts",

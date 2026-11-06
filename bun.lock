@@ -12,6 +12,9 @@
         "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-mail": "workspace:*",
+        "@botlake/extension-mail-agents": "workspace:*",
+        "@botlake/extension-mail-identity": "workspace:*",
         "@botlake/extension-references": "workspace:*",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
@@ -135,7 +138,7 @@
     },
     "extensions/mail": {
       "name": "@botlake/extension-mail",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "ts-pattern": "^5.9.2",
         "zod": "^4.6.7",
@@ -144,15 +147,26 @@
         "@botlake/core": "workspace:^",
       },
     },
-    "extensions/mail-identity": {
-      "name": "@botlake/extension-mail-identity",
-      "version": "0.0.0",
+    "extensions/mail-agents": {
+      "name": "@botlake/extension-mail-agents",
+      "version": "0.1.0",
       "dependencies": {
-        "@botlake/extension-identity": "workspace:*",
-        "@botlake/extension-mail": "workspace:*",
+        "ts-pattern": "^5.9.2",
+        "zod": "^4.6.7",
       },
       "peerDependencies": {
         "@botlake/core": "workspace:^",
+        "@botlake/extension-agents": "workspace:^",
+        "@botlake/extension-mail": "workspace:^",
+      },
+    },
+    "extensions/mail-identity": {
+      "name": "@botlake/extension-mail-identity",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-identity": "workspace:*",
+        "@botlake/extension-mail": "workspace:*",
       },
     },
     "extensions/references": {
@@ -246,7 +260,7 @@
     },
     "plugins/mail": {
       "name": "@botlake/mail",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@botlake/native-session": "workspace:^",
         "zod": "^4.6.7",
@@ -274,6 +288,8 @@
     "@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
 
     "@botlake/extension-mail": ["@botlake/extension-mail@workspace:extensions/mail"],
+
+    "@botlake/extension-mail-agents": ["@botlake/extension-mail-agents@workspace:extensions/mail-agents"],
 
     "@botlake/extension-mail-identity": ["@botlake/extension-mail-identity@workspace:extensions/mail-identity"],
 

@@ -321,7 +321,7 @@ function spawn(p: Session, prompt: string, resume: boolean): Bun.Subprocess {
           prompt,
         ]
       : [
-          process.env["BL_MAIL_PI_BIN"] ?? "/Users/ct/.pi/agent/bin/pi",
+          process.env["BL_MAIL_PI_BIN"] ?? "pi",
           "--print",
           "--mode",
           "json",

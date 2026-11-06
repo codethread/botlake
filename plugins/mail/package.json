@@ -1,7 +1,14 @@
 {
   "name": "@botlake/mail",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "files": [
+    "client.ts",
+    "hook.ts",
+    "pi.ts",
+    "summary.ts",
+    ".codex-plugin",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     "./pi": "./pi.ts"

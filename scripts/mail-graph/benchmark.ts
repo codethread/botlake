@@ -12,12 +12,12 @@ await mkdir(output, { recursive: true });
 const fixture = await system();
 const results: unknown[] = [];
 try {
-  for (const mode of ["table", "graph", "linked"] as const) await benchmark(mode);
+  for (const mode of ["graph", "linked"] as const) await benchmark(mode);
 } finally {
   await fixture.close();
 }
 
-async function benchmark(mode: "table" | "graph" | "linked") {
+async function benchmark(mode: "graph" | "linked") {
   const workspace = await mailLake(fixture, `bench-${mode}`, mode);
   const identities: string[] = [];
   for (let i = 0; i < 20; i++) {
@@ -60,20 +60,11 @@ async function benchmark(mode: "table" | "graph" | "linked") {
         input: { command: "list", to: recipient, limit: 20, lean: false },
       },
       { name: "read", op: "mail", input: { command: "read", id: firstId } },
-      ...(mode === "table"
-        ? []
-        : [
-            {
-              name: "await-probe",
-              op: "await",
-              input: {
-                query: "mail-pending",
-                params: { recipient },
-                minCount: 1,
-                timeoutSecs: 0,
-              },
-            },
-          ]),
+      {
+        name: "await-probe",
+        op: "await",
+        input: { query: "mail-pending", params: { recipient }, minCount: 1, timeoutSecs: 0 },
+      },
     ];
     const timings: unknown[] = [];
     for (const test of cases) {

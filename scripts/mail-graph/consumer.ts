@@ -7,7 +7,7 @@ import { system } from "../../tests/blackbox/fixtures/system.ts";
 import { call, mailLake, root } from "./fixture.ts";
 
 const output = join(root, "out/mail-graph/consumer");
-const uiRoot = resolve(Bun.argv[2] ?? "/Users/ct/dev/worktrees/botlake-ui-mail");
+const uiRoot = resolve(z.string().min(1, "Pass the Botlake UI checkout path").parse(Bun.argv[2]));
 await mkdir(output, { recursive: true });
 for (const name of ["stop", "fixture.json", "cleanup.json"])
   await rm(join(output, name), { force: true });

@@ -1,6 +1,6 @@
 # Mail
 
-Direct mail represented by ordinary graph nodes, attributes and edges. Select a local module that imports `mail` from `@botlake/extension-mail` and exports `mail()`. Installation and imports are inert. Core invocation identity supplies attribution; neither Identity nor Agents is required.
+Direct mail represented by ordinary graph nodes, attributes and edges. Explicitly select `@botlake/extension-mail`, or a local module exporting `mail()` from that package. Installation and imports are inert. Core invocation identity supplies attribution; neither Identity nor Agents is required.
 
 ## Agent API
 
@@ -42,7 +42,7 @@ With Batteries explicitly selected, existing `await` can observe mail:
 bl --identity trinity await --query mail-pending --params '{"recipient":"trinity"}' --min-count 1 --timeout-secs 30
 ```
 
-Inspect `reason`: `satisfied` permits reading the matching inbox; timeout means the condition was not met within the window. Continue waiting if required by the assignment. Acknowledge seen messages before waiting for more. Await neither reads nor acknowledges mail and cannot resume a session that has exited.
+Inspect `reason`: `satisfied` permits reading the matching inbox; timeout means the condition was not met within the window. Continue waiting if required by the assignment. Acknowledge seen messages before waiting for more. Await neither reads nor acknowledges mail and cannot resume a session that has exited. For managed runs that must end their turn while waiting, optionally select [Mail–Agents](../mail-agents/README.md) and arm one continuation before exiting.
 
 | Named query                                       | Parameters  |
 | ------------------------------------------------- | ----------- |
