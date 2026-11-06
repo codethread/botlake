@@ -1,0 +1,21 @@
+{
+  "name": "@botlake/extension-mail-identity",
+  "version": "0.1.0",
+  "description": "Explicit graph links between mail and registered identities.",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-identity": "workspace:*",
+    "@botlake/extension-mail": "workspace:*"
+  }
+}

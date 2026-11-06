@@ -182,7 +182,7 @@ classDiagram
   ActivityHandle --> Identity : records identity
 ```
 
-Identity retains session attribution and last-reported activity across runs. A resumed run continues an earlier run. `serves` records the task a run was launched for; Work owns the current assignment separately. Work Agents binds that assignment's exact token to a run/invocation before applying release policy. Managed custody settlement and external native session-end evidence retain distinct meanings.
+Identity retains session attribution and last-reported activity across runs. A resumed run continues an earlier run. `serves` records the task a run was launched for; Work owns the current assignment separately. Work Agents binds that assignment's exact token to a run/invocation before applying release policy. Managed custody settlement and external native session-end evidence retain distinct meanings. Resume, resumable retry and resumed launch reject another tracked writer for the same provider/session. An external session keeps that claim while working, idle or unknown; only a recorded session end releases it. A missing end observation can therefore block resumption after an external process crashes.
 
 ## Managed run lifecycle
 
