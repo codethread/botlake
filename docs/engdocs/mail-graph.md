@@ -16,7 +16,7 @@ qlock exec --lock /tmp/agent-cpu.lock -w 60 -- bun run test
 qlock exec --lock /tmp/agent-cpu.lock -w 60 -- bun scripts/mail-graph/benchmark.ts
 ```
 
-`smoke.ts` exercises real CLI operations: arrival during await, timeout, ack observation, direct/late/idempotent delivery state, atomic recipient receipts, replies, context links, late identity registration, derived-edge ownership, restart, lean paging and no mail-specific tables. `lifecycle-smoke.ts` uses real SQLite and the existing ManualClock/injected-custody pattern to check explicit enrollment, identity, settlement, restart/coalescing, cancellation, expiry, failed runs, completed targets and competing continuations. These are retained smoke scripts rather than temporary implementation unit tests.
+`smoke.ts` exercises real CLI operations: arrival during await, timeout, ack observation, direct/late/idempotent delivery state, atomic recipient receipts, replies, context links, late identity registration, derived-edge ownership, restart, lean paging and no mail-specific tables. `lifecycle-smoke.ts` uses real SQLite and the existing ManualClock/injected-custody pattern to check explicit enrollment, identity, settlement, restart/coalescing, cancellation, expiry, failed runs, completed targets, competing continuations and external session writers (including idle turns and resumable retries). These are retained smoke scripts rather than temporary implementation unit tests.
 
 Native tests require authenticated Codex and Pi with Luna available. Set `BL_MAIL_PI_BIN` to the native Pi executable when a shell wrapper does not support headless flags; otherwise it defaults to `pi`. Each invocation explicitly loads its required adapters. No global configuration is changed.
 
@@ -65,3 +65,7 @@ Graph evidence: `out/mail-graph/stress/2026-11-06T18-27-48.810Z/`, `2026-11-06T1
 ## Delivery limits
 
 Delivered means the plugin reports notification handoff, not host-confirmed context consumption. Both harnesses have a crash gap; concurrent hooks may duplicate notices. Unacknowledged messages remain in the inbox, and lifecycle resumption observes pending mail regardless of notification status. Identity is attribution, not authentication. Acknowledgement means seen and never proves agreement, correct payload verification, stopped processes or task completion.
+
+## Independent review
+
+Sol and DeepSeek reviewed correctness independently. The resolved findings were ownership of derived identity edges, invocation-scoped retry enrollment, and Agents ignoring external writers when resuming a session. Both agreed that external sessions retain their writer claim until a session-end observation. The regression reproduces the external-writer failure before the fix, then checks direct resume, automatic Mail admission, idle turns, end/release and retry. Pi notification handoff remains a documented limitation rather than a host-confirmed delivery guarantee. No group subscription or speculative lifecycle machinery was added.

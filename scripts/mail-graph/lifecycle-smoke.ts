@@ -200,6 +200,36 @@ try {
     failedRevision,
     "Admission failures stay latched",
   );
+  const external = await start("external-writer");
+  const externalWait = await arm(external);
+  await finish(external.id);
+  await observeExternal("external-writer", "agent-start");
+  assert.throws(
+    () => binding.instance(runtime.context).resume(external.id, "competing resume"),
+    /active writer/u,
+  );
+  await send(external.identity);
+  await poll();
+  assert.equal((await show(externalWait.id)).status, "failed");
+  assert.equal(children(external.id).length, 0, "Mail respects an external session writer");
+  await observeExternal("external-writer", "agent-end");
+  assert.throws(
+    () => binding.instance(runtime.context).resume(external.id, "still open"),
+    /active writer/u,
+    "An idle external session still owns its writer",
+  );
+  await observeExternal("external-writer", "session-end");
+  const afterExternal = binding.instance(runtime.context).resume(external.id, "external ended");
+  await finish(afterExternal.id, 1);
+  await observeExternal("external-writer", "agent-start");
+  assert.throws(
+    () => binding.instance(runtime.context).retry(afterExternal.id),
+    /active writer/u,
+    "Retry cannot relaunch into an externally owned session",
+  );
+  await observeExternal("external-writer", "session-end");
+  binding.instance(runtime.context).retry(afterExternal.id);
+  await finish(afterExternal.id);
   assert.deepEqual(runtime.errors, []);
   console.log(
     JSON.stringify({
@@ -218,6 +248,7 @@ try {
         "closed task",
         "competing continuation",
         "latched failures",
+        "external session writer exclusion",
       ],
     }),
   );
@@ -314,4 +345,17 @@ async function send(to: string) {
 }
 function children(id: string) {
   return runtime.graph.edges(id, agentRelations.continues).filter((e) => e.to_id === id);
+}
+
+async function observeExternal(
+  nativeSessionId: string,
+  event: "agent-start" | "agent-end" | "session-end",
+) {
+  await runtime.invoke("agent", {
+    command: "native",
+    provider: "codex",
+    nativeSessionId,
+    cwd: dir,
+    event,
+  });
 }
