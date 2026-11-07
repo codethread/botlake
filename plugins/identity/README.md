@@ -8,11 +8,11 @@ The target workspace must select Identity, Flags and Agents. Discovery uses the 
 
 | Adapter | Identity delivery | Observations when supported by the host |
 | --- | --- | --- |
-| Pi | Prompt section (full-prompt fallback), shell env, status | Start/end, turns, tools, visible messages, reported usage, model/effort |
+| Pi | Prompt section (full-prompt fallback), shell env | Start/end, turns, tools, visible messages, reported usage, model/effort |
 | Codex | Session context; no hook shell-env export | Start/end, prompt/stop, tools, available user/final assistant text and model |
 | Claude | Session context; optional `CLAUDE_ENV_FILE` | Start/end, prompt/stop, tools, available user/final assistant text and model |
 
-Pi and Claude shell injection sets `BL_ACTOR` to the native identity and supplies `BL_AGENT_SEAT`, `BL_MODEL` and `BL_EFFORT` when known. Pi refreshes these on metadata changes. Codex and Claude hosts without `CLAUDE_ENV_FILE` receive guidance to invoke `bl --identity IDENTITY OP`; operation-specific `--by`, assignee and subject flags retain their separate meanings.
+Pi and Claude shell injection sets `BL_ACTOR` to the native identity and supplies `BL_AGENT_SEAT`, `BL_MODEL` and `BL_EFFORT` when known. Pi refreshes these on metadata changes and does not modify the status line; use `BL_ACTOR` in your own status-line configuration to display the identity. Codex and Claude hosts without `CLAUDE_ENV_FILE` receive guidance to invoke `bl --identity IDENTITY OP`; operation-specific `--by`, assignee and subject flags retain their separate meanings.
 
 Agents' `unmanaged.systemPrompt` supplies project context for direct sessions: Pi refreshes it before each turn, Claude/Codex at session startup. Managed runs receive their configured prompt through launch arguments instead; adapters do not add the unmanaged prompt. Project context requires a reachable lake; local identity still works when tracking is unavailable.
 
@@ -22,4 +22,4 @@ Native subagents appear only as tool calls in the caller's activity. Identified 
 
 Adapters report compact [run activity](../../extensions/agents/README.md#run-activity), including native session/transcript references. A turn is the outer prompt-to-stop/agent-end cycle; internal model iterations are not separately tracked. Messages and tool inputs become bounded excerpts; full transcripts, tool results and reasoning stay with the harness. Pi reports usage as supplied on completed assistant messages; hooks without usage fields leave it unknown.
 
-Database unavailability retains deterministic local identity and displays a tracking warning; it does not block native work. Without executed hooks, Botlake cannot inject context or observe unmanaged sessions. Managed output can still establish identity, labeled `agent/integration: output`. GUI support depends on that specific host executing the integration; installation alone proves nothing.
+Database unavailability retains deterministic local identity and reports a tracking warning on stderr; it does not block native work. Without executed hooks, Botlake cannot inject context or observe unmanaged sessions. Managed output can still establish identity, labeled `agent/integration: output`. GUI support depends on that specific host executing the integration; installation alone proves nothing.
