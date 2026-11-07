@@ -7,7 +7,7 @@ import { workflowAttributes } from "@botlake/extension-workflow";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
-import { copyWorkflowExample } from "../tests/blackbox/fixtures/workflows.ts";
+import { writeWorkflowExtension } from "../tests/blackbox/fixtures/workflows.ts";
 
 const idResult = z.object({ id: z.string() });
 const summary = z.object({
@@ -53,19 +53,18 @@ try {
     "@botlake/extension-batteries",
     "@botlake/extension-identity",
     "@botlake/extension-work",
-    "@botlake/extension-workflow",
+    "./workflow-extension.ts",
   ]);
-  await copyWorkflowExample(workspace, "parallel");
-  await copyWorkflowExample(workspace, "nested-machines");
   await Bun.write(
     join(workspace, "rollback.ts"),
     `
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({});
-export const commandSchemas = { next: z.object({ proof: z.string().min(1) }) };
-export function runBrief() { return { title: "Atomic rollback", description: "No partial work effects" }; }
-export const machine = setup({}).createMachine({
+const inputSchema = z.object({});
+const commandSchemas = { next: z.object({ proof: z.string().min(1) }) };
+function runBrief() { return { title: "Atomic rollback", description: "No partial work effects" }; }
+const machine = setup({}).createMachine({
   initial: "first",
   states: {
     first: {
@@ -79,18 +78,20 @@ export const machine = setup({}).createMachine({
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "rollback", version: "1.0.0", description: "Atomic rollback", inputSchema, commandSchemas, runBrief, machine });
 `,
   );
   await Bun.write(
     join(workspace, "caller-attribution.ts"),
     `
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({});
-export const commandSchemas = { next: z.object({}), finish: z.object({}) };
-export function runBrief() { return { title: "Caller attribution", description: "Retain invocation authorship" }; }
+const inputSchema = z.object({});
+const commandSchemas = { next: z.object({}), finish: z.object({}) };
+function runBrief() { return { title: "Caller attribution", description: "Retain invocation authorship" }; }
 const authored = (instructions, assignee) => ({ instructions, acceptanceCriteria: ["Recorded"], assignee });
-export const machine = setup({}).createMachine({
+const machine = setup({}).createMachine({
   initial: "initial",
   states: {
     initial: { meta: { title: "Initial attributed", commands: { next: "NEXT" }, task: () => authored("Initial", "initial-subject") }, on: { NEXT: "later" } },
@@ -98,17 +99,19 @@ export const machine = setup({}).createMachine({
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "caller-attribution", version: "1.0.0", description: "Caller attribution", inputSchema, commandSchemas, runBrief, machine });
 `,
   );
   await Bun.write(
     join(workspace, "native-values.ts"),
     `
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({ nullable: z.null(), nested: z.object({ value: z.null() }), items: z.array(z.null()) });
-export const commandSchemas = { finish: z.json() };
-export function runBrief() { return { title: "Native values", description: "Preserve authored JSON" }; }
-export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>, context: {} as z.infer<typeof inputSchema> } }).createMachine({
+const inputSchema = z.object({ nullable: z.null(), nested: z.object({ value: z.null() }), items: z.array(z.null()) });
+const commandSchemas = { finish: z.json() };
+function runBrief() { return { title: "Native values", description: "Preserve authored JSON" }; }
+const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>, context: {} as z.infer<typeof inputSchema> } }).createMachine({
   context: ({ input }) => input,
   initial: "task",
   states: {
@@ -122,13 +125,33 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0", description: "Native values", inputSchema, commandSchemas, runBrief, machine });
 `,
   );
+  await writeWorkflowExtension(workspace, [
+    "@botlake/extension-workflow/examples/parallel",
+    "@botlake/extension-workflow/examples/nested-machines",
+    "./rollback.ts",
+    "./caller-attribution.ts",
+    "./native-values.ts",
+  ]);
   await host.botlake(["lake", "start", "--workspace", workspace]);
   const cli = (args: string[], ok = true) => host.cli(["--workspace", workspace, ...args], ok);
   const showRun = async (id: string) => runView.parse(await cli(["workflow", "show", id]));
   const task = (view: z.infer<typeof runView>, title: string) =>
     z.string().parse(view.tasks.find((candidate) => candidate.title === title)?.id);
+  const catalog = z
+    .array(z.object({ name: z.string(), version: z.string(), description: z.string() }))
+    .parse(await cli(["workflow", "catalog"]));
+  assert.deepEqual(
+    catalog.map(({ name }) => name),
+    ["caller-attribution", "native-values", "nested-machines", "parallel", "rollback"],
+  );
+  assert.ok(catalog.every(({ version }) => version === "1.0.0"));
+  assert.match(
+    z.string().parse(await cli(["workflow", "start", "not-configured"], false)),
+    /not configured/u,
+  );
 
   const attributed = runView.parse(
     await cli([
@@ -136,8 +159,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
       "explicit-workflow-caller",
       "workflow",
       "start",
-      "--source",
-      "caller-attribution.ts",
+      "caller-attribution",
     ]),
   );
   const initialAttributed = task(attributed, "Initial attributed");
@@ -315,14 +337,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   // Authored values are queryable native JSON; only the execution snapshot is opaque.
   const input = { nullable: null, nested: { value: null }, items: [null] };
   const native = runView.parse(
-    await cli([
-      "workflow",
-      "start",
-      "--source",
-      "native-values.ts",
-      "--input",
-      JSON.stringify(input),
-    ]),
+    await cli(["workflow", "start", "native-values", "--input", JSON.stringify(input)]),
   );
   const nativeTask = task(native, "Native JSON task");
   const attributes = async (id: string) =>
@@ -378,14 +393,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
     /different saved original result/iu,
   );
   const nullable = runView.parse(
-    await cli([
-      "workflow",
-      "start",
-      "--source",
-      "native-values.ts",
-      "--input",
-      JSON.stringify(input),
-    ]),
+    await cli(["workflow", "start", "native-values", "--input", JSON.stringify(input)]),
   );
   const nullableTask = task(nullable, "Native JSON task");
   await cli(["workflow", "complete", nullableTask, "finish", "--data", "null"]);
@@ -395,7 +403,7 @@ export const machine = setup({ types: { input: {} as z.infer<typeof inputSchema>
   });
 
   // A failed next-publication rolls back closure, assignment release, checkpoint and authored result.
-  const rollback = runView.parse(await cli(["workflow", "start", "--source", "rollback.ts"]));
+  const rollback = runView.parse(await cli(["workflow", "start", "rollback"]));
   const proof = task(rollback, "Human proof");
   const humanQueue = z
     .object({ items: z.array(z.object({ id: z.string() })) })

@@ -1,14 +1,20 @@
-import { defineOp, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
+import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
 import { gateProbes, workGateChanged } from "@botlake/extension-work";
 import { z } from "zod";
 
-import type { Selection } from "./catalogue.ts";
+import { workflowCatalogue } from "./catalogue.ts";
+import type { Definition } from "./definition.ts";
 import { workflowService } from "./engine.ts";
-import { workflowFiles } from "./files.ts";
 import { workflowAttributes } from "./node-model.ts";
 
 export { workflowRun } from "./engine.ts";
-export type { Definition, GateEventData, Metadata, ResolvedTask } from "./definition.ts";
+export {
+  defineWorkflow,
+  type Definition,
+  type GateEventData,
+  type Metadata,
+  type ResolvedTask,
+} from "./definition.ts";
 export {
   workflowAttributes,
   workflowLocatorSchema,
@@ -21,62 +27,47 @@ export {
 
 const text = z.string().trim().min(1);
 const input = z.compile(
-  z
-    .discriminatedUnion("command", [
-      z.strictObject({
-        command: z.literal("catalog"),
-        name: text.optional(),
-        source: text.optional(),
-      }),
-      z.strictObject({
-        command: z.literal("start"),
-        name: text.optional(),
-        source: text.optional(),
-        input: jsonSchema.default({}),
-        parent: text.optional(),
-      }),
-      z.strictObject({
-        command: z.literal("show"),
-        id: text,
-        limit: z.number().int().min(1).max(100).default(20),
-        offset: z.number().int().nonnegative().default(0),
-        historyOffset: z.number().int().nonnegative().default(0),
-      }),
-      z.strictObject({
-        command: z.literal("complete"),
-        id: text,
-        choice: text,
-        data: jsonSchema.default({}),
-      }),
-    ])
-    .superRefine((value, ctx) => {
-      if (value.command !== "catalog" && value.command !== "start") return;
-      if (value.name !== undefined && value.source !== undefined)
-        ctx.addIssue({ code: "custom", message: "Choose a workflow name or --source, not both" });
-      if (value.command === "start" && value.name === undefined && value.source === undefined)
-        ctx.addIssue({
-          code: "custom",
-          message: "Choose a workflow name or --source; inspect bl workflow catalog",
-        });
+  z.discriminatedUnion("command", [
+    z.strictObject({
+      command: z.literal("catalog"),
+      name: text.optional(),
     }),
+    z.strictObject({
+      command: z.literal("start"),
+      name: text,
+      input: jsonSchema.default({}),
+      parent: text.optional(),
+    }),
+    z.strictObject({
+      command: z.literal("show"),
+      id: text,
+      limit: z.number().int().min(1).max(100).default(20),
+      offset: z.number().int().nonnegative().default(0),
+      historyOffset: z.number().int().nonnegative().default(0),
+    }),
+    z.strictObject({
+      command: z.literal("complete"),
+      id: text,
+      choice: text,
+      data: jsonSchema.default({}),
+    }),
+  ]),
 );
 
-export function workflows(): Extension {
+export interface WorkflowOptions {
+  /** Trusted definitions selected explicitly for this lake. */
+  definitions?: readonly Definition[] | undefined;
+}
+
+export function workflows(configuration: WorkflowOptions = {}): Extension {
+  const catalogue = workflowCatalogue(configuration.definitions ?? []);
   return {
     name: "workflow",
     source: import.meta.url,
     requires: ["identity", "work"],
     activate(ctx) {
-      const catalogue = workflowFiles(ctx.workspace);
       const service = workflowService(ctx, catalogue);
-      gateProbes(ctx).provide(async (key) => {
-        const separator = key.indexOf("/");
-        if (separator <= 0 || separator === key.length - 1) return;
-        const name = key.slice(0, separator);
-        const probeName = key.slice(separator + 1);
-        const loaded = await catalogue.load({ kind: "named", name });
-        return loaded.definition.probes.find((probe) => probe.name === probeName);
-      });
+      gateProbes(ctx).provide(async (key) => catalogue.probe(key));
       ctx.on(workGateChanged, ({ id, to }) => service.reactToGate(id, to));
       ctx.registerQuery("workflow-runs", {
         where: q.eq(q.attr(workflowAttributes.root), true),
@@ -106,48 +97,32 @@ export function workflows(): Extension {
             commands: {
               catalog: {
                 description:
-                  "List all local definitions (unpaged), or inspect one definition's input schema and constraints",
-                examples: [
-                  "bl workflow catalog",
-                  "bl workflow catalog NAME",
-                  "bl workflow catalog --source .workflows/demo/workflow.ts",
-                ],
+                  "List all configured definitions (unpaged), or inspect one definition's input schema and constraints",
+                examples: ["bl workflow catalog", "bl workflow catalog NAME"],
                 positionals: [
                   {
                     name: "name",
                     type: "string",
-                    description: "Named workflow; omit when listing",
+                    description: "Configured workflow name; omit when listing",
                   },
                 ],
-                flags: {
-                  source: {
-                    type: "string",
-                    description:
-                      "Workflow entry file instead of NAME; mutually exclusive with NAME",
-                  },
-                },
               },
               start: {
                 description:
-                  "Create a context Work group from a named or file workflow; returns first 20 tasks/history entries. Continue with workflow show RUN_ID",
+                  "Create a context Work group from a configured workflow; returns first 20 tasks/history entries. Continue with workflow show RUN_ID",
                 examples: [
                   'bl workflow start NAME --input \'{"customer":"Acme"}\'',
-                  "bl workflow start --source .workflows/demo/workflow.ts",
                   "bl workflow show RUN_ID --offset 20",
                 ],
                 positionals: [
                   {
                     name: "name",
                     type: "string",
-                    description: "Named workflow; required unless --source is supplied",
+                    required: true,
+                    description: "Configured workflow name",
                   },
                 ],
                 flags: {
-                  source: {
-                    type: "string",
-                    description:
-                      "Workflow entry file instead of NAME; mutually exclusive with NAME",
-                  },
                   input: {
                     type: "json",
                     description: "Initial input validated by the definition (default {})",
@@ -228,14 +203,9 @@ export function workflows(): Extension {
           handler(value, _ctx, invocation) {
             switch (value.command) {
               case "catalog":
-                return service.catalog(selection(value.name, value.source));
+                return service.catalog(value.name);
               case "start":
-                return service.start(
-                  requireValue(selection(value.name, value.source), "Select a workflow"),
-                  value.input,
-                  value.parent,
-                  invocation.identity,
-                );
+                return service.start(value.name, value.input, value.parent, invocation.identity);
               case "show":
                 return service.show(value.id, {
                   limit: value.limit,
@@ -261,12 +231,6 @@ export function workflows(): Extension {
       });
     },
   };
-}
-
-function selection(name: string | undefined, source: string | undefined): Selection | undefined {
-  if (name !== undefined) return { kind: "named", name };
-  if (source !== undefined) return { kind: "file", source };
-  return undefined;
 }
 
 export default workflows();

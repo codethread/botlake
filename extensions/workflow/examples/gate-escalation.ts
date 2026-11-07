@@ -1,18 +1,18 @@
 import { existsSync } from "node:fs";
 
 import { defineProbe, type GateStatus } from "@botlake/extension-work";
-import type { GateEventData } from "@botlake/extension-workflow";
+import { defineWorkflow, type GateEventData } from "@botlake/extension-workflow";
 import { assign, setup } from "xstate";
 import { z } from "zod";
 
-export const inputSchema = z.object({ flag: z.string().min(1) });
-export const commandSchemas = {
+const inputSchema = z.object({ flag: z.string().min(1) });
+const commandSchemas = {
   retry: z.object({}),
   waive: z.object({}),
   done: z.object({}),
 };
 
-export const probes = [
+const probes = [
   defineProbe({
     name: "flag-exists",
     description: "Wait for a local flag file",
@@ -26,7 +26,7 @@ export const probes = [
   }),
 ];
 
-export function runBrief() {
+function runBrief() {
   return {
     title: "Retry or waive a gate",
     description: "Escalate an exhausted gate for investigation, then retry or dismiss it.",
@@ -47,7 +47,7 @@ const types = {} as {
     | { type: "DONE" };
 };
 
-export const machine = setup({ types }).createMachine({
+const machine = setup({ types }).createMachine({
   context: ({ input }) => ({ flag: input.flag, gate: null, status: null }),
   initial: "gate",
   states: {
@@ -93,4 +93,15 @@ export const machine = setup({ types }).createMachine({
     },
     done: { type: "final" },
   },
+});
+
+export const workflow = defineWorkflow({
+  name: "gate-escalation",
+  version: "1.0.0",
+  description: "Investigate an exhausted gate, then retry or waive it.",
+  inputSchema,
+  commandSchemas,
+  machine,
+  runBrief,
+  probes,
 });

@@ -21,7 +21,7 @@ import {
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { type Catalogue, type Selection } from "./catalogue.ts";
+import type { Catalogue } from "./catalogue.ts";
 import {
   currentStatus,
   initialActor,
@@ -109,28 +109,25 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     graph.declareImmutable(marker);
   protectWorkflow(graph, authority);
 
-  async function catalog(selection?: Selection): Promise<Json> {
-    if (selection === undefined) return serialise(await catalogue.list());
-    const loaded = await catalogue.load(selection);
+  function catalog(name?: string): Json {
+    if (name === undefined) return serialise(catalogue.list());
+    const loaded = catalogue.load(name);
     return serialise({
       definition: loaded.locator,
-      source: loaded.source,
+      description: loaded.definition.description,
       input: z.toJSONSchema(loaded.definition.inputSchema, { io: "input" }),
       constraints: loaded.definition.inputConstraints,
     });
   }
 
   async function start(
-    selection: Selection,
+    name: string,
     input: Json,
     parent: string | undefined,
     callerIdentity: string | null,
   ): Promise<Json> {
-    const loaded = await catalogue.load(selection);
-    const hint =
-      loaded.locator.kind === "named"
-        ? `bl workflow catalog ${loaded.locator.name}`
-        : `bl workflow catalog --source ${JSON.stringify(loaded.locator.source)}`;
+    const loaded = catalogue.load(name);
+    const hint = `bl workflow catalog ${loaded.locator.name}`;
     const parsed = parseInput(
       loaded.definition.inputSchema,
       input,
@@ -213,7 +210,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         ],
       });
     }
-    const loaded = await loadRun(run);
+    const loaded = loadRun(run);
     const { commands, ...metadata } = visit.meta;
     const detail = work.inspect(id, { history: true, limit: 20 });
     return serialise({
@@ -256,7 +253,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       assertMatchingResult(node, choice, data);
       return view(run.id);
     }
-    const loaded = await loadRun(run);
+    const loaded = loadRun(run);
     graph.atomic(() => {
       assertRunning(graph.show(run.id));
       assertDirectPrerequisitesClosed(work, taskId);
@@ -307,13 +304,13 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
   async function reactToGateUnlocked(id: string, status?: GateStatus): Promise<void> {
     const run = containingRun(id);
     await reconcile(run.id);
-    await checkpointGate(id, status);
+    checkpointGate(id, status);
     await reconcile(run.id);
   }
 
-  async function checkpointGate(id: string, status?: GateStatus): Promise<boolean> {
+  function checkpointGate(id: string, status?: GateStatus): boolean {
     const run = containingRun(id);
-    const loaded = await loadRun(run);
+    const loaded = loadRun(run);
     return graph.atomic(() => {
       const node = graph.show(id);
       const current = work.gates.get(id).status;
@@ -380,7 +377,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     return inRun(id, () => reconcile(id));
   }
 
-  // Async catalogue/probe work must not let another event advance the same checkpoint.
+  // Async probe work must not let another event advance the same checkpoint.
   async function inRun<T>(id: string, action: () => Promise<T>): Promise<T> {
     const previous = queues.get(id) ?? Promise.resolve();
     const turn = Promise.withResolvers<void>();
@@ -443,7 +440,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         if (!isGateVisit(visit)) continue;
         if (mappedGateEvent(visit, work.gates.get(visit.node.id).status) === undefined) continue;
         try {
-          advanced = await checkpointGate(visit.node.id);
+          advanced = checkpointGate(visit.node.id);
         } catch (error) {
           throw new Fault(
             "workflow-publication",
@@ -463,7 +460,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     if (pending === null) return;
     try {
       const publication = publicationSchema.parse(pending);
-      const loaded = await loadRun(run);
+      const loaded = loadRun(run);
       const by = text.parse(run.attributes[workflowAttributes.checkpointBy]);
       const previous = active(id);
       const prepared = new Map<string, PreparedGate[]>();
@@ -782,7 +779,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     });
   }
 
-  async function loadRun(run: Node) {
+  function loadRun(run: Node) {
     return catalogue.restore(
       workflowLocatorSchema.parse(run.attributes[workflowAttributes.definition]),
     );
@@ -838,7 +835,7 @@ function advanceGate(root: WorkflowActor, visit: Visit, type: string, data: Gate
 
 function resolveGateProbe(run: Node, probes: ProbeDefinition[], key: string): string {
   const locator = workflowLocatorSchema.parse(run.attributes[workflowAttributes.definition]);
-  if (locator.kind === "named" && !key.includes("/") && probes.some((probe) => probe.name === key))
+  if (!key.includes("/") && probes.some((probe) => probe.name === key))
     return `${locator.name}/${key}`;
   return key;
 }

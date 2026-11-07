@@ -71,15 +71,10 @@ export const semanticVersion =
 const text = z.string().min(1);
 
 export const workflowLocatorSchema = z.compile(
-  z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("named"),
-      name: text,
-      version: z.string().trim().regex(semanticVersion, "Expected a full semantic version"),
-      hash: text,
-    }),
-    z.strictObject({ kind: z.literal("file"), source: text, hash: text }),
-  ]),
+  z.strictObject({
+    name: text,
+    version: z.string().trim().regex(semanticVersion, "Expected a full semantic version"),
+  }),
 );
 
 export const workflowResultSchema = z.object({ choice: text, data: jsonSchema });

@@ -1,8 +1,10 @@
 import { Fault, jsonSchema, requireValue, type Json } from "@botlake/core";
 import type { GateStatus, ProbeDefinition } from "@botlake/extension-work";
-import type { ActorRefFrom, AnyStateMachine, Snapshot } from "xstate";
+import type { ActorRefFrom, AnyStateMachine, InputFrom, Snapshot } from "xstate";
 import { createActor } from "xstate";
 import { z } from "zod";
+
+import { semanticVersion } from "./node-model.ts";
 
 const NONEMPTY = 1;
 const text = z.string().min(NONEMPTY);
@@ -93,7 +95,6 @@ export interface GateMetadata {
   [key: string]: unknown;
 }
 
-// Adapted from Busy Bee's dynamic definition seam.
 export const metadataSchema = z.compile(
   z.union([
     z
@@ -123,13 +124,15 @@ const machineContract = z.compile(
   }),
 );
 
-export const definitionSchema = z.compile(
-  z.object({
+const definitionSchema = z.compile(
+  z.strictObject({
+    name: text.regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u),
+    version: text.regex(semanticVersion, "Expected a full semantic version"),
+    description: z.string().trim().min(NONEMPTY),
     commandSchemas: commandSchemasSchema,
     describe: z.custom<(entry: TaskEntry) => Record<string, unknown>>(callable).optional(),
     inputConstraints: z.string().optional(),
     inputSchema: z.instanceof(z.ZodType),
-    resumeSchema: z.instanceof(z.ZodType).optional(),
     machine: z.custom<AnyStateMachine>(machineLike),
     probes: z.array(z.custom<ProbeDefinition>()).default([]),
     runBrief: z.custom<(input: unknown) => unknown>(callable),
@@ -142,6 +145,24 @@ export const definitionSchema = z.compile(
 export type Definition = z.infer<typeof definitionSchema>;
 export type WorkflowActor = ActorRefFrom<AnyStateMachine>;
 export type WorkflowNode = AnyStateMachine["root"];
+
+/** Build a trusted definition for explicit registration with workflows(). */
+export function defineWorkflow<Input extends z.ZodType, Machine extends AnyStateMachine>(
+  configuration: Omit<z.input<typeof definitionSchema>, "inputSchema" | "machine" | "runBrief"> & {
+    /** Parse initial input into a value accepted by the machine. */
+    inputSchema: Input & z.ZodType<InputFrom<NoInfer<Machine>>>;
+    /** Execute the workflow using the parsed input. */
+    machine: Machine;
+    /** Render the run's context group from parsed input. */
+    runBrief: (input: z.output<Input>) => unknown;
+  },
+): Definition {
+  const definition = definitionSchema.parse(configuration);
+  const names = definition.probes.map((probe) => probe.name);
+  if (new Set(names).size !== names.length)
+    throw new Fault("workflow", `Duplicate probe name in workflow ${definition.name}`);
+  return definition;
+}
 
 export function renderVisit(metadata: Metadata, context: Record<string, unknown>): ResolvedVisit {
   if ("gate" in metadata && metadata.gate !== undefined) {
