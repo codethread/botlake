@@ -19,14 +19,16 @@ classDiagram
 
 ## Author
 
-Build definitions with `defineWorkflow` and register them explicitly in a configured local extension module:
+Use `bl about workflow` for authoring conventions and configuration; `bl prime workflow` is the execution runbook.
+
+Keep definitions in `.botlake/workflows/NAME.ts` and register them explicitly in a configured local extension module. For example, `.botlake/workflows/review.ts`:
 
 ```ts
-import { defineWorkflow, workflows } from "@botlake/extension-workflow";
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
 
-const review = defineWorkflow({
+export default defineWorkflow({
   name: "review",
   version: "1.0.0",
   description: "Review a change and record findings",
@@ -48,11 +50,19 @@ const review = defineWorkflow({
     },
   }),
 });
+```
+
+Register it from `.botlake/workflow.ts`:
+
+```ts
+import { workflows } from "@botlake/extension-workflow";
+
+import review from "./workflows/review.ts";
 
 export default workflows({ definitions: [review] });
 ```
 
-Select that module and its Identity/Work prerequisites in `.botlake/package.json`. Importing a definition does not register it; `workflows()` registers an empty catalogue. Definition names must be unique lowercase kebab-case identifiers; versions must be full semantic versions.
+Select `./.botlake/workflow.ts` and its Identity/Work prerequisites in `.botlake/package.json`. Importing a definition does not register it; `workflows()` registers an empty catalogue. Definition names must be unique lowercase kebab-case identifiers; versions must be full semantic versions.
 
 Each definition requires `name`, `version`, `description`, `machine`, `inputSchema`, `commandSchemas` and `runBrief`; optionally `probes`, `describe`, `validateCommand` and `inputConstraints`. `runBrief` receives parsed input and returns a title and description for the run's context group. A titled XState state publishes Work: `meta.task` renders its instructions and optional task fields; `meta.commands` maps explicit choices to events. Commandless titled states publish groups. Task fields include `acceptanceCriteria: string[]`, notes, assignee, audience, origin and priority; Work applies its normal defaults.
 

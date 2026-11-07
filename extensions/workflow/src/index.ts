@@ -2,6 +2,7 @@ import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
 import { gateProbes, workGateChanged } from "@botlake/extension-work";
 import { z } from "zod";
 
+import { workflowAbout } from "./about.ts";
 import { workflowCatalogue } from "./catalogue.ts";
 import type { Definition } from "./definition.ts";
 import { workflowService } from "./engine.ts";
@@ -83,7 +84,7 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
           input,
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
-          about: "Authored XState flow projected into Work groups and tasks.",
+          about: workflowAbout,
           primer:
             "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome and checkpoints a frozen frontier, then publishes the next Work atomically. Pending publication resumes on activation, show or a completion retry. Inspect a task before completion for instructions and outcome schemas.",
           cli: {
