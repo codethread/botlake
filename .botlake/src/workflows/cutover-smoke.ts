@@ -1,18 +1,19 @@
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
 
 /** A tiny authored workflow for live coordination checks; it performs no external effects. */
-export const inputSchema = z.object({});
-export const commandSchemas = { next: z.object({}), approved: z.object({}) };
+const inputSchema = z.object({});
+const commandSchemas = { next: z.object({}), approved: z.object({}) };
 
-export function runBrief() {
+function runBrief() {
   return {
     title: "Cutover workflow smoke",
     description: "Record a dummy result, then exercise an explicit HITL checkpoint.",
   };
 }
 
-export const machine = setup({}).createMachine({
+const machine = setup({}).createMachine({
   id: "cutover-smoke",
   initial: "produce",
   states: {
@@ -43,4 +44,14 @@ export const machine = setup({}).createMachine({
     },
     done: { type: "final" },
   },
+});
+
+export const cutoverSmoke = defineWorkflow({
+  name: "cutover-smoke",
+  version: "1.0.0",
+  description: "Dummy result and explicit parent checkpoint for real-lake smoke tests",
+  inputSchema,
+  commandSchemas,
+  machine,
+  runBrief,
 });

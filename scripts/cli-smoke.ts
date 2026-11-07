@@ -108,7 +108,7 @@ try {
         ...manifest.botlake,
         name: "cli-clone",
         extensions: manifest.botlake.extensions.map((extension) =>
-          extension === "@botlake/extension-workflow" ? "./workflow-extension.ts" : extension,
+          extension === "./.botlake/src/workflow.ts" ? "./workflow-extension.ts" : extension,
         ),
       },
     }),

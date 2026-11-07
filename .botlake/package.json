@@ -16,6 +16,7 @@
     "@botlake/extension-work-agents": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",
     "ct-config": "workspace:*",
+    "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
   "botlake": {
@@ -30,7 +31,7 @@
       "./.botlake/src/priming.ts",
       "./.botlake/src/work.ts",
       "./.botlake/src/work-agents.ts",
-      "@botlake/extension-workflow",
+      "./.botlake/src/workflow.ts",
       "@botlake/extension-cron",
       "@botlake/extension-ui"
     ]

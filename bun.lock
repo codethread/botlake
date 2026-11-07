@@ -46,6 +46,7 @@
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
         "ct-config": "workspace:*",
+        "xstate": "5.33.3",
         "zod": "^4.6.7",
       },
     },
