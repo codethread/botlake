@@ -68,6 +68,8 @@ botlake lake start --workspace /absolute/workspace
 
 After editing the manifest, configured modules or lake environment, use `botlake lake restart --workspace /absolute/workspace`. Calling `start` on an already-running lake does not reload it. `botlake lake info --workspace work` reports the loaded snapshot and extension README/source locations, not pending edits.
 
+`botlake restart-host` and automatic host recovery re-read active lakes' manifests. Lakes whose manifest or workspace was removed are skipped with a warning on supervisor stderr and dropped from the active list; restore the configuration and start them explicitly to rejoin. Invalid manifests and other recovery failures remain errors.
+
 ## Environment
 
 - `BL_WORKSPACE` selects the default lake independently of cwd; `--workspace` overrides it. Use an absolute workspace directory when sharing the environment with native session adapters, which require a path. Managed agents receive their owning lake's absolute path automatically.

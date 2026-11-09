@@ -272,6 +272,10 @@ func (d *Daemon) restoreHost() error {
 
 		for _, path := range paths {
 			member, readErr := readMember(path)
+			if errors.Is(readErr, os.ErrNotExist) {
+				fmt.Fprintf(os.Stderr, "warning: skipping lake %s during host recovery: %v\n", path, readErr)
+				continue
+			}
 			if readErr != nil {
 				err = errors.Join(err, fmt.Errorf("recover %s: %w", path, readErr))
 				continue
