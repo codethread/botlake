@@ -69,6 +69,10 @@ func readMember(path string) (Member, error) {
 }
 
 func defaultWorkspace(cwd string) (string, error) {
+	if workspace := os.Getenv("BL_WORKSPACE"); workspace != "" {
+		return workspace, nil
+	}
+
 	_, common, err := gitContext(cwd)
 	if err != nil {
 		return "", err

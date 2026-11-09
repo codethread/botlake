@@ -87,6 +87,7 @@ export async function system(): Promise<System> {
   const env = {
     ...process.env,
     BL_ACTOR: "fixture",
+    BL_WORKSPACE: undefined,
     BL_HOME: home,
     BL_CORE: join(engine, "node_modules/@botlake/core"),
     BL_BIN: blBin,

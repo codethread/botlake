@@ -17,12 +17,13 @@ Existing package fields are preserved; if botlake configuration already exists,
 init reports it and makes no changes.
 
 Flags:
-  --workspace DIR  Workspace directory (default: main Git checkout)
+  --workspace DIR  Workspace directory (overrides BL_WORKSPACE)
   --name NAME      Published workspace name (default: directory basename)
 
-Without --workspace, Git discovery selects the main checkout, including from a
-linked worktree or subdirectory. Outside Git, pass --workspace. Names start with
-a letter and contain only letters, digits, underscores or hyphens.
+Without --workspace, use BL_WORKSPACE (a directory for init), then Git discovery
+of the main checkout, including from linked worktrees and subdirectories.
+Outside Git, set BL_WORKSPACE or pass --workspace. Names start with a letter
+and contain only letters, digits, underscores or hyphens.
 
 Examples:
   botlake init
@@ -37,7 +38,7 @@ func initWorkspace(args []string) int {
 	flags := flag.NewFlagSet("botlake init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 
-	target := flags.String("workspace", "", "workspace directory (defaults to the main Git checkout)")
+	target := flags.String("workspace", "", "workspace directory (overrides BL_WORKSPACE)")
 	name := flags.String("name", "", "published workspace name (defaults to directory basename)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,9 +60,13 @@ func initWorkspace(args []string) int {
 	if *target == "" {
 		path, err = defaultWorkspace("")
 	} else {
-		path, err = canonical(*target)
+		path = *target
 	}
 
+	if err != nil {
+		return fail(err)
+	}
+	path, err = canonical(path)
 	if err != nil {
 		return fail(err)
 	}

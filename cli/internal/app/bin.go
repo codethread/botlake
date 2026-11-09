@@ -24,20 +24,22 @@ Commands:
   run NAME [ARGS...]    Execute a program and pass arguments through
 
 Flags:
-  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+  --workspace PATH|NAME  Select a workspace (overrides BL_WORKSPACE)
 
-The selected lake must be active and provide its bins operation. Outside Git,
-pass --workspace. Builds run only when requested; runs keep the caller's working
+Without either selection, use the main Git checkout. Outside Git, set
+BL_WORKSPACE or pass --workspace. The selected lake must be active and provide
+its bins operation. Builds run only when requested; runs keep the caller's working
 directory and pass all arguments after NAME literally, including --help.
 Use "botlake bin help COMMAND" for command details.
 `
 
 func binCommandHelp(command string) string {
 	common := `Flags:
-  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+  --workspace PATH|NAME  Select a workspace (overrides BL_WORKSPACE)
 
-Outside Git, pass --workspace. The selected lake must be active and provide its
-bins operation.
+Without either selection, use the main Git checkout. Outside Git, set
+BL_WORKSPACE or pass --workspace. The selected lake must be active and provide
+its bins operation.
 `
 	switch command {
 	case "list":

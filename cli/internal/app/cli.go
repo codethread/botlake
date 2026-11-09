@@ -30,8 +30,8 @@ Commands:
 
 Use "botlake COMMAND --help", "botlake GROUP COMMAND --help", or
 "botlake help COMMAND [SUBCOMMAND]" for details. Commands that select a
-workspace default to the main Git checkout. BL_HOME selects the supervisor home
-(default: ~/.botlake).
+workspace use --workspace, then BL_WORKSPACE, then the main Git checkout.
+BL_HOME selects the supervisor home (default: ~/.botlake).
 `
 
 const lakeUsage = `Usage:
@@ -46,9 +46,10 @@ Commands:
   list        List active lakes
   eval        Run trusted JavaScript against a running lake
 
-For start, restart, stop, status and info, --workspace PATH|NAME defaults to
-the main Git checkout. Outside Git, pass --workspace. New lakes require a path;
-published names select active lakes. "botlake help lake COMMAND" shows details.
+Workspace selection: --workspace PATH|NAME overrides BL_WORKSPACE; otherwise use
+the main Git checkout. Outside Git, set BL_WORKSPACE or pass --workspace.
+New lakes require a path; published names select active lakes.
+"botlake help lake COMMAND" shows details.
 `
 
 func warnAudienceEnvironment() {
@@ -145,9 +146,10 @@ Inspect Bun host readiness and runtime status. ` + common + "\n"
 
 func lakeCommandHelp(command string) string {
 	common := `Flags:
-  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
+  --workspace PATH|NAME  Select a workspace (overrides BL_WORKSPACE)
 
-Outside Git, pass --workspace. For start, a new lake needs a workspace path;
+Without either selection, use the main Git checkout (shared by linked worktrees).
+Outside Git, set BL_WORKSPACE or pass --workspace. A new lake needs a path;
 published names refer to active lakes.
 `
 	switch command {
@@ -155,32 +157,28 @@ published names refer to active lakes.
 		return `Usage:
   botlake lake start [--workspace PATH|NAME]
 
-Start the selected workspace lake. Without --workspace, use the main Git
-checkout (including when invoked from a linked worktree).
+Start the selected workspace lake.
 
 ` + common
 	case "restart":
 		return `Usage:
   botlake lake restart [--workspace PATH|NAME]
 
-Reload the selected workspace configuration and restart its lake. Without
---workspace, use the main Git checkout.
+Reload the selected workspace configuration and restart its lake.
 
 ` + common
 	case "stop":
 		return `Usage:
   botlake lake stop [--workspace PATH|NAME]
 
-Stop the selected lake without stopping the supervisor. Without --workspace,
-use the main Git checkout.
+Stop the selected lake without stopping the supervisor.
 
 ` + common
 	case "status":
 		return `Usage:
   botlake lake status [--workspace PATH|NAME]
 
-Report whether the selected lake is ready. Without --workspace, use the main
-Git checkout.
+Report whether the selected lake is ready.
 
 ` + common
 	case "info":
@@ -196,7 +194,6 @@ Paths are absolute; packageJson and readme
 are null when absent. module is the selected entry; source is its defining
 module, preserved by configured factories. Configuration edits appear after
 restart. This command neither loads modules nor starts inactive lakes.
-Without --workspace, select the main Git checkout.
 
 ` + common
 	case "list":

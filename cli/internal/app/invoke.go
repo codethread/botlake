@@ -52,7 +52,7 @@ func BL(args []string) int {
 	var p invocationFlags
 	flags := flag.NewFlagSet("bl", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&p.workspace, "workspace", "", "workspace path or published name")
+	flags.StringVar(&p.workspace, "workspace", os.Getenv("BL_WORKSPACE"), "workspace path or published name")
 	flags.StringVar(&p.cwd, "cwd", "", "invocation working directory")
 	flags.StringVar(&p.worktree, "worktree-root", "", "explicit Git worktree root")
 	flags.StringVar(&p.common, "git-common-dir", "", "explicit Git common directory")
@@ -327,9 +327,11 @@ Global flags (before the operation):
   --version               Print CLI/build/protocol versions
   -h, --help              Show this dispatcher help without a running workspace
 
-Without --workspace, Git's common directory selects the main checkout's lake.
-Linked worktrees share its configuration and data. Outside Git, pass --workspace.
-Git context overrides do not change workspace selection.
+Workspace selection: --workspace overrides BL_WORKSPACE; otherwise Git's common
+directory selects the main checkout's lake. Linked worktrees share its data.
+Outside Git, set BL_WORKSPACE or pass --workspace. Cwd and Git context remain
+independent of an explicitly selected lake; changing directory does not override
+BL_WORKSPACE.
 
 Workspace operations:
   bl help                        List selected operations

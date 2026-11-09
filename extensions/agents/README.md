@@ -87,6 +87,56 @@ bl flag set agent/claude false  # Keep Claude registered, but unavailable for ne
 
 Waiting requires explicitly selected [Batteries](../batteries/README.md); Agents owns the `agent-run-settled` query, not the wait operation. Check `reason: "satisfied"`, then inspect `agent/substatus`, `agent/result` and `agent/error` with `agent show`. Settlement includes failure and cancellation; `completed` indicates successful execution. Closed/stopped alone does not establish settled custody. Timeout or interruption stops only the wait, not the agent. External sessions have no settlement guarantee, and run success does not close the served task.
 
+## Working across repositories
+
+Choose the **owning lake** independently of the **execution directory**:
+
+```text
+Where should the run be recorded?
+  |
+  +-- Coordinator lake --> bl --workspace OWNER agent start --cwd OTHER_REPO ...
+  |
+  +-- Destination lake --> bl --workspace DEST agent start --cwd DEST_REPO ...
+                              |
+                              +-- Observe elsewhere? --> agent follow at the observer
+```
+
+The selected lake supplies seats, flags and system prompts, owns process custody and retains the run, result and native activity. `agent start --cwd` changes only the agent's execution directory; it neither starts nor selects that directory's lake. The repository's native harness instructions still come from its execution context. Linked Git worktrees normally share their main checkout's lake, rather than creating another lake.
+
+Managed agents receive `BL_WORKSPACE` set to the owning lake's absolute path. Plain `bl` commands, `botlake lake`/`bin` commands and installed native adapters use that owner even after changing directories. Global `--workspace` explicitly selects another lake for a command without moving the existing run or redirecting its native activity. Keep `BL_WORKSPACE` intact for the managed session.
+
+### Execute elsewhere, keep ownership here
+
+```sh
+bl --workspace OWNER agent start --seat reviewer --cwd /path/to/OTHER_REPO \
+  --target OWNER_TASK --prompt "Inspect this repo and report findings on the owner's task."
+bl --workspace OWNER await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
+bl --workspace OWNER agent activity peek RUN_ID
+bl --workspace OWNER agent show RUN_ID
+```
+
+`OTHER_REPO` need not have a Botlake lake. `OWNER_TASK` is the owner's original task ID, not an imported reference. Settlement does not close it. Operations intentionally addressing the other lake use `bl --workspace OTHER …`; cross-lake task mutations do not acquire a same-lake managed assignment binding merely because the run has an identity.
+
+### Execute and record at the destination
+
+```sh
+bl --workspace DEST agent catalog
+bl --workspace DEST agent start --seat reviewer --cwd /path/to/DEST_REPO \
+  --target DEST_TASK --prompt "Complete the destination task and report results."
+bl --workspace OWNER agent follow RUN_ID --from-workspace DEST
+bl --workspace DEST agent show RUN_ID
+```
+
+Start the destination lake with its required extensions and seats first. A launch at `DEST` uses its configuration, not the coordinator's. The new child receives `BL_WORKSPACE=DEST` even when its caller belongs to `OWNER`. Following is optional and requires the reference configuration below; it observes the run without copying activity, results or custody. Use the destination's original `RUN_ID` for settlement waits, activity reads, retry, resume and cancellation. A followed node's closed state is not proof of successful execution or settled custody.
+
+To coordinate **tasks** instead of just observing a run, use Work's [cross-lake links](../work/README.md#relationships), for example:
+
+```sh
+bl --workspace OWNER work link OWNER_TASK DEST_TASK --to-workspace DEST --relation depends-on
+```
+
+The tasks remain separate: the imported endpoint is a read-only summary, not a local task that can be claimed, closed or passed to `agent start --target`. Start the serving run in the task's owning lake; use an owner-recorded run executing in another repo when the task should stay at the coordinator. Remote task closure affects dependency readiness; it does not close the coordinator's task.
+
 ## Following another lake's run
 
 Supply a shared [reference library](../references/README.md) to `agents({ references })` and explicitly select that library alongside Agents. Configure `agentReferenceProjections` on the source library; combine it with other domain projections when needed. Imports alone activate nothing.
