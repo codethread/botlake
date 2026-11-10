@@ -16,5 +16,6 @@ minimumReleaseAgeExcludes = [
   "@botlake/extension-ui",
   "@botlake/extension-work",
   "@botlake/extension-work-agents",
+  "@botlake/extension-work-auto-bot",
   "@botlake/extension-workflow",
 ]

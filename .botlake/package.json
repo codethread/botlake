@@ -16,6 +16,7 @@
     "@botlake/extension-ui": "latest",
     "@botlake/extension-work": "latest",
     "@botlake/extension-work-agents": "latest",
+    "@botlake/extension-work-auto-bot": "latest",
     "@botlake/extension-workflow": "latest",
     "@botlake/native-session": "latest",
     "xstate": "5.33.3",
@@ -33,6 +34,7 @@
       "./.botlake/src/priming.ts",
       "./.botlake/src/work.ts",
       "./.botlake/src/work-agents.ts",
+      "./.botlake/src/work-auto-bot.ts",
       "./.botlake/src/workflow.ts",
       "@botlake/extension-cron",
       "@botlake/extension-ui"
