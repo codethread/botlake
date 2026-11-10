@@ -41,7 +41,7 @@
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-references": "workspace:*",
-        "@botlake/extension-ui": "0.1.0",
+        "@botlake/extension-ui": "latest",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
@@ -92,13 +92,13 @@
       "name": "ct-config",
       "version": "0.1.0",
       "peerDependencies": {
-        "@botlake/core": "^0.1.0",
-        "@botlake/extension-agents": "^0.1.0",
-        "@botlake/extension-flags": "^0.1.0",
-        "@botlake/extension-identity": "^0.1.0",
-        "@botlake/extension-references": "^0.1.0",
-        "@botlake/extension-work": "^0.1.0",
-        "@botlake/extension-work-agents": "^0.1.0",
+        "@botlake/core": "^0.2.0",
+        "@botlake/extension-agents": "^0.2.0",
+        "@botlake/extension-flags": "^0.2.0",
+        "@botlake/extension-identity": "^0.2.0",
+        "@botlake/extension-references": "^0.2.0",
+        "@botlake/extension-work": "^0.2.0",
+        "@botlake/extension-work-agents": "^0.2.0",
       },
     },
     "extensions/diary": {
@@ -246,7 +246,7 @@
 
     "@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
 
-    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.0", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-zd37JPPqLU/qV61xYfe6stJpgjmhkxF64q+s/SxVW+u9q7cpxIPxJD/y2C5damJOexiDqdnpMN9KpzPCvdpDEw=="],
+    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.1", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-6aCQPOeSAfDwQGGOP0qXT3Xe/AXy6hKMVLIkY4KHhi2tyEtVIkLlpEQHhtrJjehmyi0CkmUSFI5o4N6R0r491g=="],
 
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 
