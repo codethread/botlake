@@ -291,7 +291,7 @@ TTL starts at managed custody settlement or an external native session end. Quie
 
 ## Native integration
 
-[Native adapters](../../plugins/identity/README.md) are separately delivered as `@botlake/identity`. Agents never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
+[Native adapters](../../plugins/identity/README.md) are supplied as the private, repository-local `@botlake/identity` harness plugin rather than an npm runtime package. Agents never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
 
 Every managed launch scrubs inherited `BL_ACTOR`. A verified resume then receives its established identity, including retry attempts that resume; fresh launches rely on native observation. Launches also set `BL_AGENT_SEAT` and configured `BL_MODEL`/`BL_EFFORT`, clearing inherited tracking values when unknown. `bl agent native` defaults metadata from the caller's environment, with explicit fields taking precedence.
 

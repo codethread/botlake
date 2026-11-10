@@ -2,10 +2,12 @@
   "name": "@botlake/extension-workflow",
   "version": "0.1.0",
   "description": "Authored XState workflows projected into Work tasks and groups.",
+  "license": "MIT",
   "files": [
     "src",
     "examples",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

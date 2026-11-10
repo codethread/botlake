@@ -2,9 +2,11 @@
   "name": "@botlake/extension-references",
   "version": "0.1.0",
   "description": "Source-owned node summaries and cross-lake subscriptions.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {
