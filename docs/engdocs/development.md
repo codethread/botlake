@@ -2,14 +2,16 @@
 
 ## Setup
 
-Requires Bun, Go and mise. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, as TypeScript source, including its executable Bun CLI; no UI checkout or build is needed. From the Botlake checkout, run:
+Requires Bun, Go, mise and the [Skillbox CLI](https://github.com/codethread/skillbox) on `PATH`. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, as TypeScript source, including its executable Bun CLI; no UI checkout or build is needed. From the Botlake checkout, run:
 
 ```sh
 mise run install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The [mise tasks](../../mise.toml) install development dependencies, install the shared configuration package and the independent lake and place both Go CLIs in `~/.local/bin`.
+The [mise tasks](../../mise.toml) restore agent skills, install development dependencies, install the shared configuration package and the independent lake and place both Go CLIs in `~/.local/bin`.
+
+`skillbox sync` restores the bundles selected in `skillbox/config.json`, verifying contents against `skillbox/lock.json`; commit both files together. Botlake-owned sources live in `skillbox/botlake/`. Edit those sources, not the ignored `.agents/skills/` installation or its `.claude/skills` link. Sync rejects source hash drift rather than updating the lock.
 
 If no supervisor is running, start one in a separate terminal:
 

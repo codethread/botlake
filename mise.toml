@@ -1,6 +1,7 @@
 [tasks.install]
-description = "Install workspace dependencies and the Botlake CLIs"
+description = "Restore agent skills, install workspace dependencies and the Botlake CLIs"
 run = '''
+skillbox sync
 bun install --frozen-lockfile
 bun install --cwd .botlake --frozen-lockfile
 GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl

@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-browser": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "dd491d53824ad9286ec950aee667098446332429a6d41fe28b4ba11f1959264c",
+      "skillPath": "skillbox/harness/agent-browser/SKILL.md",
+      "installMode": "copy"
+    },
+    "agent-clis": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "2a479b16c1716f780a37cd228c0a1ac8ce04180be3c45d006d8673847f4e5a3d",
+      "skillPath": "skillbox/writing/agent-clis/SKILL.md",
+      "installMode": "copy"
+    },
+    "agent-docs-hotpath": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "d3b1fb4b11b810d915a0e2740081bd9f6b6078960d2b2b0407ef8883a8647909",
+      "skillPath": "skillbox/writing/agent-docs-hotpath/SKILL.md",
+      "installMode": "copy"
+    },
+    "bench": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "f91947f890768cf4b80e1bb72082c8d8db0bc438630a25254d562a585272b569",
+      "skillPath": "skillbox/harness/bench/SKILL.md",
+      "installMode": "copy"
+    },
+    "botlake-ops": {
+      "source": "./skillbox",
+      "sourceType": "local",
+      "computedHash": "87bd88d1228917e6071ad87813a356afc61865ca8f2cb1ff1bfeda5c51a32ec7",
+      "installMode": "copy"
+    },
+    "codebase-design": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "b9b9081b45c2623311f0bd8681f69e927f2f9b69ad0397ad1531ee72b1c2b30c",
+      "skillPath": "skillbox/coding/codebase-design/SKILL.md",
+      "installMode": "copy"
+    },
+    "declutter": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "a2f10372267712c3e807afb94cf7079c22c1fcb0e502e35842a7ee98dc13b1b4",
+      "skillPath": "skillbox/coding/declutter/SKILL.md",
+      "installMode": "copy"
+    },
+    "docs-styleguide": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "e2db75d6394726c3d99a734ecb14455f9d354ba183e549b48f46bfc864945f70",
+      "skillPath": "skillbox/projects/docs-styleguide/SKILL.md",
+      "installMode": "copy"
+    },
+    "git-commit": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "1672f34e333aef02a631ac52edb1967967f80d3eff61e63f462cd5a3b81d380f",
+      "skillPath": "skillbox/coding/git-commit/SKILL.md",
+      "installMode": "copy"
+    },
+    "git-worktree-cleanup": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "95a041caebcc478bcc4b8eea4f8bef85bdb054c4fd5ec1bd7c86f69aa7eaf757",
+      "skillPath": "skillbox/coding/git-worktree-cleanup/SKILL.md",
+      "installMode": "copy"
+    },
+    "github": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "7f7dcca695f668fb8b422e39277068a1a01d11a5b0f80c266c1a7390d33a595c",
+      "skillPath": "skillbox/projects/github/SKILL.md",
+      "installMode": "copy"
+    },
+    "io-dependency-seams": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "e3e27aa7f1502b6243898cda6fa6d323e41d89c69245c60f48aa53c172355a9e",
+      "skillPath": "skillbox/coding/io-dependency-seams/SKILL.md",
+      "installMode": "copy"
+    },
+    "mermaid": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "ee8d17fa5cd9f5b4f64ff358be486d84b65beb57647716c9059df8fe6073e195",
+      "skillPath": "skillbox/writing/mermaid/SKILL.md",
+      "installMode": "copy"
+    },
+    "purge": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "7d89e2771e866dd7e863df41338e1e39be39e35e05704d23d26f140cd31925af",
+      "skillPath": "skillbox/coding/purge/SKILL.md",
+      "installMode": "copy"
+    },
+    "release": {
+      "source": "./skillbox",
+      "sourceType": "local",
+      "computedHash": "1c1b2fea4f9529f1b8bf3c99415d0b9f5e9b3ca40232aa403bf95e443ce0cd0f",
+      "installMode": "copy"
+    },
+    "rich-response": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "1c74403966d4cc3d96dd97d05b5ccf2b8de3bfe9c5504c002103d7b07418ffe6",
+      "skillPath": "skillbox/harness/rich-response/SKILL.md",
+      "installMode": "copy"
+    },
+    "robustness": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "0fa8f1a6c27bf1eb696ba0668b185672a40781c2cc6b7778df7e748da4ada694",
+      "skillPath": "skillbox/coding/robustness/SKILL.md",
+      "installMode": "copy"
+    },
+    "session-introspection-claude": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "64122e8a23b14074d46c28968889028f35f89802a51f75009323620cb5f82f4b",
+      "skillPath": "skillbox/harness/session-introspection-claude/SKILL.md",
+      "installMode": "copy"
+    },
+    "session-introspection-codex": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "35ff8d6754857a9802a8bb0a432962e33d9d4d771bd69c41070921668c3ed124",
+      "skillPath": "skillbox/harness/session-introspection-codex/SKILL.md",
+      "installMode": "copy"
+    },
+    "session-introspection-pi": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "0e31cedb809c73f64d9038ec1706766389a5a1eb4d9540eed99bbe8351578512",
+      "skillPath": "skillbox/harness/session-introspection-pi/SKILL.md",
+      "installMode": "copy"
+    },
+    "tmux": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "cd206f1d9637ef6901c4386ab576eac4d02d47db91450f2e367d69d809d6cb3d",
+      "skillPath": "skillbox/harness/tmux/SKILL.md",
+      "installMode": "copy"
+    },
+    "typescript": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "d5f46473717b19ac03e4da4da5d65fce74d4b4af6bff5475134cca32809f165d",
+      "skillPath": "skillbox/dev/typescript/SKILL.md",
+      "installMode": "copy"
+    },
+    "writing-for-agents": {
+      "source": "codethread/agents",
+      "sourceType": "github",
+      "computedHash": "387990a9c20828858e213441f5fdf56f2d74ff078510260db296951e275f3452",
+      "skillPath": "skillbox/writing/writing-for-agents/SKILL.md",
+      "installMode": "copy"
+    }
+  }
+}
