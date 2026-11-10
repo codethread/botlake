@@ -51,23 +51,27 @@ type lakeOptions struct {
 	Env map[string]string `json:"env"`
 }
 
+type hostRuntimeStatus struct {
+	CoreVersion string `json:"coreVersion"`
+}
+
 const (
 	lakeInstallStart   = "lake-install-start"
 	lakeInstallTimeout = 2 * time.Minute
 )
 
 type Daemon struct {
-	mu                     sync.Mutex
-	lifecycle              sync.Mutex
-	members                map[string]Member
-	custodies              map[string]*process.Custody
-	host                   *exec.Cmd
-	hostDone               chan struct{}
-	hostReady              bool
-	hostError              string
-	stopping               bool
-	listener               net.Listener
-	home, core, hostSocket string
+	mu                                  sync.Mutex
+	lifecycle                           sync.Mutex
+	members                             map[string]Member
+	custodies                           map[string]*process.Custody
+	host                                *exec.Cmd
+	hostDone                            chan struct{}
+	hostReady                           bool
+	hostError                           string
+	stopping                            bool
+	listener                            net.Listener
+	home, core, hostSocket, coreVersion string
 }
 
 func Home() string {
@@ -158,10 +162,46 @@ func (d *Daemon) control(action, workspace string, env map[string]string) error 
 	}
 
 	if !frame.OK {
-		return fmt.Errorf("host: %v", frame.Error)
+		return hostFrameError(frame.Error)
 	}
 
 	return nil
+}
+
+func hostFrameError(value any) error {
+	if frame, ok := value.(map[string]any); ok {
+		if message, ok := frame["message"].(string); ok {
+			return fmt.Errorf("host: %s", message)
+		}
+	}
+
+	return fmt.Errorf("host: %v", value)
+}
+
+func (d *Daemon) readHostStatus() (hostRuntimeStatus, error) {
+	conn, err := d.hostCall("/control", map[string]any{"action": "status"})
+	if err != nil {
+		return hostRuntimeStatus{}, err
+	}
+
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	var frame struct {
+		OK     bool              `json:"ok"`
+		Result hostRuntimeStatus `json:"result"`
+		Error  any               `json:"error"`
+	}
+	if err := json.NewDecoder(conn).Decode(&frame); err != nil {
+		return hostRuntimeStatus{}, err
+	}
+	if !frame.OK {
+		return hostRuntimeStatus{}, hostFrameError(frame.Error)
+	}
+	if frame.Result.CoreVersion == "" {
+		return hostRuntimeStatus{}, errors.New("Bun host did not report its loaded @botlake/core version")
+	}
+
+	return frame.Result, nil
 }
 
 func (d *Daemon) bootHost() error {
@@ -197,6 +237,7 @@ func (d *Daemon) bootHost() error {
 		recover := !d.stopping && d.host == cmd && d.hostReady
 		if d.host == cmd {
 			d.hostReady = false
+			d.coreVersion = ""
 		}
 
 		d.mu.Unlock()
@@ -214,7 +255,7 @@ func (d *Daemon) bootHost() error {
 		default:
 		}
 
-		if err := d.control("status", "", nil); err == nil {
+		if status, err := d.readHostStatus(); err == nil {
 			d.mu.Lock()
 
 			select {
@@ -225,6 +266,7 @@ func (d *Daemon) bootHost() error {
 			}
 
 			d.hostReady = true
+			d.coreVersion = status.CoreVersion
 			d.mu.Unlock()
 
 			return nil
@@ -529,8 +571,8 @@ func (d *Daemon) handle(conn net.Conn) {
 	}
 
 	_ = conn.SetReadDeadline(time.Time{})
-	if req.Protocol != 1 || req.ID == "" {
-		encode(conn, errFrame(errors.New("protocol_version=1 and request_id are required")))
+	if req.Protocol != protocolVersion || req.ID == "" {
+		encode(conn, errFrame(fmt.Errorf("protocol_version=%d and request_id are required", protocolVersion)))
 
 		return
 	}
@@ -702,7 +744,10 @@ func (d *Daemon) handle(conn net.Conn) {
 		if err != nil {
 			encode(conn, errFrame(err))
 		} else {
-			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true}})
+			d.mu.Lock()
+			coreVersion := d.coreVersion
+			d.mu.Unlock()
+			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true, "coreVersion": coreVersion}})
 		}
 	case "lake-info":
 		d.lifecycle.Lock()
@@ -728,12 +773,15 @@ func (d *Daemon) handle(conn net.Conn) {
 		}
 		sort.Slice(members, func(i, j int) bool { return members[i].Path < members[j].Path })
 		pid := d.host.Process.Pid
-		ready, hostError := d.hostReady, d.hostError
+		ready, hostError, coreVersion := d.hostReady, d.hostError, d.coreVersion
 		d.mu.Unlock()
 		if req.Operation == "lake-list" {
 			encode(conn, Frame{OK: true, Result: members})
 		} else {
-			encode(conn, Frame{OK: true, Result: map[string]any{"pid": os.Getpid(), "hostPid": pid, "hostReady": ready, "hostError": hostError, "members": members}})
+			encode(conn, Frame{OK: true, Result: map[string]any{
+				"pid": os.Getpid(), "supervisorVersion": Version, "supervisorBuildId": buildID(), "protocolVersion": protocolVersion,
+				"hostPid": pid, "hostReady": ready, "hostError": hostError, "coreVersion": coreVersion, "members": members,
+			}})
 		}
 	case "host-status":
 		response, err := d.hostCall("/control", map[string]any{"action": "status"})
@@ -883,5 +931,5 @@ func request(operation, target string, payload any) Request {
 		panic(err)
 	}
 
-	return Request{Protocol: 1, ID: rand.Text(), Operation: operation, Workspace: target, CWD: cwd, Payload: data}
+	return Request{Protocol: protocolVersion, ID: rand.Text(), Operation: operation, Workspace: target, CWD: cwd, Payload: data}
 }

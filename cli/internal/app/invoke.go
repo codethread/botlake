@@ -17,19 +17,24 @@ import (
 
 var Version = "0.1.0"
 
+const protocolVersion = 1
+
 func printVersion() int {
-	build := "development"
+	encode(os.Stdout, map[string]any{"cli_version": Version, "cli_build_id": buildID(), "protocol_version": protocolVersion})
+
+	return 0
+}
+
+func buildID() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" {
-				build = setting.Value
+				return setting.Value
 			}
 		}
 	}
 
-	encode(os.Stdout, map[string]any{"version": Version, "build_id": build, "protocol_version": 1})
-
-	return 0
+	return "development"
 }
 
 type payloadFlags []string
@@ -62,7 +67,7 @@ func BL(args []string) int {
 	flags.Var(&p.payloads, "payload", "named text payload: name=path (repeatable)")
 	flags.BoolVar(&p.stdin, "stdin", false, "read stdin into the stdin payload")
 	flags.BoolVar(&p.dryRun, "dry-run", false, "print the request without invoking it")
-	flags.BoolVar(&p.version, "version", false, "print CLI and protocol versions")
+	flags.BoolVar(&p.version, "version", false, "print this CLI's build and protocol versions")
 	flags.BoolVar(&p.help, "help", false, "show dispatcher help")
 	flags.BoolVar(&p.help, "h", false, "show dispatcher help")
 	flags.BoolVar(&p.json, "json", false, "force machine-readable output")
@@ -324,7 +329,7 @@ Global flags (before the operation):
   --identity NAME         Set caller identity, overriding nonblank BL_ACTOR
   --json                  Force JSON output, including help and errors
   --dry-run               Print the request without invoking it
-  --version               Print CLI/build/protocol versions
+  --version               Print this CLI's build/protocol versions (offline)
   -h, --help              Show this dispatcher help without a running workspace
 
 Workspace selection: --workspace overrides BL_WORKSPACE; otherwise Git's common

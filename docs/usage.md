@@ -30,7 +30,7 @@ bun install --frozen-lockfile inside .botlake.
 
 Guidance and install output go to stderr; stdout remains JSON. Root files are never modified. With a root workspace, extend its Bun install policy as needed. Install failures return nonzero; fix the error and rerun `bun install --frozen-lockfile` inside `.botlake`.
 
-Configuration lives in `.botlake/package.json`. Its required `botlake` object accepts only `name` and `extensions`; other package fields remain ordinary Bun package configuration:
+Configuration lives in `.botlake/package.json`. Its required `botlake` object accepts only `name`, `extensions` and `minimumCore`; other package fields remain ordinary Bun package configuration:
 
 ```json
 {
@@ -38,12 +38,17 @@ Configuration lives in `.botlake/package.json`. Its required `botlake` object ac
   "type": "module",
   "botlake": {
     "name": "work",
+    "minimumCore": "0.1.0",
     "extensions": ["@botlake/extension-batteries", "./.botlake/priming.ts"]
   }
 }
 ```
 
 `name` defaults to the workspace directory basename, not the package name. An explicit name starts with a letter and contains only letters, digits, underscores or hyphens; active lake names must be unique. Omitted or empty `extensions` activates no domains.
+
+`minimumCore` is an optional semantic version, not a range. A single version is the narrowest representation of the contract: the lake needs that core release or newer. Lake startup compares it with the `@botlake/core` package actually loaded by the supervisor, not a copy installed in the lake, and fails with both versions and supervisor-upgrade instructions when unsatisfied. `botlake status`, `botlake host-status`, `botlake lake status` and `botlake lake info` report the loaded core version; lake info also reports the configured minimum.
+
+Supervisors built before this field existed reject it as unknown rather than producing the new compatibility error. Unreleased builds that retain the same package version (currently `0.1.0`) are not distinguishable through this contract; set a new minimum only after the required core behavior has a distinct released version.
 
 CLI workspace selection is `--workspace PATH|NAME`, then nonempty `BL_WORKSPACE`, then Git discovery. Git discovery uses the main checkout's configuration and `.botlake/world.db`, shared by subdirectories and linked worktrees; worktree-local configurations are ignored. Outside Git, set `BL_WORKSPACE` or pass `--workspace`. Published names select active lakes; a new lake needs a path.
 

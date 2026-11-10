@@ -85,7 +85,7 @@ _bl() {
     '--dry-run[Print the request without invoking it]' \
     '--json[Force JSON output]' \
     '(-h --help)'{-h,--help}'[Show dispatcher help]' \
-    '--version[Print CLI and protocol versions]' \
+    '--version[Print this CLI build and protocol (offline)]' \
     '1:operation:->operation' \
     '*::arguments:->arguments' && ret=0
 
@@ -141,7 +141,7 @@ _botlake() {
 
   _arguments -C -A '-*' \
     "${help[@]}" \
-    '--version[Print CLI and protocol versions]' \
+    '--version[Print this CLI build and protocol (offline)]' \
     '1:command:((
       init\:"Initialize workspace configuration"
       start\:"Run the foreground supervisor"

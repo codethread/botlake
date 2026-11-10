@@ -2,9 +2,10 @@ import { Worker } from "node:worker_threads";
 
 import { z } from "zod";
 
-import { Fault } from "../core/json.ts";
+import { Fault, isFault, jsonSchema } from "../core/json.ts";
 import { workspaceInfoSchema, type WorkspaceInfo } from "./config.ts";
 import { environmentSchema, invocationSchema } from "./protocol.ts";
+import { coreVersion } from "./version.ts";
 
 const socketPathSchema = z.compile(z.string().min(1));
 const envelopeSchema = z.compile(
@@ -41,6 +42,10 @@ const controlSchema = z.compile(
     workspace: z.string().optional(),
     env: environmentSchema.default({}),
   }),
+);
+
+const errorFrameSchema = z.compile(
+  z.object({ code: z.string(), message: z.string(), details: jsonSchema }),
 );
 
 interface Member {
@@ -92,11 +97,7 @@ const server = Bun.listen<Connection>({
       client.data.handled = true;
       client.timeout(0);
       void handle(client, client.data.input.slice(0, newline)).catch((error: unknown) => {
-        write(
-          client,
-          `${JSON.stringify({ ok: false, error: { type: "error", code: "host", message: String(error) } })}\n`,
-          true,
-        );
+        write(client, `${JSON.stringify({ ok: false, error: errorFrame(error) })}\n`, true);
       });
     },
     drain: flush,
@@ -139,7 +140,7 @@ async function handle(client: Bun.Socket<Connection>, line: string): Promise<voi
     if (control.action === "status") {
       write(
         client,
-        `${JSON.stringify({ ok: true, result: { pid: process.pid, memory: process.memoryUsage(), members: [...members.keys()] } })}\n`,
+        `${JSON.stringify({ ok: true, result: { pid: process.pid, coreVersion, memory: process.memoryUsage(), members: [...members.keys()] } })}\n`,
         true,
       );
       return;
@@ -220,7 +221,8 @@ async function start(workspace: string, env: Record<string, string>): Promise<Me
     }
 
     if (message.fatal !== undefined) {
-      failed(new Error(JSON.stringify(message.fatal)));
+      const failure = errorFrameSchema.parse(message.fatal);
+      failed(new Fault(failure.code, failure.message, failure.details));
       void worker.terminate();
     }
 
@@ -283,6 +285,15 @@ async function stop(workspace: string): Promise<void> {
     await member.worker.terminate();
     members.delete(workspace);
   }
+}
+
+function errorFrame(error: unknown): unknown {
+  return {
+    type: "error",
+    code: isFault(error) ? error.code : "host",
+    message: error instanceof Error ? error.message : String(error),
+    details: isFault(error) ? error.details : null,
+  };
 }
 
 function write(client: Bun.Socket<Connection>, frame: string, end = false): void {

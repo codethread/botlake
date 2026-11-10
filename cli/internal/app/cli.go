@@ -26,7 +26,7 @@ Commands:
   lake <command>     Manage a workspace lake or evaluate code
   bin <command>      List, build or run extension-provided programs
   completions zsh    Print the zsh completion script
-  --version          Print CLI, build and protocol versions
+  --version          Print this CLI's build and protocol versions
 
 Use "botlake COMMAND --help", "botlake GROUP COMMAND --help", or
 "botlake help COMMAND [SUBCOMMAND]" for details. Commands that select a
@@ -100,7 +100,7 @@ func helpCLI(path []string) int {
 		}
 	case "--version":
 		if len(path) == 1 {
-			return writeHelp("Usage:\n  botlake --version\n\nPrint the CLI version, build ID and protocol version as JSON.\n")
+			return writeHelp("Usage:\n  botlake --version\n\nPrint this executable's CLI version, build ID and wire protocol version as JSON. This is offline; use botlake status for the running supervisor and loaded core.\n")
 		}
 	}
 
@@ -122,7 +122,7 @@ running while using lakes. BL_HOME selects the supervisor home (default:
 		return `Usage:
   botlake status
 
-Show the supervisor process, Bun host readiness and registered lakes. ` + common + "\n"
+Show the running supervisor build/protocol, loaded core version, Bun host readiness and registered lakes. ` + common + "\n"
 	case "stop":
 		return `Usage:
   botlake stop
@@ -138,7 +138,7 @@ configuration. ` + common + "\n"
 		return `Usage:
   botlake host-status
 
-Inspect Bun host readiness and runtime status. ` + common + "\n"
+Inspect Bun host readiness, loaded core version and runtime status. ` + common + "\n"
 	default:
 		return botlakeUsage
 	}
@@ -180,7 +180,7 @@ Stop the selected lake without stopping the supervisor.
 		return `Usage:
   botlake lake status [--workspace PATH|NAME]
 
-Report whether the selected lake is ready.
+Report whether the selected lake is ready and the loaded core version.
 
 ` + common
 	case "info":
@@ -188,7 +188,7 @@ Report whether the selected lake is ready.
   botlake lake info [--workspace PATH|NAME]
 
 Show the running lake's startup snapshot as JSON:
-{path,name,packageJson,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
+{path,name,packageJson,coreVersion,minimumCore,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
 
 Extensions follow selection order. Their name is the runtime extension name,
 not the package name. description comes from package.json, or null when absent.
