@@ -246,7 +246,7 @@
 
     "@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
 
-    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.1", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-6aCQPOeSAfDwQGGOP0qXT3Xe/AXy6hKMVLIkY4KHhi2tyEtVIkLlpEQHhtrJjehmyi0CkmUSFI5o4N6R0r491g=="],
+    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.2", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-5pG/Y/7dhi8UUF2YPtTRo/QxtlBUvOlZ/uSbQSvYjP7YQ4X+Ur/YCnkveU3ER9e+/78VgmO81/T+jHqHIm9ytw=="],
 
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 
