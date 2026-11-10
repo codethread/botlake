@@ -126,9 +126,7 @@ if (!values.packed) {
   const availability = await Promise.all(
     packages.map(async (item) => {
       const specifier = `${item.manifest.name}@${item.manifest.version}`;
-      const response = await fetch(
-        `${registry}/${encodeURIComponent(item.manifest.name)}/${item.manifest.version}`,
-      );
+      const response = await fetch(`${registry}/${encodeURIComponent(item.manifest.name)}`);
       if (response.status === 404)
         return {
           status: "unavailable" as const,
@@ -140,7 +138,19 @@ if (!values.packed) {
         throw new Error(
           `Registry lookup failed for ${specifier}: ${response.status} ${response.statusText}`,
         );
-      const published = registryMetadata(await response.json());
+      const packument: unknown = await response.json();
+      assertRecord(packument, `${specifier} package metadata`);
+      const versions = packument["versions"];
+      assertRecord(versions, `${specifier} versions`);
+      const versionMetadata = versions[item.manifest.version];
+      if (versionMetadata === undefined)
+        return {
+          status: "unavailable" as const,
+          stage: "version-metadata",
+          specifier,
+          archive: item.archive,
+        };
+      const published = registryMetadata(versionMetadata);
       assert.equal(published.name, item.manifest.name);
       assert.equal(published.version, item.manifest.version);
       assert.equal(
