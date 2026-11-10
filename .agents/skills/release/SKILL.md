@@ -36,3 +36,15 @@ Release only core, native-session and the lake extensions under `extensions/`, e
    Record each npm acceptance in the release task notes. Newly accepted versions can return 404 for several minutes; that is pending distribution, not permission to publish again. A tarball-stage 404 always means wait for distribution. Rerun published verification after each publication or approval window. Never publish an accepted or available version again; verification either confirms its integrity or fails on a mismatch. Published verification is complete only when the full set installs and passes the SQLite smoke.
 
 The registry availability report is the resumable cutover checkpoint. A Botlake Workflow run would not observe npm's irreversible side effect more reliably, so this release does not add parallel workflow orchestration.
+
+## Pack the private shared configuration
+
+`extensions/ct-config` is packaged like the runtime packages but remains private and unpublished. Its canonical source stays in that directory; never generate or copy configuration into consumer repositories.
+
+```sh
+rm -rf dist/private && mkdir -p dist/private
+(cd extensions/ct-config && bun pm pack --destination ../../dist/private --ignore-scripts)
+bun scripts/verify-private-config.ts
+```
+
+Keep `private: true`, omit `publishConfig`, include `src`, `README.md` and `LICENSE`, and use `workspace:^` for Botlake peers in the source manifest. Bun must rewrite those protocols to public semver ranges in the packed manifest. Freeze the versioned archive under `dist/private/` in the canonical checkout, record its SHA-512 integrity, and install it in consumers as a file dependency alongside public npm peers. Do not publish it or add wrapper tasks; consumer wrapper modules only import the configured exports from `ct-config`.

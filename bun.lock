@@ -90,7 +90,7 @@
     },
     "extensions/ct-config": {
       "name": "ct-config",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "peerDependencies": {
         "@botlake/core": "^0.2.0",
         "@botlake/extension-agents": "^0.2.0",

@@ -2,7 +2,17 @@
 
 Personal lake configuration: agent roster and prompts, provider flags, reference projections, priming, Work and Work–Agents settings. Imports only construct extension descriptors; nothing activates until the lake explicitly selects it.
 
-Install `ct-config` and its peers in the lake package. Keep each selected configuration module as a one-line wrapper:
+`ct-config` is a private source package. It is packed locally and never published. From the repository root, create and verify the canonical archive:
+
+```sh
+rm -rf dist/private && mkdir -p dist/private
+(cd extensions/ct-config && bun pm pack --destination ../../dist/private --ignore-scripts)
+bun scripts/verify-private-config.ts
+```
+
+Freeze `dist/private/ct-config-0.1.1.tgz` in the canonical checkout. Add that tarball as the lake's `ct-config` file dependency and install its public peers from npm. Bun rewrites the source manifest's `workspace:^` peer protocols to ordinary compatible version ranges in the archive; consumers therefore resolve core and extensions from their own `node_modules`, not this repository.
+
+Keep the configuration source only here. Do not create package-generation tasks or copy configuration into consumers. Keep each selected consumer module as a one-line import wrapper:
 
 ```ts
 export { agents as default } from "ct-config";
