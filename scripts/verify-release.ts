@@ -13,6 +13,7 @@ const publicPackages = [
   { directory: "extensions/agents", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/batteries", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/cron", assets: ["src", "README.md", "LICENSE"] },
+  { directory: "extensions/ct-config", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/diary", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/flags", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/identity", assets: ["src", "README.md", "LICENSE"] },
@@ -28,11 +29,6 @@ const publicPackages = [
 const excludedPackages = [
   { directory: ".", name: "botlake", reason: "private workspace root" },
   { directory: ".botlake", name: "@botlake/dogfood", reason: "private dogfood lake" },
-  {
-    directory: "extensions/ct-config",
-    name: "ct-config",
-    reason: "private operator configuration",
-  },
   {
     directory: "plugins/identity",
     name: "@botlake/identity",
@@ -201,6 +197,7 @@ try {
   await mkdir(home);
   await mkdir(bin);
   const configuredExtensions: Record<string, string> = {
+    "@botlake/extension-ct-config": "ctPriming",
     "@botlake/extension-references": "references",
     "@botlake/extension-agents": "agents",
     "@botlake/extension-work": "work",
@@ -210,6 +207,7 @@ try {
   await writeFile(
     join(config, "bindings.ts"),
     `
+export { priming as ctPriming } from "@botlake/extension-ct-config";
 import { references as createReferences } from "@botlake/extension-references";
 import { agents as createAgents, agentReferenceProjections } from "@botlake/extension-agents";
 import { work as createWork, workReferenceProjections } from "@botlake/extension-work";

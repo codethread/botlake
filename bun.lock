@@ -9,6 +9,7 @@
         "@botlake/extension-agents": "workspace:*",
         "@botlake/extension-batteries": "workspace:*",
         "@botlake/extension-cron": "workspace:*",
+        "@botlake/extension-ct-config": "workspace:*",
         "@botlake/extension-diary": "workspace:*",
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
@@ -69,16 +70,16 @@
       },
     },
     "extensions/ct-config": {
-      "name": "ct-config",
-      "version": "0.1.1",
+      "name": "@botlake/extension-ct-config",
+      "version": "0.2.0",
       "peerDependencies": {
-        "@botlake/core": "^0.2.0",
-        "@botlake/extension-agents": "^0.2.0",
-        "@botlake/extension-flags": "^0.2.0",
-        "@botlake/extension-identity": "^0.2.0",
-        "@botlake/extension-references": "^0.2.0",
-        "@botlake/extension-work": "^0.2.0",
-        "@botlake/extension-work-agents": "^0.2.0",
+        "@botlake/core": "workspace:^",
+        "@botlake/extension-agents": "workspace:^",
+        "@botlake/extension-flags": "workspace:^",
+        "@botlake/extension-identity": "workspace:^",
+        "@botlake/extension-references": "workspace:^",
+        "@botlake/extension-work": "workspace:^",
+        "@botlake/extension-work-agents": "workspace:^",
       },
     },
     "extensions/diary": {
@@ -215,6 +216,8 @@
     "@botlake/extension-batteries": ["@botlake/extension-batteries@workspace:extensions/batteries"],
 
     "@botlake/extension-cron": ["@botlake/extension-cron@workspace:extensions/cron"],
+
+    "@botlake/extension-ct-config": ["@botlake/extension-ct-config@workspace:extensions/ct-config"],
 
     "@botlake/extension-diary": ["@botlake/extension-diary@workspace:extensions/diary"],
 
@@ -373,8 +376,6 @@
     "bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
     "cron-parser": ["cron-parser@5.10.2", "", { "dependencies": { "luxon": "^3.7.2" } }, "sha512-JfAYMY0LZaWQTuict8PhtF/ksSnq8xefSDmQUnnoqvkPYkU/y3UP0DTWzJKFBz0P1IXsDG8q0vY3zHkoFZOhvw=="],
-
-    "ct-config": ["ct-config@workspace:extensions/ct-config"],
 
     "dependency-graph": ["dependency-graph@1.0.0", "", {}, "sha512-cW3gggJ28HZ/LExwxP2B++aiKxhJXMSIt9K48FOXQkm+vuG5gyatXnLsONRJdzO/7VfjDIiaOOa/bs4l464Lwg=="],
 
