@@ -2,6 +2,8 @@
 
 Explicitly select Identity, Work and Workflow. Imports are inert; `workflows()` is the configured extension. There are no built-in workflows and no automatic agent launches.
 
+Install compatible `xstate` and `zod` versions in the lake package. Workflow declares both as peers because lake definitions pass XState machines and Zod schemas into the extension.
+
 ## Model
 
 A run records execution and is not a Work item. It points at one Work context group and publishes visits as Work tasks, context groups or gates. `workflow-member` retains every published visit; `workflow-active` marks only the current frontier. Context nesting follows Work's `parent-of` tree independently of execution membership; `start --parent` nests only the context group.
