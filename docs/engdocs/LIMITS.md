@@ -19,4 +19,4 @@ Provider tests use deterministic subprocess fixtures, not live model accounts. C
 
 ## Measurements
 
-[Pool measurements](pool-benchmark.json) record one local run, not a performance guarantee. Reproduce with `bun scripts/benchmark.ts 24` using packed packages, disposable lakes and real SQLite load. RSS includes the Bun host and all workers, not the Go supervisor or load clients.
+The [pool contract](lake-pools.md) compares the current [standalone baseline](standalone-benchmark.json) with the [historical shared-process probe](pool-benchmark.json). These are local measurements, not performance guarantees. Reproduce the standalone result with `bun scripts/benchmark.ts 24` using packed packages, disposable lakes and real SQLite load. RSS excludes the Go supervisor and load clients.

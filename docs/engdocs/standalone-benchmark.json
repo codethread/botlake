@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-10",
+  "topology": "one Bun process per workspace",
+  "bun": "1.4.2",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M4",
+  "workspaces": 24,
+  "totalMemberRssMiB": 1341.625,
+  "memberRssMiB": {
+    "median": 63.296875,
+    "p95": 64.203125,
+    "p99": 64.734375,
+    "max": 64.734375
+  },
+  "totalStartupMs": 1582.7237910000003,
+  "memberStartupMs": {
+    "median": 62.10758299999998,
+    "p95": 89.4355829999995,
+    "p99": 129.37704199999962,
+    "max": 129.37704199999962
+  },
+  "siblingLatencyMsUnderLoad": {
+    "median": 1.5553329999993366,
+    "p95": 3.2397909999999683,
+    "p99": 4.721167000000605,
+    "max": 4.721167000000605
+  },
+  "siblingEventLoopDelayMsUnderLoad": {
+    "median": 1.258583999999928,
+    "p95": 1.2785410000000184,
+    "p99": 1.3282500000000255,
+    "max": 1.3282500000000255
+  },
+  "databaseLoadMs": {
+    "median": 14.681749999999965,
+    "p95": 16.315000000000055,
+    "p99": 16.315000000000055,
+    "max": 16.315000000000055
+  },
+  "memberRestartMsUnderLoad": 66.1934169999995,
+  "measurement": "One Bun process per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Botlake routing; event loop delay uses a zero-delay timer. RSS is the sum of resident sets reported by ps for the standalone lake processes."
+}

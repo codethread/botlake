@@ -7,14 +7,13 @@ import { z } from "zod";
 import { system } from "../tests/blackbox/fixtures/system.ts";
 
 const count = z.compile(z.coerce.number().int().min(4).max(128)).parse(Bun.argv[2] ?? 24);
-const output = resolve(Bun.argv[3] ?? "docs/engdocs/pool-benchmark.json");
-const statusSchema = z.compile(z.object({ memory: z.object({ rss: z.number() }) }));
+const output = resolve(Bun.argv[3] ?? "docs/engdocs/standalone-benchmark.json");
+const lakeStatusSchema = z.compile(z.object({ pid: z.number().int().positive() }));
 const numberSchema = z.compile(z.number());
 const responseSchema = z.compile(z.object({ ok: z.literal(true), result: z.unknown() }));
 const host = await system();
 
 try {
-  const baseline = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
   const startup: number[] = [];
   const workspaces: string[] = [];
   const extension = `
@@ -82,7 +81,14 @@ try {
   }
 
   const totalStartupMs = performance.now() - began;
-  const rss = statusSchema.parse(await host.botlake(["host-status"])).memory.rss;
+  const pids = await Promise.all(
+    workspaces.map(
+      async (workspace) =>
+        lakeStatusSchema.parse(await host.botlake(["lake", "status", "--workspace", workspace]))
+          .pid,
+    ),
+  );
+  const memberRssMiB = await Promise.all(pids.map((pid) => residentSetMiB(pid)));
   const loadMs: number[] = [];
   async function loadDatabase(): Promise<void> {
     for (let index = 0; index < 20; index++)
@@ -109,14 +115,14 @@ try {
   const [, , restartMs] = await Promise.all([loadDatabase(), probeSiblings(), restartMember()]);
   const report = {
     date: new Date().toISOString().slice(0, 10),
+    topology: "one Bun process per workspace",
     bun: Bun.version,
     platform: platform(),
     arch: arch(),
     cpu: cpus()[0]?.model ?? "unknown",
     workspaces: count,
-    hostBaselineRssMiB: baseline / 1048576,
-    hostLoadedRssMiB: rss / 1048576,
-    incrementalRssMiBPerWorkspace: (rss - baseline) / count / 1048576,
+    totalMemberRssMiB: memberRssMiB.reduce((sum, rss) => sum + rss, 0),
+    memberRssMiB: distribution(memberRssMiB),
     totalStartupMs,
     memberStartupMs: distribution(startup),
     siblingLatencyMsUnderLoad: distribution(latency),
@@ -124,7 +130,7 @@ try {
     databaseLoadMs: distribution(loadMs),
     memberRestartMsUnderLoad: restartMs,
     measurement:
-      "One Bun host with a worker per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Botlake routing; event loop delay uses a zero-delay timer. RSS is total Bun host process RSS including workers.",
+      "One Bun process per workspace; 20 transactions of 100,000 SQLite updates in w0 concurrent with 100 unaffected sibling probes and a w2 restart. Latency includes local Botlake routing; event loop delay uses a zero-delay timer. RSS is the sum of resident sets reported by ps for the standalone lake processes.",
   };
 
   await Bun.write(output, `${JSON.stringify(report, null, 2)}\n`);
@@ -144,6 +150,20 @@ async function invoke(workspace: string, name: string): Promise<unknown> {
     payload: { name, input: {} },
   });
   return responseSchema.parse(JSON.parse(wire)).result;
+}
+
+async function residentSetMiB(pid: number): Promise<number> {
+  const child = Bun.spawn(["ps", "-o", "rss=", "-p", String(pid)], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  if (code !== 0) throw new Error(`ps failed for ${pid}: ${stderr.trim()}`);
+  return numberSchema.parse(Number(stdout.trim())) / 1024;
 }
 
 function distribution(samples: number[]): {

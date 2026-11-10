@@ -1,5 +1,7 @@
 {
   "date": "2026-10-27",
+  "topology": "historical one Bun process with one Worker per workspace",
+  "rssAccounting": "host process RSS; incremental member value subtracts the unloaded host baseline",
   "bun": "1.4.2",
   "platform": "darwin",
   "arch": "arm64",
