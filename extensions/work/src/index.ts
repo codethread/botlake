@@ -206,9 +206,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
             "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work.",
             "Use `bl gate create … --dependent TASK` for machine-checkable blockers; open gates block work, and either closed outcome satisfies readiness.",
             "Gates never enter queues.",
-            "Show reveals the local brief, ancestor context, criteria, notes and relationships.",
             "Claim reserves responsibility, not proof of execution; defaults to the invocation caller.",
-            "Every added criterion needs an explicit resolution before close, including unmet or retired conditions.",
             "Groups stay open until explicitly closed; closing requires all descendant tasks to be closed.",
             "Only groups can be parents.",
             "Dependencies can target tasks, groups or gates and do not assert success.",
@@ -216,6 +214,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
             "Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened.",
             "Release requires the current assignment token so stale observations cannot clear a newer owner.",
             "List defaults to open work; search includes closed work.",
+            "The Notes field is for recording a concise outcome before closing a task.",
           ].join(" "),
           cli: {
             description: "Create, route, inspect and close tasks, context groups and gates",
