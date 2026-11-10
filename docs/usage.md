@@ -4,11 +4,31 @@ Requires Bun and `botlake`/`bl` on `PATH`; see [checkout setup](engdocs/developm
 
 ## Manifest and workspace selection
 
-Initialize a workspace without installing packages or selecting extensions:
+Initialize a workspace with Batteries selected:
 
 ```sh
 botlake init --workspace /absolute/workspace --name work
 ```
+
+`init` adds `"latest"` dependencies for core and Batteries, plus local ignore rules for `node_modules` and `world.db*` (including SQLite sidecars). It creates `.botlake/bunfig.toml` with isolated installs and a seven-day minimum release age, exempting only core and Batteries. Existing package fields, ignore rules and local Bun configuration are preserved. An existing `botlake` configuration is left unchanged.
+
+Root Bun files determine installation:
+
+```text
+init
+  |
+  v
+root bun.lock? -- yes --> Skip installation; suggest adding .botlake to root
+  |                      package.json workspaces or installing manually.
+  |                      Missing root bunfig.toml? Recommend adding one.
+  no
+  |
+  v
+Report root bunfig.toml presence, then run
+bun install --frozen-lockfile inside .botlake.
+```
+
+Guidance and install output go to stderr; stdout remains JSON. Root files are never modified. With a root workspace, extend its Bun install policy as needed. Install failures return nonzero; fix the error and rerun `bun install --frozen-lockfile` inside `.botlake`.
 
 Configuration lives in `.botlake/package.json`. Its required `botlake` object accepts only `name` and `extensions`; other package fields remain ordinary Bun package configuration:
 
@@ -32,6 +52,8 @@ An explicit selection stays in effect across directory changes. `bl --cwd DIR` a
 ## Packages and extension selection
 
 Packages export Bun-native TypeScript without a build step and are not published. Run `bun pm pack` inside each source package to create a local tarball; Bun rewrites workspace dependency ranges. Install core and chosen extensions into the workspace or its `.botlake` package. For offline tarball installs, point both consumer `dependencies` and `overrides` at the tarballs for every `@botlake/*` peer.
+
+For local development with named links, install dependencies in the source checkout first. Run `bun link` in each source package directory named by a `link:` dependency, then run `bun install` in the consuming package. For example, register `packages/core` to install `"@botlake/core": "link:@botlake/core"`. Each machine resolves these names through its own Bun link registry.
 
 - Package entries resolve from `.botlake`; relative entries resolve from the workspace root. Absolute module paths also work.
 - Each selected entry must default-export an `Extension`.
@@ -66,7 +88,11 @@ With a supervisor running (`botlake start` in a separate terminal), start an ina
 botlake lake start --workspace /absolute/workspace
 ```
 
+Pass `--install` to run `bun install` from `.botlake` before starting an inactive lake. If the install fails, the lake stays stopped. Named links must already be registered from their source checkouts.
+
 After editing the manifest, configured modules or lake environment, use `botlake lake restart --workspace /absolute/workspace`. Calling `start` on an already-running lake does not reload it. `botlake lake info --workspace work` reports the loaded snapshot and extension README/source locations, not pending edits.
+
+If `lake info` still reports the old package path after reinstalling dependencies and restarting the lake, use `botlake restart-host` to refresh package resolution across the host.
 
 `botlake restart-host` and automatic host recovery re-read active lakes' manifests. Lakes whose manifest or workspace was removed are skipped with a warning on supervisor stderr and dropped from the active list; restore the configuration and start them explicitly to rejoin. Invalid manifests and other recovery failures remain errors.
 

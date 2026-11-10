@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
@@ -34,9 +35,10 @@ type Request struct {
 }
 
 type Frame struct {
-	OK     bool `json:"ok"`
-	Result any  `json:"result,omitempty"`
-	Error  any  `json:"error,omitempty"`
+	OK          bool   `json:"ok"`
+	Result      any    `json:"result,omitempty"`
+	Error       any    `json:"error,omitempty"`
+	Diagnostics string `json:"diagnostics,omitempty"`
 }
 
 type Member struct {
@@ -48,6 +50,11 @@ type Member struct {
 type lakeOptions struct {
 	Env map[string]string `json:"env"`
 }
+
+const (
+	lakeInstallStart   = "lake-install-start"
+	lakeInstallTimeout = 2 * time.Minute
+)
 
 type Daemon struct {
 	mu                     sync.Mutex
@@ -352,7 +359,7 @@ func (d *Daemon) resolve(target, cwd string) (Member, error) {
 	return Member{}, fmt.Errorf("unknown workspace: %s", target)
 }
 
-func (d *Daemon) up(target string, env map[string]string) (Member, error) {
+func (d *Daemon) up(target string, env map[string]string, install func(Member) error) (Member, error) {
 	d.lifecycle.Lock()
 	defer d.lifecycle.Unlock()
 	path, err := canonical(target)
@@ -377,13 +384,19 @@ func (d *Daemon) up(target string, env map[string]string) (Member, error) {
 	member.Env = env
 
 	d.mu.Lock()
-
-	if err := d.checkName(member); err != nil {
-		d.mu.Unlock()
-
+	err = d.checkName(member)
+	d.mu.Unlock()
+	if err != nil {
 		return Member{}, err
 	}
 
+	if install != nil {
+		if err := install(member); err != nil {
+			return Member{}, err
+		}
+	}
+
+	d.mu.Lock()
 	if _, ok := d.custodies[path]; !ok {
 		custody, err := process.NewCustody(filepath.Join(d.home, "processes", fmt.Sprintf("%x", sha256.Sum256([]byte(path)))))
 		if err != nil {
@@ -407,6 +420,29 @@ func (d *Daemon) up(target string, env map[string]string) (Member, error) {
 	d.mu.Unlock()
 
 	return member, nil
+}
+
+func installLake(ctx context.Context, member Member) (string, error) {
+	cmd := exec.CommandContext(ctx, "bun", "install", "--no-progress")
+	cmd.Dir = filepath.Join(member.Path, ".botlake")
+	cmd.Env = make([]string, 0, len(member.Env))
+	for key, value := range member.Env {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 2 * time.Second
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("bun install in %s failed: %w\n%s", cmd.Dir, errors.Join(err, ctx.Err()), bytes.TrimSpace(output))
+	}
+	return string(output), nil
 }
 
 func (d *Daemon) process(req Request) (any, error) {
@@ -551,7 +587,7 @@ func (d *Daemon) handle(conn net.Conn) {
 		defer response.Close()
 		go func() { _, _ = io.Copy(io.Discard, conn); _ = response.Close() }()
 		_, _ = io.Copy(conn, response)
-	case "lake-start":
+	case "lake-start", lakeInstallStart:
 		var options lakeOptions
 		if err := decode(req.Payload, &options); err != nil {
 			encode(conn, errFrame(err))
@@ -565,12 +601,28 @@ func (d *Daemon) handle(conn net.Conn) {
 		if !filepath.IsAbs(target) && req.CWD != "" {
 			target = filepath.Join(req.CWD, target)
 		}
-		member, err := d.up(target, options.Env)
-		if err != nil {
-			encode(conn, errFrame(err))
-		} else {
-			encode(conn, Frame{OK: true, Result: member})
+		var install func(Member) error
+		var diagnostics string
+		if req.Operation == lakeInstallStart {
+			ctx, cancel := context.WithTimeout(context.Background(), lakeInstallTimeout)
+			defer cancel()
+			go func() {
+				_, _ = io.Copy(io.Discard, conn)
+				cancel()
+			}()
+			install = func(member Member) error {
+				var err error
+				diagnostics, err = installLake(ctx, member)
+				return err
+			}
 		}
+		member, err := d.up(target, options.Env, install)
+		frame := Frame{OK: true, Result: member}
+		if err != nil {
+			frame = errFrame(err)
+		}
+		frame.Diagnostics = diagnostics
+		encode(conn, frame)
 	case "lake-restart", "lake-stop":
 		var options lakeOptions
 		if err := decode(req.Payload, &options); err != nil {
@@ -810,7 +862,11 @@ func Dial(req Request, output io.Writer) error {
 	}
 
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	timeout := 30 * time.Second
+	if req.Operation == lakeInstallStart {
+		timeout += lakeInstallTimeout
+	}
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return err
 	}

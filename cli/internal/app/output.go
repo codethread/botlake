@@ -97,11 +97,15 @@ func relay(req Request, view presentation) int {
 			Result      json.RawMessage `json:"result"`
 			Error       json.RawMessage `json:"error"`
 			ContentType string          `json:"content_type"`
+			Diagnostics string          `json:"diagnostics"`
 		}
 		if err := json.Unmarshal(output.Bytes(), &frame); err != nil {
 			return cliFailure(err, view.json)
 		}
 
+		if frame.Diagnostics != "" {
+			fmt.Fprint(os.Stderr, frame.Diagnostics)
+		}
 		if !frame.OK {
 			return renderError(frame.Error, view.json)
 		}

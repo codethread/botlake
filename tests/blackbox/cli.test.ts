@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import { system } from "./fixtures/system.ts";
+import { install, system } from "./fixtures/system.ts";
 
 interface CliResult {
   code: number;
@@ -350,24 +350,56 @@ process.exit(Number(process.env.BIN_EXIT??0));
   }
 }, 60000);
 
-test("botlake init bootstraps a fresh empty workspace without replacing selected configuration", async () => {
+test("botlake init bootstraps Batteries without replacing selected configuration", async () => {
   const host = await system();
   try {
     const workspace = join(host.dir, "fresh-project");
     await mkdir(workspace);
-    expect(await host.botlake(["init", "--workspace", workspace, "--name", "fresh"])).toMatchObject(
-      {
-        created: true,
-        name: "fresh",
-      },
+    await install(
+      workspace,
+      Object.fromEntries(
+        Object.entries(host.packages).filter(
+          ([name]) => name === "@botlake/core" || name === "@botlake/extension-batteries",
+        ),
+      ),
     );
+    const initialized = await runCli(
+      host,
+      ["init", "--workspace", workspace, "--name", "fresh"],
+      "",
+      {},
+      host.botlakeBin,
+    );
+    expect(initialized.code).toBe(0);
+    expect(JSON.parse(initialized.stdout)).toMatchObject({ created: true, name: "fresh" });
+    expect(initialized.stderr).toContain("Root bun.lock found. Skipping installation");
+    expect(initialized.stderr).toContain("No root bunfig.toml found; consider adding one");
     const config = Bun.file(join(workspace, ".botlake/package.json"));
     expect(await config.json()).toEqual({
       private: true,
       type: "module",
-      botlake: { name: "fresh", extensions: [] },
+      dependencies: {
+        "@botlake/core": "latest",
+        "@botlake/extension-batteries": "latest",
+      },
+      botlake: { name: "fresh", extensions: ["@botlake/extension-batteries"] },
+    });
+    expect(await Bun.file(join(workspace, ".botlake/.gitignore")).text()).toBe(
+      "/node_modules/\n/world.db*\n",
+    );
+    expect(Bun.TOML.parse(await Bun.file(join(workspace, ".botlake/bunfig.toml")).text())).toEqual({
+      install: {
+        linker: "isolated",
+        minimumReleaseAge: 604800,
+        minimumReleaseAgeExcludes: ["@botlake/core", "@botlake/extension-batteries"],
+      },
     });
     await host.botlake(["lake", "start", "--workspace", workspace]);
+    expect(await host.bl("fresh", "node", { command: "add", title: "Ready to use" })).toMatchObject(
+      {
+        title: "Ready to use",
+      },
+    );
     expect(await host.cli(["--workspace", "fresh", "bins", "list"])).toMatchObject({ bins: [] });
     await host.botlake(["lake", "stop", "--workspace", "fresh"]);
     await Bun.write(

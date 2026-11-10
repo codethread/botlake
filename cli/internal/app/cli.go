@@ -145,21 +145,23 @@ Inspect Bun host readiness and runtime status. ` + common + "\n"
 }
 
 func lakeCommandHelp(command string) string {
-	common := `Flags:
+	flags := `Flags:
   --workspace PATH|NAME  Select a workspace (overrides BL_WORKSPACE)
-
+`
+	selection := `
 Without either selection, use the main Git checkout (shared by linked worktrees).
 Outside Git, set BL_WORKSPACE or pass --workspace. A new lake needs a path;
 published names refer to active lakes.
 `
+	common := flags + selection
 	switch command {
 	case "start":
 		return `Usage:
-  botlake lake start [--workspace PATH|NAME]
+  botlake lake start [--workspace PATH|NAME] [--install]
 
-Start the selected workspace lake.
+Start the selected workspace lake. An already-running lake is returned as-is.
 
-` + common
+` + flags + "  --install              Run bun install in .botlake before starting\n" + selection
 	case "restart":
 		return `Usage:
   botlake lake restart [--workspace PATH|NAME]
@@ -288,6 +290,10 @@ func Botlake(args []string) int {
 		flags := flag.NewFlagSet("botlake lake "+action, flag.ContinueOnError)
 		flags.SetOutput(io.Discard)
 		target := flags.String("workspace", "", "workspace path or published name")
+		install := false
+		if action == "start" {
+			flags.BoolVar(&install, "install", false, "install the lake's dependencies before starting")
+		}
 		if err := flags.Parse(args[2:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return writeHelp(lakeCommandHelp(action))
@@ -312,7 +318,11 @@ func Botlake(args []string) int {
 			warnAudienceEnvironment()
 			payload = map[string]any{"env": environment()}
 		}
-		return Relay(request("lake-"+action, *target, payload))
+		operation := "lake-" + action
+		if install {
+			operation = lakeInstallStart
+		}
+		return Relay(request(operation, *target, payload))
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":

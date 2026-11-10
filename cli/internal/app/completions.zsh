@@ -184,7 +184,10 @@ _botlake() {
         '*::arguments:->lake'
       [[ $state == lake ]] || return
       case ${(Q)words[1]} in
-        start|restart|stop|status|info)
+        start)
+          _arguments -S -A '-*' "${help[@]}" "$workspace" '--install[Install dependencies before starting]'
+          ;;
+        restart|stop|status|info)
           _arguments -S -A '-*' "${help[@]}" "$workspace"
           ;;
         list)

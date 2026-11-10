@@ -13,6 +13,49 @@ const workItem = z.compile(
 );
 const workDetail = z.compile(z.object({ item: z.object({ title: z.string() }) }));
 
+test("lake start --install installs before activation and leaves an active lake alone", async () => {
+  const host = await system();
+  try {
+    const workspace = join(host.dir, "install");
+    const config = join(workspace, ".botlake");
+    const manifest = join(config, "package.json");
+    await mkdir(config, { recursive: true });
+    await Bun.write(
+      manifest,
+      JSON.stringify({
+        private: true,
+        dependencies: { "install-fixture": "file:./fixture" },
+        botlake: { extensions: ["install-fixture"] },
+      }),
+    );
+
+    const start = ["lake", "start", "--install", "--workspace"];
+    expect(await host.botlake([...start, workspace], false)).toContain("bun install in");
+    expect(await host.botlake(["lake", "list"])).toEqual([]);
+    expect(await Bun.file(join(config, "world.db")).exists()).toBe(false);
+
+    const fixture = join(config, "fixture");
+    await Bun.write(
+      join(fixture, "package.json"),
+      '{"name":"install-fixture","version":"1.0.0","type":"module","exports":"./index.ts"}',
+    );
+    await Bun.write(
+      join(fixture, "index.ts"),
+      'export default { name: "installed", activate() {} };',
+    );
+    expect(await host.botlake([...start, workspace])).toMatchObject({ name: "install" });
+    expect(await host.botlake(["lake", "info", "--workspace", "install"])).toMatchObject({
+      extensions: [{ name: "installed" }],
+    });
+    expect(await Bun.file(join(config, "world.db")).exists()).toBe(true);
+
+    await Bun.write(manifest, '{"botlake":{},"dependencies":{"missing":"file:./missing"}}');
+    expect(await host.botlake([...start, "install"])).toMatchObject({ name: "install" });
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
 test("packed core runs alone; installed extensions require explicit selection and own their configuration", async () => {
   const host = await system();
   try {
