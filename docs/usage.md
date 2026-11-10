@@ -38,7 +38,7 @@ Configuration lives in `.botlake/package.json`. Its required `botlake` object ac
   "type": "module",
   "botlake": {
     "name": "work",
-    "minimumCore": "0.1.0",
+    "minimumCore": "0.2.0",
     "extensions": ["@botlake/extension-batteries", "./.botlake/priming.ts"]
   }
 }
@@ -48,7 +48,7 @@ Configuration lives in `.botlake/package.json`. Its required `botlake` object ac
 
 `minimumCore` is an optional semantic version, not a range. A single version is the narrowest representation of the contract: the lake needs that core release or newer. Lake startup compares it with the `@botlake/core` package actually loaded by the supervisor, not a copy installed in the lake, and fails with both versions and supervisor-upgrade instructions when unsatisfied. `botlake status`, `botlake host-status`, `botlake lake status` and `botlake lake info` report the loaded core version; lake info also reports the configured minimum.
 
-Supervisors built before this field existed reject it as unknown rather than producing the new compatibility error. Unreleased builds that retain the same package version (currently `0.1.0`) are not distinguishable through this contract; set a new minimum only after the required core behavior has a distinct released version.
+Supervisors built before this field existed reject it as unknown rather than producing the new compatibility error. Unreleased builds that retain the same package version are not distinguishable through this contract; set a new minimum only after the required core behavior has a distinct released version.
 
 CLI workspace selection is `--workspace PATH|NAME`, then nonempty `BL_WORKSPACE`, then Git discovery. Git discovery uses the main checkout's configuration and `.botlake/world.db`, shared by subdirectories and linked worktrees; worktree-local configurations are ignored. Outside Git, set `BL_WORKSPACE` or pass `--workspace`. Published names select active lakes; a new lake needs a path.
 
@@ -56,7 +56,7 @@ An explicit selection stays in effect across directory changes. `bl --cwd DIR` a
 
 ## Packages and extension selection
 
-Packages export Bun-native TypeScript without a build step and are not published. Run `bun pm pack` inside each source package to create a local tarball; Bun rewrites workspace dependency ranges. Install core and chosen extensions into the workspace or its `.botlake` package. For offline tarball installs, point both consumer `dependencies` and `overrides` at the tarballs for every `@botlake/*` peer.
+Public runtime packages are published to npm as Bun-native TypeScript without a build step. Install `@botlake/core` and chosen extensions into the workspace or its `.botlake` package. `latest` tracks the npm dist-tag when updating; lockfiles retain the resolved versions until updated. For local tarballs, run `bun pm pack` inside each source package; Bun rewrites workspace dependency ranges. For offline tarball installs, point both consumer `dependencies` and `overrides` at the tarballs for every `@botlake/*` peer.
 
 For local development with named links, install dependencies in the source checkout first. Run `bun link` in each source package directory named by a `link:` dependency, then run `bun install` in the consuming package. For example, register `packages/core` to install `"@botlake/core": "link:@botlake/core"`. Each machine resolves these names through its own Bun link registry.
 

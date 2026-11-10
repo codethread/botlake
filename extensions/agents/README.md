@@ -1,5 +1,7 @@
 # @botlake/extension-agents
 
+TypeScript consumers currently need `skipLibCheck: true` for upstream XState v5 declarations. This skips dependency `.d.ts` validation, not Botlake’s published TypeScript source or your code. Botlake’s own strict development check retains a declaration-only XState patch; npm consumers do not inherit that checkout patch.
+
 Tracked headless agent runs, providers, documented aliases, assignment, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity and Flags alongside this extension. Botlake supplies process custody.
 
 Select `"@botlake/extension-agents"` for Codex, Pi and Claude defaults. For configuration, select a local module instead:

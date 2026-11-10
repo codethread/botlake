@@ -27,12 +27,12 @@ Release only core, native-session and the lake extensions under `extensions/`, e
    bun scripts/verify-release.ts
    ```
 
-   A partial result lists every available and unavailable artifact together. Publish only an archive listed as unavailable, using its exact filename:
+   A partial result lists every available and unavailable artifact together. Publish only an unavailable version with no previously recorded successful npm acceptance, using its exact archive filename:
 
    ```sh
    npm publish dist/release/ARCHIVE.tgz --registry https://registry.npmjs.org --access public --ignore-scripts
    ```
 
-   Rerun published verification after each publication or approval window. Never publish an available version again; verification either confirms its integrity or fails on a mismatch. Published verification is complete only when the full set installs and passes the SQLite smoke.
+   Record each npm acceptance in the release task notes. Newly accepted versions can return 404 for several minutes; that is pending distribution, not permission to publish again. A tarball-stage 404 always means wait for distribution. Rerun published verification after each publication or approval window. Never publish an accepted or available version again; verification either confirms its integrity or fails on a mismatch. Published verification is complete only when the full set installs and passes the SQLite smoke.
 
 The registry availability report is the resumable cutover checkpoint. A Botlake Workflow run would not observe npm's irreversible side effect more reliably, so this release does not add parallel workflow orchestration.
