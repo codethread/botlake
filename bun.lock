@@ -41,7 +41,7 @@
         "@botlake/extension-flags": "workspace:*",
         "@botlake/extension-identity": "workspace:*",
         "@botlake/extension-references": "workspace:*",
-        "@botlake/extension-ui": "file:../../botlake-ui/packages/ui-extension",
+        "@botlake/extension-ui": "0.1.0",
         "@botlake/extension-work": "workspace:*",
         "@botlake/extension-work-agents": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
@@ -246,6 +246,8 @@
 
     "@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
 
+    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.0", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-zd37JPPqLU/qV61xYfe6stJpgjmhkxF64q+s/SxVW+u9q7cpxIPxJD/y2C5damJOexiDqdnpMN9KpzPCvdpDEw=="],
+
     "@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
 
     "@botlake/extension-work-agents": ["@botlake/extension-work-agents@workspace:extensions/work-agents"],
@@ -438,10 +440,8 @@
 
     "zod": ["zod@4.6.7", "https://perkbox-491933125842.d.codeartifact.eu-west-1.amazonaws.com/npm/frontend/zod/-/zod-4.6.7.tgz", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
-    "@botlake/dogfood/@botlake/extension-ui": ["@botlake/extension-ui@file:../botlake-ui/packages/ui-extension", { "dependencies": { "zod": "4.6.5" } }],
+    "@botlake/extension-ui/zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
 
     "@types/node/undici-types": ["undici-types@8.9.0", "https://perkbox-491933125842.d.codeartifact.eu-west-1.amazonaws.com/npm/frontend/undici-types/-/undici-types-8.9.0.tgz", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
-
-    "@botlake/dogfood/@botlake/extension-ui/zod": ["zod@4.6.5", "https://perkbox-491933125842.d.codeartifact.eu-west-1.amazonaws.com/npm/frontend/zod/-/zod-4.6.5.tgz", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
   }
 }

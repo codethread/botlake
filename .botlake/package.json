@@ -11,7 +11,7 @@
     "@botlake/extension-flags": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
     "@botlake/extension-references": "workspace:*",
-    "@botlake/extension-ui": "file:../../botlake-ui/packages/ui-extension",
+    "@botlake/extension-ui": "0.1.0",
     "@botlake/extension-work": "workspace:*",
     "@botlake/extension-work-agents": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",

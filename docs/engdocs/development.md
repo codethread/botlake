@@ -2,7 +2,7 @@
 
 ## Setup
 
-Requires Bun, Go, mise and a sibling `botlake-ui` checkout, as referenced by the [dogfood manifest](../../.botlake/package.json). From the Botlake checkout:
+Requires Bun, Go and mise. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, including its built CLI; no UI checkout or Bun link is needed. From the Botlake checkout, run:
 
 ```sh
 mise run install
@@ -23,7 +23,7 @@ Then start the development lake:
 botlake lake start
 ```
 
-The `setup` mise task also requests `botlake bin build ui`; the UI server itself starts separately from the UI checkout. Inspect `botlake bin list` and `botlake bin help build` before using that task with a different UI extension build contract.
+The `setup` mise task installs Botlake and starts this checkout's lake. The UI server itself starts separately from the UI checkout.
 
 ## Development lake
 
