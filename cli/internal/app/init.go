@@ -15,15 +15,15 @@ import (
 const initUsage = `Usage:
   botlake init [--workspace DIR] [--name NAME]
 
-Initialize .botlake/package.json with Batteries selected and latest-version
-dependencies for core and Batteries. Add .botlake/.gitignore entries for
+Initialize inert .botlake/lake.ts configuration with Batteries selected and
+latest-version dependencies for core and Batteries in .botlake/package.json. Add .botlake/.gitignore entries for
 node_modules and the lake database. Create .botlake/bunfig.toml with isolated
 installs and a seven-day minimum release age, excluding core and Batteries.
 Existing bunfig.toml files are preserved. Run bun install --frozen-lockfile in
 .botlake unless a root bun.lock exists; then print manual installation and
 workspace guidance instead. Report guidance and install output on stderr.
-Existing package fields are preserved; if botlake configuration already exists,
-init reports it and makes no changes.
+Existing package fields are preserved; if lake.ts already exists, init reports it
+and makes no changes.
 
 Flags:
   --workspace DIR  Workspace directory (overrides BL_WORKSPACE)
@@ -111,19 +111,15 @@ func initWorkspace(args []string) int {
 		manifest = map[string]json.RawMessage{"private": json.RawMessage("true"), "type": json.RawMessage(`"module"`)}
 	}
 
-	if _, exists := manifest["botlake"]; exists {
-		member, err := readMember(path)
-		if err != nil {
-			return fail(err)
+	lakePath := filepath.Join(path, ".botlake", "lake.ts")
+	if _, statErr := os.Stat(lakePath); statErr == nil {
+		if *name != "" {
+			return fail(errors.New("workspace already exists; edit .botlake/lake.ts to change its name"))
 		}
-
-		if *name != "" && *name != member.Name {
-			return fail(errors.New("workspace already exists; edit botlake.name in .botlake/package.json to change its name"))
-		}
-
-		encode(os.Stdout, map[string]any{"workspace": path, "name": member.Name, "created": false})
-
+		encode(os.Stdout, map[string]any{"workspace": path, "name": filepath.Base(path), "created": false})
 		return 0
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fail(statErr)
 	}
 
 	publishedName := *name
@@ -150,16 +146,6 @@ func initWorkspace(args []string) int {
 		}
 	}
 	manifest["dependencies"], err = json.Marshal(dependencies)
-	if err != nil {
-		return fail(err)
-	}
-
-	config := map[string]any{"extensions": []string{"@botlake/extension-batteries"}}
-	if *name != "" {
-		config["name"] = *name
-	}
-
-	manifest["botlake"], err = json.Marshal(config)
 	if err != nil {
 		return fail(err)
 	}
@@ -220,6 +206,15 @@ func initWorkspace(args []string) int {
 
 	writeErr := encoder.Encode(manifest)
 	if err := errors.Join(writeErr, file.Close()); err != nil {
+		return fail(err)
+	}
+
+	lakeSource := "import { createLake } from \"@botlake/core\";\nimport { batteries } from \"@botlake/extension-batteries\";\n\nexport const lake = createLake({"
+	if *name != "" {
+		lakeSource += " name: " + fmt.Sprintf("%q", publishedName) + ","
+	}
+	lakeSource += " extensions: [batteries()] });\n"
+	if err := os.WriteFile(lakePath, []byte(lakeSource), 0644); err != nil {
 		return fail(err)
 	}
 

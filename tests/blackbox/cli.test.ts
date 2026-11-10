@@ -389,8 +389,9 @@ test("botlake init bootstraps Batteries without replacing selected configuration
         "@botlake/core": "latest",
         "@botlake/extension-batteries": "latest",
       },
-      botlake: { name: "fresh", extensions: ["@botlake/extension-batteries"] },
     });
+    const lakeConfig = Bun.file(join(workspace, ".botlake/lake.ts"));
+    expect(await lakeConfig.text()).toContain('export const lake = createLake({ name: "fresh"');
     expect(await Bun.file(join(workspace, ".botlake/.gitignore")).text()).toBe(
       "/node_modules/\n/world.db*\n",
     );
@@ -409,17 +410,13 @@ test("botlake init bootstraps Batteries without replacing selected configuration
     );
     expect(await host.cli(["--workspace", "fresh", "bins", "list"])).toMatchObject({ bins: [] });
     await host.botlake(["lake", "stop", "--workspace", "fresh"]);
-    await Bun.write(
-      config,
-      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
-    );
+    const selected = 'export const lake = {name:"renamed",extensions:[]};\n';
+    await Bun.write(lakeConfig, selected);
     expect(await host.botlake(["init", "--workspace", workspace])).toMatchObject({
       created: false,
-      name: "renamed",
+      name: "fresh-project",
     });
-    expect(await config.text()).toBe(
-      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
-    );
+    expect(await lakeConfig.text()).toBe(selected);
     expect(
       await host.botlake(["init", "--workspace", workspace, "--name", "other"], false),
     ).toContain("already exists");

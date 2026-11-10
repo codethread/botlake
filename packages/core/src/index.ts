@@ -64,6 +64,8 @@ export { ManualClock, systemClock } from "./runtime/clock.ts";
 
 export type { Clock } from "./runtime/clock.ts";
 export { configJsonSchema, workspaceSchema, loadWorkspace } from "./runtime/config.ts";
+export { createLake } from "./runtime/lake.ts";
+export type { LakeDefinition } from "./runtime/lake.ts";
 export { coreVersion } from "./runtime/version.ts";
 
 export type { WorkspaceConfig, WorkspaceInfo, ExtensionInfo } from "./runtime/config.ts";

@@ -36,9 +36,9 @@ export const extensionInfoSchema = z.compile(
   z.object({
     name: z.string(),
     description: z.string().nullable(),
-    specifier: z.string(),
-    module: z.string(),
-    source: z.string(),
+    specifier: z.string().nullable(),
+    module: z.string().nullable(),
+    source: z.string().nullable(),
     packageJson: z.string().nullable(),
     readme: z.string().nullable(),
   }),
@@ -48,6 +48,7 @@ export const workspaceInfoSchema = z.compile(
   z.object({
     path: z.string(),
     name: z.string(),
+    configPath: z.string(),
     packageJson: z.string(),
     coreVersion: semanticVersionSchema,
     minimumCore: semanticVersionSchema.nullable(),
@@ -70,6 +71,7 @@ export async function loadWorkspace(
   const info: WorkspaceInfo = {
     path: workspace,
     name: config.name ?? basename(workspace),
+    configPath: packageJson,
     packageJson,
     coreVersion,
     minimumCore: config.minimumCore ?? null,

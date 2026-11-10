@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./host": "./src/runtime/host.ts",
+    "./runner": "./src/runtime/runner.ts",
     "./eval": "./src/runtime/eval.ts"
   },
   "publishConfig": {

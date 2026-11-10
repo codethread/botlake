@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdir, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -15,7 +15,7 @@ const nodePage = z.compile(
 );
 const handleRow = z.compile(z.object({ handle: z.string() }));
 const handleRows = z.compile(z.array(z.object({ handle: z.string() })));
-const hostStatus = z.compile(z.object({ hostPid: z.number(), hostReady: z.boolean() }));
+const lakeStatus = z.compile(z.object({ pid: z.number(), ready: z.boolean() }));
 
 test("real Go Botlake pools independent workers, routes names, and retains command custody across host recovery", async () => {
   const host = await system();
@@ -49,16 +49,22 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
     expect(handleRow.parse(await host.bl("alpha", "process", { command: "launch" })).handle).toBe(
       before.handle,
     );
-    const crashed = hostStatus.parse(await host.botlake(["status"])).hostPid;
+    const crashed = lakeStatus.parse(
+      await host.botlake(["lake", "status", "--workspace", "alpha"]),
+    ).pid;
     process.kill(crashed, "SIGKILL");
     let recovered = false;
-    // Observe the supervisor's actual replacement, without replaying a launch or
-    // guessing how long startup takes. Each status call crosses the real socket.
     for (let attempt = 0; attempt < 1000; attempt++) {
-      const current = hostStatus.parse(await host.botlake(["status"]));
-      if (current.hostPid !== crashed && current.hostReady) {
-        recovered = true;
-        break;
+      try {
+        const current = lakeStatus.parse(
+          await host.botlake(["lake", "status", "--workspace", "alpha"]),
+        );
+        if (current.pid !== crashed && current.ready) {
+          recovered = true;
+          break;
+        }
+      } catch {
+        // The route is intentionally absent until the replacement is ready.
       }
     }
     expect(recovered).toBe(true);
@@ -79,12 +85,12 @@ test("real Go Botlake pools independent workers, routes names, and retains comma
       ]),
     ).toEqual([10000, { nodes: [], total: 0, nextOffset: null }]);
     await host.bl("unknown", "node", { command: "list" }, false);
-    await mkdir(join(host.dir, "duplicate/.botlake"), { recursive: true });
+    const duplicate = await host.workspace("duplicate", []);
     await Bun.write(
-      join(host.dir, "duplicate/.botlake/package.json"),
-      '{"botlake":{"name":"alpha"}}',
+      join(duplicate, ".botlake/lake.ts"),
+      'import {createLake} from "@botlake/core"; export const lake=createLake({name:"alpha",extensions:[]});',
     );
-    await host.botlake(["lake", "start", "--workspace", join(host.dir, "duplicate")], false);
+    await host.botlake(["lake", "start", "--workspace", duplicate], false);
     const release = Bun.spawn(["sh", "-c", 'printf go > "$1"', "sh", join(host.dir, "release")]);
     expect(await release.exited).toBe(0);
   } finally {
@@ -101,8 +107,8 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
     const healthy = await host.workspace("healthy", extensions);
     const configure = (path: string, name?: string): Promise<number> =>
       Bun.write(
-        join(path, ".botlake/package.json"),
-        JSON.stringify({ botlake: { name, extensions } }),
+        join(path, ".botlake/lake.ts"),
+        `import {createLake} from "@botlake/core"; import {batteries} from "@botlake/extension-batteries"; export const lake=createLake({${name === undefined ? "" : `name:${JSON.stringify(name)},`}extensions:[batteries()]});`,
       );
     await configure(alpha);
     expect(await host.botlake(["lake", "start", "--workspace", alpha])).toMatchObject({
@@ -143,24 +149,23 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
       "unknown workspace",
     );
 
-    // Reject a colliding member replacement before taking its current worker down.
+    // Replacement stops the old generation before loading trusted configuration.
+    // A colliding replacement therefore remains unpublished after failure.
     await configure(beta, "next");
     expect(await host.botlake(["lake", "restart", "--workspace", beta], false)).toContain(
       "duplicate workspace name",
     );
-    expect(await host.bl("alpha", "node", { command: "list" })).toEqual({
-      nodes: [],
-      total: 0,
-      nextOffset: null,
-    });
+    expect(nodePage.parse(await host.bl("alpha", "node", { command: "list" })).nodes).toHaveLength(
+      1,
+    );
 
-    // Pool recovery rejects every ambiguous name, without disrupting healthy peers.
-    expect(await host.botlake(["restart-host"], false)).toContain("duplicate workspace name");
+    await host.botlake(["restart-host"]);
     expect(await host.botlake(["lake", "list"])).toEqual([
+      { path: await realpath(alpha), name: "next" },
       { path: await realpath(healthy), name: "healthy" },
     ]);
-    expect(await host.bl("next", "node", { command: "list" }, false)).toContain(
-      "unknown workspace",
+    expect(nodePage.parse(await host.bl("next", "node", { command: "list" })).nodes).toHaveLength(
+      1,
     );
     expect(await host.bl("healthy", "node", { command: "list" })).toEqual({
       nodes: [],

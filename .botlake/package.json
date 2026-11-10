@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@botlake/core": "latest",
+    "@botlake/core": "file:../vendor/botlake-cutover/botlake-core-0.2.0.tgz",
     "@botlake/extension-agents": "latest",
     "@botlake/extension-batteries": "latest",
     "@botlake/extension-cron": "latest",
@@ -13,7 +13,7 @@
     "@botlake/extension-flags": "latest",
     "@botlake/extension-identity": "latest",
     "@botlake/extension-references": "latest",
-    "@botlake/extension-ui": "latest",
+    "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz",
     "@botlake/extension-work": "latest",
     "@botlake/extension-work-agents": "latest",
     "@botlake/extension-work-auto-bot": "latest",
@@ -22,24 +22,9 @@
     "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
-  "botlake": {
-    "name": "botlake",
-    "extensions": [
-      "@botlake/extension-batteries",
-      "@botlake/extension-identity",
-      "@botlake/extension-diary",
-      "./.botlake/src/flags.ts",
-      "./.botlake/src/references.ts",
-      "./.botlake/src/agents.ts",
-      "./.botlake/src/priming.ts",
-      "./.botlake/src/work.ts",
-      "./.botlake/src/work-agents.ts",
-      "./.botlake/src/work-auto-bot.ts",
-      "./.botlake/src/workflow.ts",
-      "@botlake/extension-cron",
-      "@botlake/extension-ui"
-    ],
-    "minimumCore": "0.2.0"
+  "overrides": {
+    "@botlake/core": "file:../vendor/botlake-cutover/botlake-core-0.2.0.tgz",
+    "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz"
   },
   "patchedDependencies": {
     "xstate@5.33.3": "../patches/xstate@5.33.3.patch"

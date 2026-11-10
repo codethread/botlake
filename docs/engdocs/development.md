@@ -14,7 +14,7 @@ The [mise tasks](../../mise.toml) install development dependencies, install the 
 If no supervisor is running, start one in a separate terminal:
 
 ```sh
-BL_CORE="$PWD/.botlake/node_modules/@botlake/core" botlake start
+botlake start
 ```
 
 Then start the development lake:
@@ -27,7 +27,7 @@ The `setup` mise task installs Botlake and starts this checkout's lake. The UI s
 
 ## Development lake
 
-The private `.botlake` package is an independent consumer: all public dependencies, including `@botlake/extension-ct-config`, come from npm. Development workspace packages are not its runtime. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` package is an independent consumer. Its lockfile pins the cutover Core and UI archives in `vendor/botlake-cutover` and resolves the remaining public dependencies from npm. Source configuration lives in its [lake definition](../../.botlake/lake.ts), [package manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
@@ -39,7 +39,6 @@ Install the repository-local [native identity adapter](../../plugins/identity/RE
 - Lake-local configuration changes: `botlake lake restart`.
 - Shared configuration changes: release `@botlake/extension-ct-config`, update consumer lockfiles and restart affected lakes.
 - Public runtime changes: release and update the installed package before restarting; source edits do not change the running npm package.
-- Host changes: `botlake restart-host` restores active lakes without replacing the supervisor.
 
 Core stays extension-independent. Cross-package imports use declared dependencies and public exports, never relative source paths; Oxlint enforces the seam. Package prerequisites must be selected explicitly. See [contribution rules](../../AGENTS.md).
 

@@ -205,8 +205,8 @@ export default {name:"outside",activate(ctx){ctx.register(op);ctx.register(defin
     const healthy = await host.workspace("healthy", ["@botlake/extension-batteries"]);
     await host.botlake(["lake", "start", "--workspace", healthy]);
     await Bun.write(
-      join(host.dir, "alpha/.botlake/package.json"),
-      '{"botlake":{"name":"alpha","extensions":["missing-extension"]}}',
+      join(host.dir, "alpha/.botlake/lake.ts"),
+      'import missing from "missing-extension"; export const lake={name:"alpha",extensions:[missing]};',
     );
     expect(await host.botlake(["restart-host"], false)).toContain("missing-extension");
     expect(await host.bl("healthy", "node", { command: "list" })).toEqual({

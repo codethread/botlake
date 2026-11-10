@@ -239,20 +239,24 @@ export const workAutoBot = createWorkAutoBot({agents, work});
         type: "module",
         dependencies,
         overrides: dependencies,
-        botlake: {
-          name: "release-verification",
-          minimumCore: corePackage.manifest.version,
-          extensions: packages
-            .filter(({ directory }) => directory.startsWith("extensions/"))
-            .map(({ manifest }) => {
-              const binding = configuredExtensions[manifest.name];
-              return binding === undefined ? manifest.name : `./.botlake/${binding}.ts`;
-            }),
-        },
       },
       null,
       2,
     )}\n`,
+  );
+  const extensionImports = packages
+    .filter(({ directory }) => directory.startsWith("extensions/"))
+    .map(({ manifest }, index) => {
+      const binding = configuredExtensions[manifest.name];
+      const specifier = binding === undefined ? manifest.name : `./${binding}.ts`;
+      return `import extension${index} from ${JSON.stringify(specifier)};`;
+    });
+  const extensionValues = packages
+    .filter(({ directory }) => directory.startsWith("extensions/"))
+    .map((_, index) => `extension${index}`);
+  await writeFile(
+    join(config, "lake.ts"),
+    `import { createLake } from "@botlake/core";\n${extensionImports.join("\n")}\n\nexport const lake = createLake({\n  name: "release-verification",\n  minimumCore: ${JSON.stringify(corePackage.manifest.version)},\n  extensions: [${extensionValues.join(", ")}],\n});\n`,
   );
   await writeFile(
     join(config, "bunfig.toml"),
@@ -344,10 +348,8 @@ export const workAutoBot = createWorkAutoBot({agents, work});
     packages.filter(({ directory }) => directory.startsWith("extensions/")).length,
   );
   for (const extension of info.extensions) {
-    assert.ok(
-      extension.module.startsWith(`${config}${sep}`),
-      `Module escaped disposable lake: ${extension.module}`,
-    );
+    assert.equal(extension.specifier, null);
+    assert.equal(extension.module, null);
     for (const path of [extension.source, extension.packageJson]) {
       assert.ok(
         path.startsWith(`${installedRoot}${sep}`),
@@ -454,7 +456,12 @@ function registryMetadata(value: unknown): RegistryMetadata {
 
 function lakeInfo(value: unknown): {
   packageJson: string;
-  extensions: Array<{ module: string; source: string; packageJson: string }>;
+  extensions: Array<{
+    specifier: null;
+    module: null;
+    source: string;
+    packageJson: string;
+  }>;
 } {
   assertRecord(value, "lake info");
   const packageJson = value["packageJson"];
@@ -465,13 +472,15 @@ function lakeInfo(value: unknown): {
     packageJson,
     extensions: extensions.map((extension) => {
       assertRecord(extension, "lake extension");
+      const specifier = extension["specifier"];
       const module = extension["module"];
       const source = extension["source"];
       const extensionPackageJson = extension["packageJson"];
-      assertNonEmptyString(module, "extension module");
+      assert.equal(specifier, null);
+      assert.equal(module, null);
       assertNonEmptyString(source, "extension source");
       assertNonEmptyString(extensionPackageJson, "extension packageJson");
-      return { module, source, packageJson: extensionPackageJson };
+      return { specifier, module, source, packageJson: extensionPackageJson };
     }),
   };
 }

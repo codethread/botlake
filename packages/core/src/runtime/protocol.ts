@@ -6,7 +6,9 @@ export const invocationSchema = z.compile(
   z
     .strictObject({
       workspace: z.string(),
+      generation: z.string().optional(),
       request_id: z.string().min(1),
+      invocation_id: z.string().min(1).optional(),
       name: z.string().min(1),
       identity: z.string().optional(),
       input: z.unknown().optional(),
