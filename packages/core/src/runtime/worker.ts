@@ -123,7 +123,7 @@ port.on("message", (raw: unknown) => {
       port.postMessage({ request_id: request.request_id, end: true });
     }
   })().catch((error: unknown) => {
-    port.postMessage({ fatal: String(error) });
+    port.postMessage({ fatal: errorFrame(error) });
   });
 });
 try {

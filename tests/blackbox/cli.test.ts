@@ -18,6 +18,13 @@ interface TerminalResult {
 }
 
 const idResult = z.compile(z.object({ id: z.string() }));
+const cliVersion = z.compile(
+  z.object({
+    cli_version: z.string(),
+    cli_build_id: z.string(),
+    protocol_version: z.number(),
+  }),
+);
 
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
   const host = await system();
@@ -598,9 +605,11 @@ export default {name:"payloads",activate(ctx){
       JSON.parse((await runCli(host, ["--json", "--help"], "", unavailable)).stdout),
     ).toContain("--stdin");
     expect((await runCli(host, [], "", unavailable)).code).toBe(0);
-    expect(JSON.parse((await runCli(host, ["--version"], "", unavailable)).stdout)).toMatchObject({
-      protocol_version: 1,
-    });
+    const version = cliVersion.parse(
+      JSON.parse((await runCli(host, ["--version"], "", unavailable)).stdout),
+    );
+    expect(version).toMatchObject({ cli_version: "0.1.0", protocol_version: 1 });
+    expect(version.cli_build_id.length).toBeGreaterThan(0);
     const error = await runCli(host, [...prefix, "unknown"], "", {
       BL_ERROR_FORMAT: "json",
     });

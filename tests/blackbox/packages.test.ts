@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
@@ -51,6 +52,72 @@ test("lake start --install installs before activation and leaves an active lake 
 
     await Bun.write(manifest, '{"botlake":{},"dependencies":{"missing":"file:./missing"}}');
     expect(await host.botlake([...start, "install"])).toMatchObject({ name: "install" });
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
+test("lake minimumCore uses the supervisor's loaded core and reports compatibility versions", async () => {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("compatibility", []);
+    const manifest = join(workspace, ".botlake/package.json");
+    const installedCoreManifest = join(workspace, "node_modules/@botlake/core/package.json");
+    const installedCore = z
+      .compile(z.record(z.string(), z.unknown()))
+      .parse(await Bun.file(installedCoreManifest).json());
+    await Bun.write(installedCoreManifest, JSON.stringify({ ...installedCore, version: "9.0.0" }));
+    await Bun.write(
+      manifest,
+      JSON.stringify({ botlake: { name: "compatibility", minimumCore: "1.0.0" } }),
+    );
+
+    const incompatible = await host.botlake(["lake", "start", "--workspace", workspace], false);
+    expect(incompatible).toContain(
+      "Lake requires @botlake/core 1.0.0 or newer, but the running supervisor loaded 0.1.0",
+    );
+    expect(incompatible).toContain("Upgrade the supervisor's @botlake/core package");
+    expect(await host.botlake(["lake", "list"])).toEqual([]);
+
+    await Bun.write(
+      manifest,
+      JSON.stringify({ botlake: { name: "compatibility", minimumCore: "0.1.0" } }),
+    );
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    expect(await host.botlake(["lake", "info", "--workspace", workspace])).toMatchObject({
+      coreVersion: "0.1.0",
+      minimumCore: "0.1.0",
+    });
+    expect(await host.botlake(["lake", "status", "--workspace", workspace])).toMatchObject({
+      ready: true,
+      coreVersion: "0.1.0",
+    });
+    expect(await host.botlake(["status"])).toMatchObject({
+      supervisorVersion: "0.1.0",
+      protocolVersion: 1,
+      coreVersion: "0.1.0",
+    });
+    expect(await host.botlake(["host-status"])).toMatchObject({ coreVersion: "0.1.0" });
+
+    const primer = Bun.spawn(
+      ["bun", "-e", 'import { brief } from "@botlake/core"; console.log(brief)'],
+      {
+        cwd: workspace,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [primerExit, primerOutput, primerError] = await Promise.all([
+      primer.exited,
+      new Response(primer.stdout).text(),
+      new Response(primer.stderr).text(),
+    ]);
+    expect(primerExit, primerError).toBe(0);
+    const documentationUrl = /Read (file:\/\/\S+) for core documentation/u.exec(primerOutput)?.[1];
+    expect(documentationUrl).toBeDefined();
+    if (documentationUrl === undefined) throw new Error(primerOutput);
+    expect(fileURLToPath(documentationUrl)).toEndWith("@botlake/core/README.md");
+    expect(await Bun.file(fileURLToPath(documentationUrl)).exists()).toBe(true);
   } finally {
     await host.close();
   }
