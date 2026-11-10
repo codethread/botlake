@@ -382,13 +382,16 @@ test("botlake init bootstraps Batteries without replacing selected configuration
     expect(initialized.stderr).toContain("Root bun.lock found. Skipping installation");
     expect(initialized.stderr).toContain("No root bunfig.toml found; consider adding one");
     const config = Bun.file(join(workspace, ".botlake/package.json"));
+    const coreArchive =
+      "https://raw.githubusercontent.com/codethread/botlake/fd8044ef4d340b50d02120eff285136b5aea6ced/vendor/botlake-cutover/botlake-core-0.2.0.tgz";
     expect(await config.json()).toEqual({
       private: true,
       type: "module",
       dependencies: {
-        "@botlake/core": "latest",
-        "@botlake/extension-batteries": "latest",
+        "@botlake/core": coreArchive,
+        "@botlake/extension-batteries": "0.2.0",
       },
+      overrides: { "@botlake/core": coreArchive },
     });
     const lakeConfig = Bun.file(join(workspace, ".botlake/lake.ts"));
     expect(await lakeConfig.text()).toContain('export const lake = createLake({ name: "fresh"');

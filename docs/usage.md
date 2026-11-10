@@ -10,7 +10,7 @@ Initialize a workspace with Batteries selected:
 botlake init --workspace /absolute/workspace --name work
 ```
 
-`init` adds `"latest"` dependencies for core and Batteries, plus local ignore rules for `node_modules` and `world.db*` (including SQLite sidecars). It creates `.botlake/bunfig.toml` with isolated installs and a seven-day minimum release age, exempting only core and Batteries. Existing package fields, ignore rules and local Bun configuration are preserved. An existing `.botlake/lake.ts` definition is left unchanged.
+`init` pins Core to the standalone archive in Botlake's Git repository and Batteries to the matching npm version. It adds local ignore rules for `node_modules` and `world.db*` (including SQLite sidecars) and creates `.botlake/bunfig.toml` with isolated installs and a seven-day minimum release age, exempting only Core and Batteries. Existing package fields, ignore rules and local Bun configuration are preserved. An existing `.botlake/lake.ts` definition is left unchanged.
 
 Root Bun files determine installation:
 

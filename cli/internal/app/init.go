@@ -16,7 +16,7 @@ const initUsage = `Usage:
   botlake init [--workspace DIR] [--name NAME]
 
 Initialize inert .botlake/lake.ts configuration with Batteries selected and
-latest-version dependencies for core and Batteries in .botlake/package.json. Add .botlake/.gitignore entries for
+pinned dependencies for Core and Batteries in .botlake/package.json. Add .botlake/.gitignore entries for
 node_modules and the lake database. Create .botlake/bunfig.toml with isolated
 installs and a seven-day minimum release age, excluding core and Batteries.
 Existing bunfig.toml files are preserved. Run bun install --frozen-lockfile in
@@ -47,6 +47,8 @@ minimumReleaseAgeExcludes = [
   "@botlake/extension-batteries",
 ]
 `
+
+const initCoreArchive = "https://raw.githubusercontent.com/codethread/botlake/fd8044ef4d340b50d02120eff285136b5aea6ced/vendor/botlake-cutover/botlake-core-0.2.0.tgz"
 
 func initWorkspace(args []string) int {
 	fail := func(err error) int { return cliFailure(err, false) }
@@ -140,10 +142,27 @@ func initWorkspace(args []string) int {
 			return fail(errors.New("package dependencies must be an object"))
 		}
 	}
-	for _, name := range []string{"@botlake/core", "@botlake/extension-batteries"} {
-		if _, exists := dependencies[name]; !exists {
-			dependencies[name] = "latest"
+	if _, exists := dependencies["@botlake/core"]; !exists {
+		dependencies["@botlake/core"] = initCoreArchive
+		overrides := map[string]json.RawMessage{}
+		if raw, exists := manifest["overrides"]; exists {
+			if err := json.Unmarshal(raw, &overrides); err != nil {
+				return fail(err)
+			}
+			if overrides == nil {
+				return fail(errors.New("package overrides must be an object"))
+			}
 		}
+		if _, exists := overrides["@botlake/core"]; !exists {
+			overrides["@botlake/core"] = json.RawMessage(fmt.Sprintf("%q", initCoreArchive))
+		}
+		manifest["overrides"], err = json.Marshal(overrides)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if _, exists := dependencies["@botlake/extension-batteries"]; !exists {
+		dependencies["@botlake/extension-batteries"] = "0.2.0"
 	}
 	manifest["dependencies"], err = json.Marshal(dependencies)
 	if err != nil {
