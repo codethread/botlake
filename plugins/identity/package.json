@@ -1,6 +1,8 @@
 {
   "name": "@botlake/identity",
   "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "files": [
     "client.ts",
     "session.ts",

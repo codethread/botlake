@@ -2,9 +2,11 @@
   "name": "@botlake/extension-flags",
   "version": "0.1.0",
   "description": "Persistent workspace-local boolean flags.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

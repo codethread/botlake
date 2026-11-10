@@ -2,7 +2,7 @@
 
 Native adapters for Codex, Pi and Claude, sharing `@botlake/native-session` identity/protocol and `@botlake/identity/session` reporting. This is the client plugin, not the `@botlake/extension-identity` server extension.
 
-Install explicitly in each native host. Pi uses `pi.extensions` or `@botlake/identity/pi`; Codex and Claude use the included plugin manifests. Keep package dependencies resolvable when copying a plugin. Hooks require Bun, `botlake` and `bl` on `PATH`; `BL_BIN` overrides `bl`. Nothing installs into user profiles automatically.
+This harness-only package is private and is not part of the npm runtime release. Compatible Claude/Codex tooling discovers its manifests from the repository-local marketplace at `.agents/plugins/marketplace.json`; Pi loads `pi.ts` explicitly from the same installed local plugin source. Keep its workspace dependencies resolvable when installing or copying that source. Hooks require Bun, `botlake` and `bl` on `PATH`; `BL_BIN` overrides `bl`. Nothing installs into user profiles automatically.
 
 The target workspace must select Identity, Flags and Agents. Discovery uses the Git common root's `.botlake/package.json`, or explicit `BL_WORKSPACE`. Before reporting, adapters check `botlake lake status` and attempt `botlake lake start` if unavailable. The supervisor must already be running. Startup failures retain local identity and report tracking unavailability. Managed launches supply an invocation reference, never a fresh session ID. Direct native sessions register without process custody.
 

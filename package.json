@@ -1,6 +1,7 @@
 {
   "name": "botlake",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     ".botlake",
     "packages/*",

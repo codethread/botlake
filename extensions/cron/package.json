@@ -2,9 +2,11 @@
   "name": "@botlake/extension-cron",
   "version": "0.1.0",
   "description": "Durable calendar and interval jobs with occurrence history.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

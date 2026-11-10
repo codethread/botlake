@@ -2,9 +2,11 @@
   "name": "@botlake/extension-agents",
   "version": "0.1.0",
   "description": "Managed headless agent runs, provider seats and native session observations.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

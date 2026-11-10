@@ -2,9 +2,11 @@
   "name": "@botlake/extension-work",
   "version": "0.1.0",
   "description": "Tasks, context groups, prerequisites, assignment and machine-checked gates.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {
