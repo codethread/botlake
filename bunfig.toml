@@ -15,6 +15,5 @@ minimumReleaseAgeExcludes = [
   "@botlake/extension-work-agents",
   "@botlake/extension-work-auto-bot",
   "@botlake/extension-workflow",
-  "@botlake/identity",
   "@botlake/native-session",
 ]
