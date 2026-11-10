@@ -1,5 +1,5 @@
+import { configureWork } from "@botlake/extension-ct-config";
 import { defineProbe } from "@botlake/extension-work";
-import { configureWork } from "ct-config";
 import { z } from "zod";
 
 const delay = defineProbe({

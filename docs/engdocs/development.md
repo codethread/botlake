@@ -9,7 +9,7 @@ mise run install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The [mise tasks](../../mise.toml) install development dependencies, pack the shared private configuration, install the independent lake and place both Go CLIs in `~/.local/bin`.
+The [mise tasks](../../mise.toml) install development dependencies, install the shared configuration package and the independent lake and place both Go CLIs in `~/.local/bin`.
 
 If no supervisor is running, start one in a separate terminal:
 
@@ -27,7 +27,7 @@ The `setup` mise task installs Botlake and starts this checkout's lake. The UI s
 
 ## Development lake
 
-The private `.botlake` package is an independent consumer: public dependencies come from npm and `ct-config` comes from its locally packed tarball. Development workspace packages are not its runtime. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` package is an independent consumer: all public dependencies, including `@botlake/extension-ct-config`, come from npm. Development workspace packages are not its runtime. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
@@ -37,7 +37,7 @@ Install the repository-local [native identity adapter](../../plugins/identity/RE
 
 - Go changes: rebuild with `mise run install` and restart the supervisor through its process manager, or stop/start it manually. Supervisor replacement ends process custody and clears published lake routes; start the required lakes again.
 - Lake-local configuration changes: `botlake lake restart`.
-- Shared private configuration changes: version and pack `ct-config`, update each consumer dependency and lockfile, then restart affected lakes.
+- Shared configuration changes: release `@botlake/extension-ct-config`, update consumer lockfiles and restart affected lakes.
 - Public runtime changes: release and update the installed package before restarting; source edits do not change the running npm package.
 - Host changes: `botlake restart-host` restores active lakes without replacing the supervisor.
 

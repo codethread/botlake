@@ -2,8 +2,6 @@
 description = "Install workspace dependencies and the Botlake CLIs"
 run = '''
 bun install --frozen-lockfile
-mkdir -p dist/private
-(cd extensions/ct-config && bun pm pack --destination ../../dist/private --ignore-scripts)
 bun install --cwd .botlake --frozen-lockfile
 GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl
 '''

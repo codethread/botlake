@@ -9,6 +9,7 @@
         "@botlake/extension-agents": "latest",
         "@botlake/extension-batteries": "latest",
         "@botlake/extension-cron": "latest",
+        "@botlake/extension-ct-config": "latest",
         "@botlake/extension-diary": "latest",
         "@botlake/extension-flags": "latest",
         "@botlake/extension-identity": "latest",
@@ -18,7 +19,6 @@
         "@botlake/extension-work-agents": "latest",
         "@botlake/extension-workflow": "latest",
         "@botlake/native-session": "latest",
-        "ct-config": "file:../dist/private/ct-config-0.1.1.tgz",
         "xstate": "5.33.3",
         "zod": "^4.6.7",
       },
@@ -36,6 +36,8 @@
 
     "@botlake/extension-cron": ["@botlake/extension-cron@0.2.0", "", { "dependencies": { "cron-parser": "^5.10.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.2.0" } }, "sha512-BeF9/oIb+BRdocs4tmifVJYyrsffNrlHzFqK5mGfRS/lZ/Z2lvc7cobsdsArg9a357pnaL3sA+H+8BVs27m7tw=="],
 
+    "@botlake/extension-ct-config": ["@botlake/extension-ct-config@0.2.0", "", { "peerDependencies": { "@botlake/core": "^0.2.0", "@botlake/extension-agents": "^0.2.0", "@botlake/extension-flags": "^0.2.0", "@botlake/extension-identity": "^0.2.0", "@botlake/extension-references": "^0.2.0", "@botlake/extension-work": "^0.2.0", "@botlake/extension-work-agents": "^0.2.0" } }, "sha512-PVvo/2xxB13bqP4jne7v9e29BObLcbJVnivuqvyHxAWS/lb5yi3nNn3/EV9ZNMA5grrM8M9FuCfbASnCYjVqjw=="],
+
     "@botlake/extension-diary": ["@botlake/extension-diary@0.2.0", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.2.0", "@botlake/extension-identity": "^0.2.0" } }, "sha512-Rgi+MVDFHuN9yIxD+6+rKLc6ZgxrgeRcePo3w339pglMf7Rm3bP+Gg6QCzdei3dCk8b2ESGGK4czMZo09TX9Mw=="],
 
     "@botlake/extension-flags": ["@botlake/extension-flags@0.2.0", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.2.0" } }, "sha512-JXuj0/9kJ0/ER1sQUyic0zSeYwxMprQcCugHSMCImawGuLfBwy3a/UUprxzwRhyRwMiNHlLoi5TjrEzjL56HIg=="],
@@ -44,7 +46,7 @@
 
     "@botlake/extension-references": ["@botlake/extension-references@0.2.0", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.2.0" } }, "sha512-gUCK978w0X8khdV85KDoJ8drqdJOhwk8g17/Jizf+VKy1qvT8yYrZddpyHVAYIVMW1EGbG2yaSk7+q1+Dtb44w=="],
 
-    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.2", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-5pG/Y/7dhi8UUF2YPtTRo/QxtlBUvOlZ/uSbQSvYjP7YQ4X+Ur/YCnkveU3ER9e+/78VgmO81/T+jHqHIm9ytw=="],
+    "@botlake/extension-ui": ["@botlake/extension-ui@0.1.3", "", { "dependencies": { "zod": "4.6.5" } }, "sha512-gPihgTsh2+kbx9blCeL1U3YNAbk7VHrtP39QQeLYsFvypjMXQLVlLQRb+uFJMOthLYzxjfE7jOenuqmLmkJC5A=="],
 
     "@botlake/extension-work": ["@botlake/extension-work@0.2.0", "", { "dependencies": { "@botlake/extension-references": "^0.2.0", "ts-pattern": "^5.9.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.2.0", "@botlake/extension-identity": "^0.2.0" } }, "sha512-4RywwaO5Ezwsx5Vgmh22AxSkvDBluh1Xv0FzfYbD0cxdlgG5TyV3prGE4G2KiXjKTT1D8eVYTM/GJEovN74LNg=="],
 
@@ -57,8 +59,6 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "cron-parser": ["cron-parser@5.10.3", "", { "dependencies": { "luxon": "^3.7.2" } }, "sha512-Fwlmlgiyoj5e7XDCy5T3ueFd3imgt714k7xjAzhkOBUrUgQxWtsjS7kWSEN3efDX34bebxBJAmPoCSisHvjlpw=="],
-
-    "ct-config": ["ct-config@../dist/private/ct-config-0.1.1.tgz", { "peerDependencies": { "@botlake/core": "^0.2.0", "@botlake/extension-agents": "^0.2.0", "@botlake/extension-flags": "^0.2.0", "@botlake/extension-identity": "^0.2.0", "@botlake/extension-references": "^0.2.0", "@botlake/extension-work": "^0.2.0", "@botlake/extension-work-agents": "^0.2.0" } }, "sha512-7SbKcZi8bPMy66DbzjYpObncVVOLFjpbUR5owQLtaxyKt8dBkdtdY/M9v9ry6QSgLtQZnkHk/f4Zh3dLIpysoA=="],
 
     "dependency-graph": ["dependency-graph@1.0.0", "", {}, "sha512-cW3gggJ28HZ/LExwxP2B++aiKxhJXMSIt9K48FOXQkm+vuG5gyatXnLsONRJdzO/7VfjDIiaOOa/bs4l464Lwg=="],
 

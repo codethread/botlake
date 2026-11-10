@@ -8,6 +8,7 @@
     "@botlake/extension-agents": "latest",
     "@botlake/extension-batteries": "latest",
     "@botlake/extension-cron": "latest",
+    "@botlake/extension-ct-config": "latest",
     "@botlake/extension-diary": "latest",
     "@botlake/extension-flags": "latest",
     "@botlake/extension-identity": "latest",
@@ -17,7 +18,6 @@
     "@botlake/extension-work-agents": "latest",
     "@botlake/extension-workflow": "latest",
     "@botlake/native-session": "latest",
-    "ct-config": "file:../dist/private/ct-config-0.1.1.tgz",
     "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
