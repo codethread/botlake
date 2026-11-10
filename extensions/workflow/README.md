@@ -1,5 +1,7 @@
 # @botlake/extension-workflow
 
+TypeScript consumers currently need `skipLibCheck: true` for upstream XState v5 declarations. This skips dependency `.d.ts` validation, not Botlake’s published TypeScript source or your code. Botlake’s own strict development check retains a declaration-only XState patch; npm consumers do not inherit that checkout patch.
+
 Explicitly select Identity, Work and Workflow. Imports are inert; `workflows()` is the configured extension. There are no built-in workflows and no automatic agent launches.
 
 Install compatible `xstate` and `zod` versions in the lake package. Workflow declares both as peers because lake definitions pass XState machines and Zod schemas into the extension.

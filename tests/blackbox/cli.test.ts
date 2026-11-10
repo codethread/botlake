@@ -608,7 +608,8 @@ export default {name:"payloads",activate(ctx){
     const version = cliVersion.parse(
       JSON.parse((await runCli(host, ["--version"], "", unavailable)).stdout),
     );
-    expect(version).toMatchObject({ cli_version: "0.1.0", protocol_version: 1 });
+    expect(version.cli_version).toMatch(/^\d+\.\d+\.\d+$/u);
+    expect(version.protocol_version).toBe(1);
     expect(version.cli_build_id.length).toBeGreaterThan(0);
     const error = await runCli(host, [...prefix, "unknown"], "", {
       BL_ERROR_FORMAT: "json",

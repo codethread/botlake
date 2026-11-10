@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { coreVersion } from "@botlake/core";
 import { z } from "zod";
 
 import { install, system } from "./fixtures/system.ts";
@@ -69,35 +70,36 @@ test("lake minimumCore uses the supervisor's loaded core and reports compatibili
     await Bun.write(installedCoreManifest, JSON.stringify({ ...installedCore, version: "9.0.0" }));
     await Bun.write(
       manifest,
-      JSON.stringify({ botlake: { name: "compatibility", minimumCore: "1.0.0" } }),
+      JSON.stringify({ botlake: { name: "compatibility", minimumCore: "9999.0.0" } }),
     );
 
     const incompatible = await host.botlake(["lake", "start", "--workspace", workspace], false);
     expect(incompatible).toContain(
-      "Lake requires @botlake/core 1.0.0 or newer, but the running supervisor loaded 0.1.0",
+      `Lake requires @botlake/core 9999.0.0 or newer, but the running supervisor loaded ${coreVersion}`,
     );
     expect(incompatible).toContain("Upgrade the supervisor's @botlake/core package");
     expect(await host.botlake(["lake", "list"])).toEqual([]);
 
     await Bun.write(
       manifest,
-      JSON.stringify({ botlake: { name: "compatibility", minimumCore: "0.1.0" } }),
+      JSON.stringify({ botlake: { name: "compatibility", minimumCore: coreVersion } }),
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     expect(await host.botlake(["lake", "info", "--workspace", workspace])).toMatchObject({
-      coreVersion: "0.1.0",
-      minimumCore: "0.1.0",
+      coreVersion,
+      minimumCore: coreVersion,
     });
     expect(await host.botlake(["lake", "status", "--workspace", workspace])).toMatchObject({
       ready: true,
-      coreVersion: "0.1.0",
+      coreVersion,
     });
+    const cli = z.object({ cli_version: z.string() }).parse(await host.botlake(["--version"]));
     expect(await host.botlake(["status"])).toMatchObject({
-      supervisorVersion: "0.1.0",
+      supervisorVersion: cli.cli_version,
       protocolVersion: 1,
-      coreVersion: "0.1.0",
+      coreVersion,
     });
-    expect(await host.botlake(["host-status"])).toMatchObject({ coreVersion: "0.1.0" });
+    expect(await host.botlake(["host-status"])).toMatchObject({ coreVersion });
 
     const primer = Bun.spawn(
       ["bun", "-e", 'import { brief } from "@botlake/core"; console.log(brief)'],

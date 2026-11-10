@@ -55,7 +55,7 @@ interface RegistryMetadata {
   name: string;
   version: string;
   license: "MIT";
-  dist: { integrity: string };
+  dist: { integrity: string; tarball: string };
 }
 const { values } = parseArgs({
   options: {
@@ -107,6 +107,9 @@ const packages = await Promise.all(
   }),
 );
 
+const corePackage = packages.find(({ manifest }) => manifest.name === "@botlake/core");
+assert.ok(corePackage !== undefined, "Public release set must include core");
+
 for (const excluded of excludedPackages) {
   const path = excluded.directory === "." ? root : join(root, excluded.directory);
   const manifest = packageMetadata(JSON.parse(await readFile(join(path, "package.json"), "utf8")));
@@ -127,7 +130,12 @@ if (!values.packed) {
         `${registry}/${encodeURIComponent(item.manifest.name)}/${item.manifest.version}`,
       );
       if (response.status === 404)
-        return { status: "unavailable" as const, specifier, archive: item.archive };
+        return {
+          status: "unavailable" as const,
+          stage: "metadata",
+          specifier,
+          archive: item.archive,
+        };
       if (!response.ok)
         throw new Error(
           `Registry lookup failed for ${specifier}: ${response.status} ${response.statusText}`,
@@ -139,6 +147,23 @@ if (!values.packed) {
         published.dist.integrity,
         item.integrity,
         `${specifier} differs from the checked archive`,
+      );
+      const tarball = await fetch(published.dist.tarball);
+      if (tarball.status === 404)
+        return {
+          status: "unavailable" as const,
+          stage: "tarball",
+          specifier,
+          archive: item.archive,
+        };
+      if (!tarball.ok) throw new Error(`Tarball lookup failed for ${specifier}: ${tarball.status}`);
+      const downloadedIntegrity = `sha512-${createHash("sha512")
+        .update(new Uint8Array(await tarball.arrayBuffer()))
+        .digest("base64")}`;
+      assert.equal(
+        downloadedIntegrity,
+        item.integrity,
+        `${specifier} tarball differs from checked archive`,
       );
       return {
         status: "available" as const,
@@ -165,6 +190,33 @@ try {
   await mkdir(config);
   await mkdir(home);
   await mkdir(bin);
+  const configuredExtensions: Record<string, string> = {
+    "@botlake/extension-references": "references",
+    "@botlake/extension-agents": "agents",
+    "@botlake/extension-work": "work",
+    "@botlake/extension-work-agents": "workAgents",
+    "@botlake/extension-work-auto-bot": "workAutoBot",
+  };
+  await writeFile(
+    join(config, "bindings.ts"),
+    `
+import { references as createReferences } from "@botlake/extension-references";
+import { agents as createAgents, agentReferenceProjections } from "@botlake/extension-agents";
+import { work as createWork, workReferenceProjections } from "@botlake/extension-work";
+import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
+import { workAutoBot as createWorkAutoBot } from "@botlake/extension-work-auto-bot";
+export const references = createReferences({projections: [...workReferenceProjections, ...agentReferenceProjections]});
+export const agents = createAgents({references});
+export const work = createWork({references});
+export const workAgents = createWorkAgents({checkIntervalMs: 60000});
+export const workAutoBot = createWorkAutoBot({agents, work});
+`,
+  );
+  for (const binding of Object.values(configuredExtensions))
+    await writeFile(
+      join(config, `${binding}.ts`),
+      `export { ${binding} as default } from "./bindings.ts";\n`,
+    );
   const dependencies = Object.fromEntries(
     packages.map(({ manifest, archive }) => [
       manifest.name,
@@ -179,7 +231,16 @@ try {
         type: "module",
         dependencies,
         overrides: dependencies,
-        botlake: { name: "release-verification", extensions: ["@botlake/extension-batteries"] },
+        botlake: {
+          name: "release-verification",
+          minimumCore: corePackage.manifest.version,
+          extensions: packages
+            .filter(({ directory }) => directory.startsWith("extensions/"))
+            .map(({ manifest }) => {
+              const binding = configuredExtensions[manifest.name];
+              return binding === undefined ? manifest.name : `./.botlake/${binding}.ts`;
+            }),
+        },
       },
       null,
       2,
@@ -187,7 +248,7 @@ try {
   );
   await writeFile(
     join(config, "bunfig.toml"),
-    `[install]\nlinker = "isolated"\nminimumReleaseAgeExcludes = ${JSON.stringify(packages.map(({ manifest }) => manifest.name))}\n`,
+    `[install]\nlinker = "isolated"\nminimumReleaseAge = 604800\nminimumReleaseAgeExcludes = ${JSON.stringify(packages.map(({ manifest }) => manifest.name))}\n`,
   );
   run(
     "bun",
@@ -218,6 +279,27 @@ try {
     .map(({ manifest }) => `import ${JSON.stringify(manifest.name)};`)
     .join("\n");
   run("bun", ["--eval", imports], config);
+  await writeFile(join(config, "consumer.ts"), `${imports}\n`);
+  await writeFile(
+    join(config, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        target: "ESNext",
+        module: "Preserve",
+        moduleResolution: "Bundler",
+        strict: true,
+        exactOptionalPropertyTypes: true,
+        noEmit: true,
+        allowImportingTsExtensions: true,
+        // XState v5 has an upstream declaration-only issue; Botlake's .ts source remains checked.
+        skipLibCheck: true,
+        types: ["bun"],
+        typeRoots: [join(root, "node_modules/@types")],
+      },
+      files: ["consumer.ts"],
+    }),
+  );
+  run(join(root, "node_modules/.bin/tsc"), ["--project", join(config, "tsconfig.json")], config);
   run("go", ["build", "-o", join(bin, "botlake"), "./cmd/botlake"], join(root, "cli"));
   run("go", ["build", "-o", join(bin, "bl"), "./cmd/bl"], join(root, "cli"));
 
@@ -245,14 +327,25 @@ try {
     ),
   );
   assert.ok(info.packageJson.startsWith(`${config}${sep}`));
-  assert.equal(info.extensions.length, 1);
-  const extension = info.extensions[0];
-  assert.ok(extension !== undefined);
-  for (const path of [extension.module, extension.source, extension.packageJson]) {
+  const expectedCoreVersion = corePackage.manifest.version;
+  const runtimeStatus: unknown = JSON.parse(run(join(bin, "botlake"), ["status"], workspace, env));
+  assertRecord(runtimeStatus, "runtime status");
+  assert.equal(runtimeStatus["coreVersion"], expectedCoreVersion);
+  assert.equal(
+    info.extensions.length,
+    packages.filter(({ directory }) => directory.startsWith("extensions/")).length,
+  );
+  for (const extension of info.extensions) {
     assert.ok(
-      path.startsWith(`${installedRoot}${sep}`),
-      `Lake resolved outside the fresh consumer: ${path}`,
+      extension.module.startsWith(`${config}${sep}`),
+      `Module escaped disposable lake: ${extension.module}`,
     );
+    for (const path of [extension.source, extension.packageJson]) {
+      assert.ok(
+        path.startsWith(`${installedRoot}${sep}`),
+        `Lake resolved outside the fresh consumer: ${path}`,
+      );
+    }
   }
   const created = nodeResult(
     JSON.parse(
@@ -282,6 +375,7 @@ try {
         ({ manifest, integrity }) => `${manifest.name}@${manifest.version} ${integrity}`,
       ),
       source: values.packed ? "packed" : "npm",
+      consumerTypes: "strict source checking; skipLibCheck for upstream declarations",
       core,
       sqlite: join(config, "world.db"),
       excluded: excludedPackages,
@@ -339,12 +433,14 @@ function registryMetadata(value: unknown): RegistryMetadata {
   assertNonEmptyString(version, `${metadata.name} registry version`);
   assertRecord(dist, `${metadata.name} dist`);
   const integrity = dist["integrity"];
+  const tarball = dist["tarball"];
   assertNonEmptyString(integrity, `${metadata.name} integrity`);
+  assertNonEmptyString(tarball, `${metadata.name} tarball`);
   return {
     name: metadata.name,
     version,
     license: "MIT",
-    dist: { integrity },
+    dist: { integrity, tarball },
   };
 }
 

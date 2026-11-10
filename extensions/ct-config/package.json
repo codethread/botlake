@@ -12,12 +12,12 @@
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "@botlake/core": "^0.1.0",
-    "@botlake/extension-agents": "^0.1.0",
-    "@botlake/extension-flags": "^0.1.0",
-    "@botlake/extension-identity": "^0.1.0",
-    "@botlake/extension-references": "^0.1.0",
-    "@botlake/extension-work": "^0.1.0",
-    "@botlake/extension-work-agents": "^0.1.0"
+    "@botlake/core": "^0.2.0",
+    "@botlake/extension-agents": "^0.2.0",
+    "@botlake/extension-flags": "^0.2.0",
+    "@botlake/extension-identity": "^0.2.0",
+    "@botlake/extension-references": "^0.2.0",
+    "@botlake/extension-work": "^0.2.0",
+    "@botlake/extension-work-agents": "^0.2.0"
   }
 }
