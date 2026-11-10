@@ -5,7 +5,7 @@ Personal lake configuration: agent roster and prompts, provider flags, reference
 `ct-config` is a private source package. It is packed locally and never published. From the repository root, create and verify the canonical archive:
 
 ```sh
-rm -rf dist/private && mkdir -p dist/private
+mkdir -p dist/private
 (cd extensions/ct-config && bun pm pack --destination ../../dist/private --ignore-scripts)
 bun scripts/verify-private-config.ts
 ```

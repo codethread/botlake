@@ -2,19 +2,19 @@
 
 ## Setup
 
-Requires Bun, Go and mise. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, including its built CLI; no UI checkout or Bun link is needed. From the Botlake checkout, run:
+Requires Bun, Go and mise. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, as TypeScript source, including its executable Bun CLI; no UI checkout or build is needed. From the Botlake checkout, run:
 
 ```sh
 mise run install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The [mise tasks](../../mise.toml) install workspace dependencies and both Go CLIs into `~/.local/bin`. The installed binaries use this checkout's core by default; keep its source and dependencies in place.
+The [mise tasks](../../mise.toml) install development dependencies, pack the shared private configuration, install the independent lake and place both Go CLIs in `~/.local/bin`.
 
 If no supervisor is running, start one in a separate terminal:
 
 ```sh
-botlake start
+BL_CORE="$PWD/.botlake/node_modules/@botlake/core" botlake start
 ```
 
 Then start the development lake:
@@ -27,7 +27,7 @@ The `setup` mise task installs Botlake and starts this checkout's lake. The UI s
 
 ## Development lake
 
-The private `.botlake` package uses workspace dependencies and explicitly selected extensions. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` package is an independent consumer: public dependencies come from npm and `ct-config` comes from its locally packed tarball. Development workspace packages are not its runtime. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
@@ -36,7 +36,9 @@ Install the repository-local [native identity adapter](../../plugins/identity/RE
 ## Rebuild and reload
 
 - Go changes: rebuild with `mise run install` and restart the supervisor through its process manager, or stop/start it manually. Supervisor replacement ends process custody and clears published lake routes; start the required lakes again.
-- Workspace TypeScript/configuration changes: `botlake lake restart`.
+- Lake-local configuration changes: `botlake lake restart`.
+- Shared private configuration changes: version and pack `ct-config`, update each consumer dependency and lockfile, then restart affected lakes.
+- Public runtime changes: release and update the installed package before restarting; source edits do not change the running npm package.
 - Host changes: `botlake restart-host` restores active lakes without replacing the supervisor.
 
 Core stays extension-independent. Cross-package imports use declared dependencies and public exports, never relative source paths; Oxlint enforces the seam. Package prerequisites must be selected explicitly. See [contribution rules](../../AGENTS.md).

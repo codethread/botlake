@@ -3,7 +3,6 @@
   "private": true,
   "license": "MIT",
   "workspaces": [
-    ".botlake",
     "packages/*",
     "extensions/*",
     "plugins/*"

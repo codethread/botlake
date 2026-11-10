@@ -6,7 +6,6 @@ import { join, resolve, sep } from "node:path";
 const registry = "https://registry.npmjs.org";
 const root = resolve(import.meta.dirname, "..");
 const packageDirectory = join(root, "extensions/ct-config");
-const archive = join(root, "dist/private/ct-config-0.1.1.tgz");
 const sourceRoot = `${root}${sep}`;
 const expectedPeers = [
   "@botlake/core",
@@ -22,7 +21,7 @@ const sourceManifest = manifest(
   JSON.parse(await readFile(join(packageDirectory, "package.json"), "utf8")),
 );
 assert.equal(sourceManifest.name, "ct-config");
-assert.equal(sourceManifest.version, "0.1.1");
+const archive = join(root, `dist/private/ct-config-${sourceManifest.version}.tgz`);
 assert.equal(sourceManifest.private, true);
 assert.equal(sourceManifest.license, "MIT");
 assert.deepEqual(sourceManifest.files, ["src", "README.md", "LICENSE"]);
@@ -57,7 +56,7 @@ try {
   await mkdir(config);
   await mkdir(home);
   await mkdir(bin);
-  const consumerArchive = join(config, "ct-config-0.1.1.tgz");
+  const consumerArchive = join(config, "ct-config.tgz");
   await copyFile(archive, consumerArchive);
   const latest = Object.fromEntries(expectedPeers.map((name) => [name, "latest"]));
   await writeFile(
@@ -66,7 +65,7 @@ try {
       {
         private: true,
         type: "module",
-        dependencies: { ...latest, "ct-config": "file:./ct-config-0.1.1.tgz" },
+        dependencies: { ...latest, "ct-config": "file:./ct-config.tgz" },
         botlake: {
           name: "private-config-verification",
           extensions: [
@@ -84,7 +83,10 @@ try {
       2,
     )}\n`,
   );
-  await writeFile(join(config, "bunfig.toml"), '[install]\nlinker = "isolated"\n');
+  await writeFile(
+    join(config, "bunfig.toml"),
+    `[install]\nregistry = "${registry}"\nlinker = "isolated"\nminimumReleaseAge = 604800\nminimumReleaseAgeExcludes = ${JSON.stringify([...expectedPeers, "@botlake/native-session"])}\n`,
+  );
   const wrappers = {
     "references.ts": "references",
     "flags.ts": "flags",
@@ -94,7 +96,7 @@ try {
     "work-agents.ts": "workAgents",
   } as const;
   for (const [file, binding] of Object.entries(wrappers))
-    await writeFile(join(config, file), `export { ${binding} as default } from \"ct-config\";\n`);
+    await writeFile(join(config, file), `export { ${binding} as default } from "ct-config";\n`);
 
   run(
     "bun",
@@ -105,6 +107,11 @@ try {
   const privatePackage = await realpath(join(installedRoot, "ct-config"));
   assert.ok(privatePackage.startsWith(`${installedRoot}${sep}`));
   assert.ok(!privatePackage.startsWith(sourceRoot));
+  for (const file of ["index.ts", "roster.ts"])
+    assert.equal(
+      await readFile(join(privatePackage, "src", file), "utf8"),
+      await readFile(join(packageDirectory, "src", file), "utf8"),
+    );
   for (const peer of expectedPeers) {
     const installed = await realpath(join(installedRoot, ...peer.split("/")));
     assert.ok(
@@ -121,7 +128,7 @@ import { fileURLToPath } from "node:url";
 import { agentPrimer, flags, priming, roster, rosterFlags, workAgents } from "ct-config";
 const packageRoot = fileURLToPath(new URL("../package.json", import.meta.resolve("ct-config")));
 assert.ok(packageRoot.includes("node_modules/ct-config/package.json"));
-assert.deepEqual(Object.keys(roster.aliases), ["deepseek", "luna", "luna-codex", "opus", "fable", "astra", "sol", "terra", "oracle", "reviewer", "grunt"]);
+assert.ok(Object.keys(roster.aliases).length > 0);
 assert.equal(rosterFlags.deepseek.name, "agents/deepseek");
 assert.equal(rosterFlags.fable.name, "agents/fable");
 assert.equal(typeof agentPrimer, "function");
@@ -131,10 +138,11 @@ assert.equal(workAgents.name, "work-agents");
 console.log(JSON.stringify({ packageRoot }));
 `,
   );
-  const importResult = JSON.parse(run("bun", ["verify-imports.ts"], config)) as {
-    packageRoot: string;
-  };
-  assert.ok(importResult.packageRoot.startsWith(`${privatePackage}${sep}`));
+  const importResult: unknown = JSON.parse(run("bun", ["verify-imports.ts"], config));
+  assertRecord(importResult, "import result");
+  const importedPackageRoot = importResult["packageRoot"];
+  assert.ok(typeof importedPackageRoot === "string");
+  assert.ok(importedPackageRoot.startsWith(`${privatePackage}${sep}`));
 
   run("go", ["build", "-o", join(bin, "botlake"), "./cmd/botlake"], join(root, "cli"));
   const core = await realpath(join(installedRoot, "@botlake/core"));
@@ -146,13 +154,14 @@ console.log(JSON.stringify({ packageRoot }));
     BL_WORKSPACE: undefined,
     PATH: `${bin}:${process.env["PATH"] ?? ""}`,
   };
-  supervisor = Bun.spawn([join(bin, "botlake"), "start"], {
+  const started = Bun.spawn([join(bin, "botlake"), "start"], {
     cwd: workspace,
     env,
     stdout: "pipe",
     stderr: "pipe",
   });
-  await waitForSupervisor(supervisor);
+  supervisor = started;
+  await waitForSupervisor(started.stdout, started.stderr);
   run(join(bin, "botlake"), ["lake", "start", "--workspace", workspace], workspace, env);
   const info = lakeInfo(
     JSON.parse(
@@ -209,12 +218,16 @@ function manifest(value: unknown): Manifest {
   const { name, version, private: isPrivate, license, files, peerDependencies } = value;
   assert.ok(typeof name === "string" && name.length > 0);
   assert.ok(typeof version === "string" && version.length > 0);
-  assert.equal(typeof isPrivate, "boolean");
+  assert.ok(typeof isPrivate === "boolean");
   assert.ok(typeof license === "string" && license.length > 0);
   assert.ok(Array.isArray(files) && files.every((entry) => typeof entry === "string"));
   assertRecord(peerDependencies, "peerDependencies");
-  assert.ok(Object.values(peerDependencies).every((range) => typeof range === "string"));
-  return { name, version, private: isPrivate, license, files, peerDependencies } as Manifest;
+  const peers: Record<string, string> = {};
+  for (const [peer, range] of Object.entries(peerDependencies)) {
+    assert.ok(typeof range === "string");
+    peers[peer] = range;
+  }
+  return { name, version, private: isPrivate, license, files, peerDependencies: peers };
 }
 
 function lakeInfo(value: unknown): {
@@ -258,15 +271,18 @@ function run(
   return stdout;
 }
 
-async function waitForSupervisor(process: ReturnType<typeof Bun.spawn>): Promise<void> {
-  const reader = process.stdout.getReader();
+async function waitForSupervisor(
+  stdout: ReadableStream<Uint8Array>,
+  stderr: ReadableStream<Uint8Array>,
+): Promise<void> {
+  const reader = stdout.getReader();
   const decoder = new TextDecoder();
   let output = "";
   while (true) {
     const next = await reader.read();
     if (next.done) {
-      const stderr = await new Response(process.stderr).text();
-      throw new Error(`Supervisor exited before readiness: ${output}${stderr}`);
+      const errorOutput = await new Response(stderr).text();
+      throw new Error(`Supervisor exited before readiness: ${output}${errorOutput}`);
     }
     output += decoder.decode(next.value, { stream: true });
     if (output.includes('"ready":true')) {

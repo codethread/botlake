@@ -4,19 +4,20 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@botlake/core": "workspace:*",
-    "@botlake/extension-agents": "workspace:*",
-    "@botlake/extension-batteries": "workspace:*",
-    "@botlake/extension-cron": "workspace:*",
-    "@botlake/extension-diary": "workspace:*",
-    "@botlake/extension-flags": "workspace:*",
-    "@botlake/extension-identity": "workspace:*",
-    "@botlake/extension-references": "workspace:*",
+    "@botlake/core": "latest",
+    "@botlake/extension-agents": "latest",
+    "@botlake/extension-batteries": "latest",
+    "@botlake/extension-cron": "latest",
+    "@botlake/extension-diary": "latest",
+    "@botlake/extension-flags": "latest",
+    "@botlake/extension-identity": "latest",
+    "@botlake/extension-references": "latest",
     "@botlake/extension-ui": "latest",
-    "@botlake/extension-work": "workspace:*",
-    "@botlake/extension-work-agents": "workspace:*",
-    "@botlake/extension-workflow": "workspace:*",
-    "ct-config": "workspace:*",
+    "@botlake/extension-work": "latest",
+    "@botlake/extension-work-agents": "latest",
+    "@botlake/extension-workflow": "latest",
+    "@botlake/native-session": "latest",
+    "ct-config": "file:../dist/private/ct-config-0.1.1.tgz",
     "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
@@ -37,5 +38,8 @@
       "@botlake/extension-ui"
     ],
     "minimumCore": "0.2.0"
+  },
+  "patchedDependencies": {
+    "xstate@5.33.3": "../patches/xstate@5.33.3.patch"
   }
 }

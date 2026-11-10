@@ -58,7 +58,7 @@ An explicit selection stays in effect across directory changes. `bl --cwd DIR` a
 
 Public runtime packages are published to npm as Bun-native TypeScript without a build step. Install `@botlake/core` and chosen extensions into the workspace or its `.botlake` package. `latest` tracks the npm dist-tag when updating; lockfiles retain the resolved versions until updated. For local tarballs, run `bun pm pack` inside each source package; Bun rewrites workspace dependency ranges. For offline tarball installs, point both consumer `dependencies` and `overrides` at the tarballs for every `@botlake/*` peer.
 
-For local development with named links, install dependencies in the source checkout first. Run `bun link` in each source package directory named by a `link:` dependency, then run `bun install` in the consuming package. For example, register `packages/core` to install `"@botlake/core": "link:@botlake/core"`. Each machine resolves these names through its own Bun link registry.
+For local package development, install a Bun-packed tarball. This keeps the package’s source TypeScript while resolving its rewritten dependencies from the consuming installation. A private package can be packed and installed locally without publishing it.
 
 - Package entries resolve from `.botlake`; relative entries resolve from the workspace root. Absolute module paths also work.
 - Each selected entry must default-export an `Extension`.
