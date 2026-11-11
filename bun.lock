@@ -19,6 +19,7 @@
         "@botlake/extension-work-auto-bot": "workspace:*",
         "@botlake/extension-workflow": "workspace:*",
         "@botlake/native-session": "workspace:*",
+        "@codethread/skillbox": "^0.2.0",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -238,6 +239,8 @@
     "@botlake/identity": ["@botlake/identity@workspace:plugins/identity"],
 
     "@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
+
+    "@codethread/skillbox": ["@codethread/skillbox@0.2.0", "", { "bin": { "skillbox": "bin/skillbox.mjs" } }, "sha512-K1FOgd+zq0X00KPOPJcE3crvqO7i/ZYsh2dLsYOxjRxbBcwgiBXsIAI10+CXoor5SF4pMKTCbV2cCyUMSPp5vA=="],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 
