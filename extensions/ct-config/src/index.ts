@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- The shared preset intentionally composes its public extension descriptors.
 import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
