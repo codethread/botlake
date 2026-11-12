@@ -12,7 +12,7 @@ const runSchema = z.compile(
 );
 const catalogSchema = z.compile(z.object({ providers: z.array(z.string()) }));
 
-test("custom harnesses retain native identity, output binding, activity and resume across restart without Flags", async () => {
+test("custom harness instances retain native identity, output binding, activity and resume across restart without Flags", async () => {
   const host = await system();
   try {
     const workspace = await host.workspace("custom-harness", [
@@ -41,24 +41,36 @@ console.log(JSON.stringify({session, answer: input.prompt, actor: process.env.BL
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import { agents, type Provider } from "@botlake/extension-agents";
+      `import { agents, type Provider, type ProviderRun } from "@botlake/extension-agents";
 import { z } from "zod";
 const output = z.object({ session: z.string(), answer: z.string(), actor: z.string().nullable() });
+class CustomHarness implements Provider {
+  name = " acme-harness ";
+  doc = "Custom harness with its own wire protocol.";
+  #command = ["bun", ${JSON.stringify(child)}, "--base-option"];
+  #preparations = 0;
+
+  prepare(run: ProviderRun) {
+    this.#preparations++;
+    return {
+      command: [...this.#command],
+      stdin: JSON.stringify({prompt: run.prompt, sessionId: run.resumes ? run.sessionId : null}),
+      env: {},
+    };
+  }
+
+  finish(_run: ProviderRun, exitCode: number, stdout: string, stderr: string) {
+    const value = output.parse(JSON.parse(stdout));
+    return {
+      success: exitCode === 0,
+      result: JSON.stringify({...value, preparations: this.#preparations}),
+      sessionId: value.session,
+      error: exitCode === 0 ? null : stderr,
+    };
+  }
+}
 function myCustomHarness(): Provider {
-  return {
-    name: "acme-harness", doc: "Custom harness with its own wire protocol.",
-    prepare(run) {
-      return {
-        command: ["bun", ${JSON.stringify(child)}, "--base-option"],
-        stdin: JSON.stringify({prompt: run.prompt, sessionId: run.resumes ? run.sessionId : null}),
-        env: {},
-      };
-    },
-    finish(_run, exitCode, stdout, stderr) {
-      const value = output.parse(JSON.parse(stdout));
-      return {success: exitCode === 0, result: JSON.stringify(value), sessionId: value.session, error: exitCode === 0 ? null : stderr};
-    },
-  };
+  return new CustomHarness();
 }
 export default agents({providers: [myCustomHarness()], aliases: {worker: {provider: "acme-harness"}}});
 `,
@@ -122,7 +134,7 @@ export default agents({providers: [myCustomHarness()], aliases: {worker: {provid
       first.attributes[agentAttributes.sessionId],
     );
     const answer = z
-      .object({ actor: z.string() })
+      .object({ actor: z.string(), preparations: z.literal(1) })
       .parse(JSON.parse(z.string().parse(continuation.attributes[agentAttributes.result])));
     expect(answer.actor).toBe(z.string().parse(first.attributes[agentAttributes.identity]));
 

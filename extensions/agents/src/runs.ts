@@ -95,7 +95,13 @@ export class Agents {
     ]) {
       const name = providerSchema.parse(entry.name);
       if (this.providers.has(name)) throw new Fault("collision", `Duplicate provider: ${name}`);
-      this.providers.set(name, { ...entry, name });
+      this.providers.set(name, {
+        name,
+        doc: entry.doc,
+        ...(entry.flag === undefined ? {} : { flag: entry.flag }),
+        prepare: entry.prepare.bind(entry),
+        finish: entry.finish.bind(entry),
+      });
     }
 
     this.seats = new Catalog(
