@@ -794,6 +794,12 @@ func (d *Daemon) handle(conn net.Conn) {
 		}
 		sort.Slice(members, func(i, j int) bool { return members[i].Path < members[j].Path })
 		lakePids := map[string]int{}
+		activeProcesses := map[string][]process.ActiveProcess{}
+		if req.Operation == "status" {
+			for path, custody := range d.custodies {
+				activeProcesses[path] = custody.ActiveProcesses()
+			}
+		}
 		var coreVersion string
 		for path, lake := range d.lakes {
 			lakePids[path] = lake.cmd.Process.Pid
@@ -808,6 +814,7 @@ func (d *Daemon) handle(conn net.Conn) {
 			encode(conn, Frame{OK: true, Result: map[string]any{
 				"pid": os.Getpid(), "supervisorVersion": Version, "supervisorBuildId": buildID(), "protocolVersion": protocolVersion,
 				"hostPid": 0, "hostReady": true, "hostError": "", "coreVersion": coreVersion, "lakePids": lakePids, "members": members,
+				"activeProcesses": activeProcesses,
 			}})
 		}
 	case "host-status":

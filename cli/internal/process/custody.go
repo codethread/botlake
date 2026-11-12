@@ -77,6 +77,14 @@ type Record struct {
 	LaunchFailure *LaunchFailure      `json:"launch_failure,omitempty"`
 }
 
+// ActiveProcess identifies a nonterminal process without its retained evidence
+// or launch specification. Owner and Key are opaque consumer-defined identifiers.
+type ActiveProcess struct {
+	Handle string `json:"handle"`
+	Owner  string `json:"owner"`
+	Key    string `json:"key"`
+}
+
 type custodyRecord struct {
 	Record
 	spec        LaunchSpec
@@ -490,6 +498,21 @@ func (c *Custody) ListOwned(owner string) ([]Record, error) {
 	}
 
 	return rows, nil
+}
+
+// ActiveProcesses snapshots nonterminal records, sorted by handle. It reads only
+// the custody map; completed, cancelled and failed-launch records are excluded.
+func (c *Custody) ActiveProcesses() []ActiveProcess {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	processes := []ActiveProcess{}
+	for _, row := range c.byHandle {
+		if row.Phase != "terminal" {
+			processes = append(processes, ActiveProcess{Handle: row.Handle, Owner: row.Owner, Key: row.Key})
+		}
+	}
+	sort.Slice(processes, func(i, j int) bool { return processes[i].Handle < processes[j].Handle })
+	return processes
 }
 
 // Cancel requests process-tree cancellation and leaves the terminal fact
