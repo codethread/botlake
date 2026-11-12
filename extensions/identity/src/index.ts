@@ -251,7 +251,7 @@ export function identity(): Extension {
                   provider: {
                     type: "string",
                     required: true,
-                    description: "Provider: codex, pi or claude",
+                    description: "Provider namespace (for example: codex, pi, claude)",
                   },
                   "native-session-id": {
                     key: "nativeSessionId",

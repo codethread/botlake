@@ -214,9 +214,9 @@ test("packed core runs alone; installed extensions require explicit selection an
     );
     await Bun.write(
       join(agents, "agents.ts"),
-      `import { agents, agentConfigSchema } from "@botlake/extension-agents";
+      `import { agents, agentConfigSchema, builtinProviders, agentFlags } from "@botlake/extension-agents";
 import config from "./agents.json";
-export default agents(agentConfigSchema.parse(config));`,
+export default agents({...agentConfigSchema.parse(config), providers: [builtinProviders.codex({flag: agentFlags.codex}), builtinProviders.pi({flag: agentFlags.pi}), builtinProviders.claude({flag: agentFlags.claude})]});`,
     );
     await host.botlake(["lake", "start", "--workspace", agents]);
     expect(

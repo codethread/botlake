@@ -3,7 +3,6 @@ import { providerSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { agentFlags } from "./flags.ts";
 import { runActivityOptionsSchema } from "./node-model.ts";
 import { resolveSystemPrompt, systemPromptSchema, type SystemPrompt } from "./prompt.ts";
 import type { Provider } from "./providers/contract.ts";
@@ -173,9 +172,8 @@ export class Catalog {
     const provider = this.providers.find((entry) => entry.name === name);
     if (provider === undefined)
       return { available: false, doc: null, reasons: [{ name, reason: "not-registered" }] };
-    const definition = agentFlags[provider.name];
-    const flag = definition.name;
-    if (!(this.flag(flag) ?? definition.default))
+    const flag = provider.flag?.name;
+    if (flag !== undefined && this.flag(flag) !== true)
       return {
         available: false,
         doc: provider.doc,

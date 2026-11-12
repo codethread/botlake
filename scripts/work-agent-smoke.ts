@@ -12,7 +12,7 @@ import {
   type ProcessFact,
   type Processes,
 } from "@botlake/core";
-import { agentAttributes, agentFlags, agents, provider } from "@botlake/extension-agents";
+import { agentAttributes, agentFlags, agents, builtinProviders } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 import { identity } from "@botlake/extension-identity";
 import { work } from "@botlake/extension-work";
@@ -567,7 +567,7 @@ async function managedPhase(): Promise<string[]> {
     processes,
   });
   try {
-    const codex = provider("codex");
+    const codex = builtinProviders.codex({ flag: agentFlags.codex });
     await runtime.start([
       configureFlags([[agentFlags.codex, true]]),
       identity(),
@@ -970,7 +970,7 @@ async function missedSettlementPhase(): Promise<string[]> {
       clock,
       processes,
     });
-    const codex = provider("codex");
+    const codex = builtinProviders.codex({ flag: agentFlags.codex });
     await next.start([
       configureFlags([[agentFlags.codex, true]]),
       identity(),
@@ -1092,8 +1092,8 @@ export default configureFlags([[agentFlags.codex, true]]);\n`,
     );
     await Bun.write(
       join(workspace, "agents.ts"),
-      `import { agents, provider } from "@botlake/extension-agents";
-const codex = provider("codex");
+      `import { agents, builtinProviders, agentFlags } from "@botlake/extension-agents";
+const codex = builtinProviders.codex({flag:agentFlags.codex});
 export default agents({ providers: [{ ...codex, prepare() { return { command: ["bun", ${JSON.stringify(idle)}], stdin: "", env: {} }; } }], aliases: { worker: { provider: "codex" } } });\n`,
     );
     await Bun.write(

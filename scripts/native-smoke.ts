@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { jsonSchema, q } from "@botlake/core";
-import { agentAttributes, provider } from "@botlake/extension-agents";
+import { agentAttributes, builtinProviders, agentFlags } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
@@ -114,9 +114,9 @@ export default configureFlags([${names.map((name) => `[agentFlags.${name}, true]
   );
   await Bun.write(
     join(workspace, "agents.ts"),
-    `import {agents,provider} from "@botlake/extension-agents";
+    `import {agents,builtinProviders,agentFlags} from "@botlake/extension-agents";
 const settings=${JSON.stringify(settings)};
-export default agents({providers:Object.entries(settings).map(([name,setting])=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
+export default agents({providers:Object.entries(settings).map(([name,setting])=>{const base=builtinProviders[name]({flag:agentFlags[name]});return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
   );
   await host.botlake(["lake", "start", "--workspace", workspace]);
   async function settled(id: string): Promise<z.infer<typeof runSchema>> {
@@ -229,7 +229,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       extraArgs: setting.extraArgs,
       systemPrompt: "",
     };
-    const plan = provider(name).prepare(definition);
+    const plan = builtinProviders[name]({ flag: agentFlags[name] }).prepare(definition);
 
     const stdout = await inTmux(
       name,
@@ -251,7 +251,12 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       },
       plan.stdin,
     );
-    const outcome = provider(name).finish(definition, 0, stdout, "");
+    const outcome = builtinProviders[name]({ flag: agentFlags[name] }).finish(
+      definition,
+      0,
+      stdout,
+      "",
+    );
     check(outcome.success, JSON.stringify(outcome));
     check(
       outcome.result?.includes(directFixture) === true,

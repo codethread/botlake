@@ -1,6 +1,17 @@
+import type { FlagDefinition } from "@botlake/extension-flags";
 import type { ProviderName } from "@botlake/native-session";
+import { z } from "zod";
 
 export type { ProviderName } from "@botlake/native-session";
+
+export const commandSchema = z.compile(z.tuple([z.string().min(1)]).rest(z.string()));
+
+export interface BuiltinProviderOptions {
+  /** Executable and base arguments, before provider-owned protocol arguments. */
+  command?: readonly [string, ...string[]];
+  /** Optional caller-owned gate; omission makes the provider always available. */
+  flag?: FlagDefinition;
+}
 
 export interface ProviderSettings {
   model?: string | undefined;
@@ -29,8 +40,12 @@ export interface Outcome {
 }
 
 export interface Provider {
+  /** Unique provider and native-session namespace. */
   name: ProviderName;
+  /** Catalog guidance for choosing this provider. */
   doc: string;
+  /** Optional caller-owned availability flag. */
+  flag?: FlagDefinition;
 
   prepare(run: ProviderRun): LaunchPlan;
 

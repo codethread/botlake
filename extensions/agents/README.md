@@ -2,16 +2,21 @@
 
 TypeScript consumers currently need `skipLibCheck: true` for upstream XState v5 declarations. This skips dependency `.d.ts` validation, not Botlake’s published TypeScript source or your code. Botlake’s own strict development check retains a declaration-only XState patch; npm consumers do not inherit that checkout patch.
 
-Tracked headless agent runs, providers, documented aliases, assignment, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity and Flags alongside this extension. Botlake supplies process custody.
+Tracked headless agent runs, providers, documented aliases, assignment, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity alongside this extension. Select Flags only when provider gates or alias `when` conditions use it. Botlake supplies process custody.
 
-Select `"@botlake/extension-agents"` for Codex, Pi and Claude defaults. For configuration, select a local module instead:
+Select `"@botlake/extension-agents"` for ungated Codex, Pi and Claude defaults. For configuration, select a local module instead:
 
 ```ts
-import { agents } from "@botlake/extension-agents";
+import { agents, agentFlags, builtinProviders } from "@botlake/extension-agents";
 
 import { modelFlags } from "./flags.ts";
 
 export default agents({
+  providers: [
+    builtinProviders.codex({ flag: agentFlags.codex }),
+    builtinProviders.pi({ flag: agentFlags.pi }),
+    builtinProviders.claude({ flag: agentFlags.claude }),
+  ],
   aliases: {
     sol: {
       doc: "Complex implementation and debugging.",
@@ -59,9 +64,9 @@ export default configureFlags([
 ]);
 ```
 
-`agentFlags.codex`, `agentFlags.pi` and `agentFlags.claude` own their provider flag names, descriptions and disabled defaults. Providers are opt-in: configure each desired provider with `[definition, true]`. Every `configureFlags` entry requires an explicit boolean, so an author's default changes cannot alter configured choices. Importing definitions does not activate Agents.
+`agentFlags.codex`, `agentFlags.pi` and `agentFlags.claude` are reusable, optional gate definitions. Factories apply no gate unless passed `flag`; you can pass your own `FlagDefinition` instead. A gated provider is available only when its effective flag is true. Every `configureFlags` entry requires an explicit boolean; the definition's declared default does not supply runtime state. Importing definitions activates nothing.
 
-Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unconfigured or persistently unset provider flags disable the provider. Unset custom flags are false in alias conditions.
+Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unconfigured or persistently unset gates disable their provider. Providers without a gate remain available. Unset custom flags are false in alias conditions.
 
 ## Catalog and routing
 
@@ -192,7 +197,7 @@ export default agents({
 });
 ```
 
-`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`. Consumer priming can call `resolveSessionContext(ctx, invocation)` dynamically; it returns `null` for anonymous or unregistered callers and reads retained Identity/Agents evidence without activating or registering either extension.
+`SessionContext` contains `provider` (a built-in or custom provider name), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`. Consumer priming can call `resolveSessionContext(ctx, invocation)` dynamically; it returns `null` for anonymous or unregistered callers and reads retained Identity/Agents evidence without activating or registering either extension.
 
 Managed Botlake launches always have audience `agent`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
 
@@ -211,11 +216,35 @@ Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed 
 
 ## Provider strategies
 
-`agents()` accepts custom implementations of Codex, Pi and Claude through `providers`. Pass `providers: [provider("codex"), provider("pi")]` to select only those two built-ins.
+`providers` selects the complete registry; it does not merge with defaults. Omission selects all three ungated built-ins, `[]` selects none, and duplicate names are errors.
 
-Each `Provider` supplies `name`, catalog `doc`, `prepare(run)` and `finish(run, exitCode, stdout, stderr)`. `ProviderRun` carries portable settings (`model`, `effort`, `extraArgs`, resolved `systemPrompt`) plus prompt and cwd. Fresh launches have no session ID; resumes carry a previously observed native ID. The strategy maps these to native flags in a `LaunchPlan` and parses native output into an `Outcome`; the runtime owns custody, persistence and native identity binding.
+```ts
+import { agents, builtinProviders } from "@botlake/extension-agents";
 
-`SessionContext`, `SystemPrompt`, `Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts are public exports. `Agents.readActivity(input: ActivityRead)` exposes activity reads; stream mutation and SQL row decoders stay internal.
+import { harnessFlags } from "./flags.ts";
+import { myCustomHarness } from "./my-harness.ts";
+
+export default agents({
+  providers: [
+    builtinProviders.claude({
+      command: ["/opt/bin/claude", "--permission-mode", "acceptEdits"],
+      flag: harnessFlags.claude,
+    }),
+    builtinProviders.codex(), // Ungated; no Flags selection needed for this provider.
+    myCustomHarness(),
+  ],
+});
+```
+
+`builtinProviders.claude()`, `.codex()` and `.pi()` accept `BuiltinProviderOptions`: optional `command` and `flag`. `command` is a nonempty argv prefix replacing the executable, not the whole protocol invocation. It also supports launchers such as `["bun", "/path/to/wrapper.ts"]`. Arguments follow this order: configured prefix, provider-owned protocol arguments, run `extraArgs`, generated model/effort/system-prompt settings, resume arguments. Keep JSON/print protocol flags intact; the parser depends on them. The replacement executable must implement the same native protocol.
+
+Each `Provider` supplies a unique nonempty `name`, catalog `doc`, optional `flag: FlagDefinition`, `prepare(run)` and `finish(run, exitCode, stdout, stderr)`. Custom harness factories return that same interface and own their command construction and output parser. `ProviderRun` carries portable settings (`model`, `effort`, `extraArgs`, resolved `systemPrompt`) plus prompt and cwd. Fresh launches have no session ID; resumes carry a previously observed native ID. A `LaunchPlan` contains argv, stdin and environment; an `Outcome` contains success, result, observed session ID and error. The runtime owns custody, persistence and native identity binding.
+
+Provider names are native-session namespaces, not a closed list. Custom native callbacks must report the same name as the managed provider. Returning an observed session ID from `finish` can establish identity without native hooks; it does not fabricate activity. Built-in plugins speak only their host protocols, so a new harness supplies its own native reporting when needed.
+
+A provider gate or any alias `when` condition makes Flags a required, explicitly selected prerequisite. Without either, Agents runs without Flags activation. Missing Flags is an activation error; missing or unset flag values are false. Importing factories or definitions activates nothing.
+
+`SessionContext`, `SystemPrompt`, `Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts (including `BuiltinProviderOptions`) are public exports. `Agents.readActivity(input: ActivityRead)` exposes activity reads; stream mutation and SQL row decoders stay internal.
 
 ## Node model
 

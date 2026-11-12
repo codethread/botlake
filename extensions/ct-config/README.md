@@ -43,4 +43,4 @@ export default configureAgents({
 });
 ```
 
-Overrides merge by alias name without modifying the shared roster. Spreading an alias preserves its prompt; prompts do not inherit through `parent`. Each lake retains its own flags, database and runtime state.
+Overrides merge by alias name without modifying the shared roster. Spreading an alias preserves its prompt; prompts do not inherit through `parent`. Each lake retains its own flags, database and runtime state. The configured Agents binding explicitly gates each built-in with its corresponding `agentFlags` definition; select this package's `flags` export to retain its configured provider availability.
