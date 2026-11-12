@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { commandSchema, type BuiltinProviderOptions, type Provider } from "./contract.ts";
+import { providerCommand, type BuiltinProviderOptions, type Provider } from "./contract.ts";
 import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 
 const itemSchema = z.compile(z.object({ type: z.string(), text: z.string().optional() }));
 
 export function codex(options: BuiltinProviderOptions = {}): Provider {
-  const command = commandSchema.parse(options.command ?? ["codex"]);
+  const command = providerCommand("codex", options);
   return {
     name: "codex",
     ...(options.flag === undefined ? {} : { flag: options.flag }),

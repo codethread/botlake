@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { commandSchema, type BuiltinProviderOptions, type Provider } from "./contract.ts";
+import { providerCommand, type BuiltinProviderOptions, type Provider } from "./contract.ts";
 import { jsonLines, malformedOutput, nativeSession, result } from "./output.ts";
 
 const roleSchema = z.compile(z.object({ role: z.string() }));
@@ -13,7 +13,7 @@ const messageSchema = z.compile(
 );
 
 export function pi(options: BuiltinProviderOptions = {}): Provider {
-  const command = commandSchema.parse(options.command ?? ["pi"]);
+  const command = providerCommand("pi", options);
   return {
     name: "pi",
     ...(options.flag === undefined ? {} : { flag: options.flag }),

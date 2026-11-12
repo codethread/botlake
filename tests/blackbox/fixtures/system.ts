@@ -75,6 +75,7 @@ export async function system(): Promise<System> {
     "cron",
     "flags",
     "agents",
+    "ct-config",
     "work",
     "work-agents",
     "work-auto-bot",

@@ -1,4 +1,5 @@
-// Opt-in authenticated probe. Uses private homes, plugins, supervisor and SQLite; never installs globally.
+// Opt-in authenticated probe with private homes, plugins, supervisor and SQLite.
+// BL_SMOKE_PI_BIN/BL_SMOKE_CODEX_BIN select PATH launchers; never installs globally.
 import { copyFile, cp, mkdir, symlink, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,12 +30,14 @@ const observationSchema = z.compile(
 );
 const settingSchema = z.compile(
   z.object({
+    bin: z.string().min(1),
     model: z.string(),
     extraArgs: z.array(z.string()),
     env: z.record(z.string(), z.string()),
   }),
 );
-const runListSchema = z.compile(z.array(runSchema));
+const runPageSchema = z.compile(z.object({ nodes: z.array(runSchema) }));
+const launchSchema = z.compile(z.object({ command: z.array(z.string()) }));
 const host = await system();
 const owned: string[] = [];
 const tmuxSockets: string[] = [];
@@ -59,7 +62,7 @@ try {
   const plugin = join(workspace, "node_modules/@botlake/identity");
   const settings: Record<
     string,
-    { model: string; extraArgs: string[]; env: Record<string, string> }
+    { bin: string; model: string; extraArgs: string[]; env: Record<string, string> }
   > = {};
   for (const name of names) {
     const home = join(host.dir, name);
@@ -70,6 +73,7 @@ try {
       await credential(join(original, "models.json"), join(home, "models.json"));
       await Bun.write(join(home, "settings.json"), "{}");
       settings[name] = {
+        bin: process.env["BL_SMOKE_PI_BIN"] ?? "pi",
         model: process.env["BL_SMOKE_PI_MODEL"] ?? "openai-codex/gpt-6-luna",
         extraArgs: [
           "--no-extensions",
@@ -99,6 +103,7 @@ try {
         '[features]\nplugins = true\nhooks = true\nremote_plugin = false\n\n[plugins."botlake-identity@botlake"]\nenabled = true\n',
       );
       settings[name] = {
+        bin: process.env["BL_SMOKE_CODEX_BIN"] ?? "codex",
         model: process.env["BL_SMOKE_CODEX_MODEL"] ?? "gpt-6-luna",
         extraArgs: ["--sandbox", "read-only", "--dangerously-bypass-hook-trust", "--ignore-rules"],
         env: { CODEX_HOME: home, CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG: "1" },
@@ -116,7 +121,7 @@ export default configureFlags([${names.map((name) => `[agentFlags.${name}, true]
     join(workspace, "agents.ts"),
     `import {agents,builtinProviders,agentFlags} from "@botlake/extension-agents";
 const settings=${JSON.stringify(settings)};
-export default agents({providers:Object.entries(settings).map(([name,setting])=>{const base=builtinProviders[name]({flag:agentFlags[name]});return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
+export default agents({providers:Object.entries(settings).map(([name,setting])=>{const base=builtinProviders[name]({bin:setting.bin,flag:agentFlags[name]});return {...base,prepare(run){const plan=base.prepare(run);return {...plan,env:{...plan.env,...setting.env}}}}}),aliases:Object.fromEntries(Object.entries(settings).map(([name,setting])=>[name+"-luna",{provider:name,model:setting.model,extraArgs:setting.extraArgs}]))});`,
   );
   await host.botlake(["lake", "start", "--workspace", workspace]);
   async function settled(id: string): Promise<z.infer<typeof runSchema>> {
@@ -136,8 +141,10 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     if (run.attributes[agentAttributes.provider] === "pi")
       nonEmptyTextSchema.parse(observed.thinkingLevel);
   }
-  function verify(run: z.infer<typeof runSchema>, fixture: string): void {
+  function verify(run: z.infer<typeof runSchema>, fixture: string, bin: string): void {
     check(run.attributes[agentAttributes.substatus] === "completed", JSON.stringify(run));
+    const launch = launchSchema.parse(run.attributes[agentAttributes.launch]);
+    check(launch.command.includes(bin), `Managed run did not use configured executable: ${bin}`);
     lifecycle(run);
     check(
       run.attributes[agentAttributes.integration] === "native",
@@ -184,7 +191,10 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     return activity;
   }
   for (const name of names) {
-    process.stderr.write(`Testing ${name} Luna: managed start, resume, direct native session\n`);
+    const setting = settingSchema.parse(settings[name]);
+    process.stderr.write(
+      `Testing ${name} Luna via ${setting.bin}: managed start, resume, direct native session\n`,
+    );
     const firstFixture = await freshFixture(workspace);
     const started = idSchema.parse(
       await host.bl("native-smoke", "agent", {
@@ -197,7 +207,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
 
     owned.push(started.id);
     const first = await settled(started.id);
-    verify(first, firstFixture);
+    verify(first, firstFixture, setting.bin);
     const firstActivity = await runActivity(first);
     const continuationFixture = await freshFixture(workspace);
     const resumed = idSchema.parse(
@@ -205,7 +215,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     );
     owned.push(resumed.id);
     const continuation = await settled(resumed.id);
-    verify(continuation, continuationFixture);
+    verify(continuation, continuationFixture, setting.bin);
     const continuationActivity = await runActivity(continuation);
     check(
       first.attributes[agentAttributes.sessionId] ===
@@ -217,8 +227,6 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
         continuation.attributes[agentAttributes.identity],
       "Resume changed identity",
     );
-    const setting = settingSchema.parse(settings[name]);
-
     const directFixture = await freshFixture(workspace);
     const definition = {
       provider: name,
@@ -229,7 +237,9 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       extraArgs: setting.extraArgs,
       systemPrompt: "",
     };
-    const plan = builtinProviders[name]({ flag: agentFlags[name] }).prepare(definition);
+    const plan = builtinProviders[name]({ bin: setting.bin, flag: agentFlags[name] }).prepare(
+      definition,
+    );
 
     const stdout = await inTmux(
       name,
@@ -251,7 +261,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       },
       plan.stdin,
     );
-    const outcome = builtinProviders[name]({ flag: agentFlags[name] }).finish(
+    const outcome = builtinProviders[name]({ bin: setting.bin, flag: agentFlags[name] }).finish(
       definition,
       0,
       stdout,
@@ -262,9 +272,12 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       outcome.result?.includes(directFixture) === true,
       "Native agent did not read the fresh fixture",
     );
-    const [external] = runListSchema.parse(
+    const {
+      nodes: [external],
+    } = runPageSchema.parse(
       await host.bl("native-smoke", "node", {
         command: "list",
+        lean: false,
         where: q.and(
           q.eq(q.attr(agentAttributes.external), true),
           q.eq(q.attr(agentAttributes.provider), name),
@@ -297,8 +310,9 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
     );
     evidence.push({
       provider: name,
+      bin: setting.bin,
       model: setting.model,
-      version: (await exec([name, "--version"], workspace)).trim(),
+      version: (await exec([setting.bin, "--version"], workspace)).trim(),
       first,
       continuation,
       external,

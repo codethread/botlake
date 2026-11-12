@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { commandSchema, type BuiltinProviderOptions, type Provider } from "./contract.ts";
+import { providerCommand, type BuiltinProviderOptions, type Provider } from "./contract.ts";
 import { malformedOutput, result } from "./output.ts";
 
 const envelopeSchema = z.compile(
@@ -12,7 +12,7 @@ const envelopeSchema = z.compile(
 );
 
 export function claude(options: BuiltinProviderOptions = {}): Provider {
-  const command = commandSchema.parse(options.command ?? ["claude"]);
+  const command = providerCommand("claude", options);
   return {
     name: "claude",
     ...(options.flag === undefined ? {} : { flag: options.flag }),

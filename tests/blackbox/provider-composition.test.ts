@@ -286,6 +286,22 @@ export default agents({providers: [builtinProviders.claude({command: []})]});`,
     expect(await host.botlake(["lake", "start", "--workspace", workspace], false)).toContain(
       "expected string, received undefined",
     );
+    await Bun.write(
+      module,
+      `import {agents, builtinProviders} from "@botlake/extension-agents";
+export default agents({providers: [builtinProviders.pi({bin: "piw", command: ["pi"]})]});`,
+    );
+    expect(await host.botlake(["lake", "start", "--workspace", workspace], false)).toContain(
+      "bin and command are mutually exclusive",
+    );
+    await Bun.write(
+      module,
+      `import {agents, builtinProviders} from "@botlake/extension-agents";
+export default agents({providers: [builtinProviders.pi({bin: ""})]});`,
+    );
+    expect(await host.botlake(["lake", "start", "--workspace", workspace], false)).toContain(
+      "Too small",
+    );
   } finally {
     await host.close();
   }

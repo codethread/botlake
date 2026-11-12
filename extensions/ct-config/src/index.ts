@@ -58,9 +58,9 @@ export function configureAgents(
 ): ReturnType<typeof createAgents> {
   return createAgents({
     providers: [
-      builtinProviders.codex({ flag: agentFlags.codex }),
-      builtinProviders.pi({ flag: agentFlags.pi }),
-      builtinProviders.claude({ flag: agentFlags.claude }),
+      builtinProviders.codex({ bin: "co", flag: agentFlags.codex }),
+      builtinProviders.pi({ bin: "piw", flag: agentFlags.pi }),
+      builtinProviders.claude({ bin: "cl", flag: agentFlags.claude }),
     ],
     ...roster,
     references,
