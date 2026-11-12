@@ -70,6 +70,9 @@ export async function system(): Promise<System> {
   for (const name of [
     "batteries",
     "identity",
+    "mail",
+    "mail-identity",
+    "mail-agents",
     "references",
     "diary",
     "cron",

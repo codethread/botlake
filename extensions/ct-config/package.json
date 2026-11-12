@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-ct-config",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "files": [
     "src",
@@ -19,6 +19,9 @@
     "@botlake/extension-agents": "workspace:^",
     "@botlake/extension-flags": "workspace:^",
     "@botlake/extension-identity": "workspace:^",
+    "@botlake/extension-mail": "workspace:^",
+    "@botlake/extension-mail-agents": "workspace:^",
+    "@botlake/extension-mail-identity": "workspace:^",
     "@botlake/extension-references": "workspace:^",
     "@botlake/extension-work": "workspace:^",
     "@botlake/extension-work-agents": "workspace:^"

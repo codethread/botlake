@@ -34,6 +34,7 @@ import {
   type AgentConfig,
 } from "./catalog.ts";
 import { initialLifecycleAttributes, runLifecycle, transitionRun } from "./lifecycle.ts";
+import { agentLiveness } from "./liveness.ts";
 import { NativeSessions } from "./native.ts";
 import { agentAttributes, agentRelations, agentLaunchSchema } from "./node-model.ts";
 import type { Provider, ProviderName, ProviderRun } from "./providers/contract.ts";
@@ -216,6 +217,7 @@ export class Agents {
         );
 
       const resumes = run.attributes[agentAttributes.resumes] === true;
+      if (resumes) this.requireSessionAvailable(run);
       return this.advance(
         id,
         { type: "RETRY" },
@@ -270,17 +272,7 @@ export class Agents {
 
         throw new Fault("resume", "Run already has an accepted continuation");
       }
-      if (
-        this.runs().some(
-          (run) =>
-            this.active(run) &&
-            run.attributes[agentAttributes.provider] ===
-              parent.attributes[agentAttributes.provider] &&
-            run.attributes[agentAttributes.sessionId] ===
-              parent.attributes[agentAttributes.sessionId],
-        )
-      )
-        throw new Fault("resume", "Native session already has an active writer");
+      this.requireSessionAvailable(parent);
 
       const target = this.ctx.graph
         .edges(id, agentRelations.serves)
@@ -580,6 +572,27 @@ export class Agents {
     );
   }
 
+  private requireSessionAvailable(candidate: Node): void {
+    const sessionId = text.parse(candidate.attributes[agentAttributes.sessionId]);
+    if (
+      this.runs().some((run) => {
+        if (
+          run.id === candidate.id ||
+          run.attributes[agentAttributes.provider] !==
+            candidate.attributes[agentAttributes.provider] ||
+          run.attributes[agentAttributes.sessionId] !== sessionId
+        )
+          return false;
+        const liveness = agentLiveness(run);
+        // An idle external turn still owns its session; only session-end releases it.
+        return liveness.kind === "external"
+          ? liveness.observation?.activity !== "ended"
+          : !liveness.settled;
+      })
+    )
+      throw new Fault("resume", "Native session already has an active writer");
+  }
+
   private begin(run: Node): Node {
     return this.ctx.graph.atomic(() => {
       const current = this.run(run.id);
@@ -594,6 +607,8 @@ export class Agents {
       )
         return current;
 
+      if (current.attributes[agentAttributes.resumes] === true)
+        this.requireSessionAvailable(current);
       const invocation = crypto.randomUUID();
       const definition = this.providerRun(current);
       const plan = requireValue(

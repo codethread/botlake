@@ -11,6 +11,8 @@
 - [Standalone measurements](standalone-benchmark.json)
 - [Historical shared-process measurements](pool-benchmark.json)
 
+- [Graph-native Mail experiment](mail-graph.md)
+
 ## Design
 
 - [Work coordination workshop](work-coordination-workshop.md)

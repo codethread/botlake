@@ -101,7 +101,7 @@
     "release": {
       "source": "./skillbox",
       "sourceType": "local",
-      "computedHash": "1c1b2fea4f9529f1b8bf3c99415d0b9f5e9b3ca40232aa403bf95e443ce0cd0f",
+      "computedHash": "f1cecf4e415569dd7063adf637b16c473218f57a3dac851149a9392ce4cb345a",
       "installMode": "copy"
     },
     "rich-response": {

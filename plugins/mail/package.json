@@ -1,0 +1,22 @@
+{
+  "name": "@botlake/mail",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "client.ts",
+    "hook.ts",
+    "pi.ts",
+    "summary.ts",
+    ".codex-plugin",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    "./pi": "./pi.ts"
+  },
+  "dependencies": {
+    "@botlake/native-session": "workspace:^",
+    "zod": "^4.6.7"
+  }
+}

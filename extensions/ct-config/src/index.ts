@@ -7,6 +7,9 @@ import {
   type Alias,
 } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
+import { mail as createMail } from "@botlake/extension-mail";
+import { mailAgents as createMailAgents } from "@botlake/extension-mail-agents";
+import { mailIdentity as createMailIdentity } from "@botlake/extension-mail-identity";
 import { references as createReferences } from "@botlake/extension-references";
 import {
   work as createWork,
@@ -32,6 +35,12 @@ export const references = createReferences({
 });
 
 export const agents = configureAgents();
+
+export const mail = createMail();
+
+export const mailIdentity = createMailIdentity();
+
+export const mailAgents = createMailAgents({ agents });
 
 export const priming = createPriming({
   work: [
