@@ -11,7 +11,7 @@ import {
   agentAttributes as a,
   agentFlags,
   agentRelations,
-  provider,
+  builtinProviders,
 } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 import { identity } from "@botlake/extension-identity";
@@ -261,7 +261,7 @@ function configuredAgents() {
   return agents({
     providers: [
       {
-        ...provider("codex"),
+        ...builtinProviders.codex({ flag: agentFlags.codex }),
         prepare: () => ({ command: ["fixture"], stdin: "", env: {} }),
         finish: (run, code) => ({
           success: code === 0,

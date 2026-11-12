@@ -16,18 +16,11 @@ await Bun.write(join(output, "server.stderr.log"), "");
 const fixture = await system();
 let server: Bun.Subprocess | undefined;
 try {
-  const workspace = await mailLake(fixture, "mail-ui");
-  const manifestPath = join(workspace, ".botlake/package.json");
-  const manifest = z
-    .object({ botlake: z.object({ name: z.string(), extensions: z.array(z.string()) }) })
-    .parse(await Bun.file(manifestPath).json());
-  manifest.botlake.extensions.push(
+  const workspace = await mailLake(fixture, "mail-ui", "linked", [
     "@botlake/extension-flags",
     "@botlake/extension-agents",
     "@botlake/extension-work",
-  );
-  await Bun.write(manifestPath, JSON.stringify({ private: true, type: "module", ...manifest }));
-  await fixture.botlake(["lake", "restart", "--workspace", workspace]);
+  ]);
   const identitySchema = z.object({ identity: z.string(), nodeId: z.string() });
   const alice = identitySchema.parse(
     await call(fixture, workspace, "seed", "identity", {

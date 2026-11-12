@@ -12,7 +12,7 @@ Configure the child process environment explicitly:
 - `BL_BIN`: optional CLI executable; defaults to `bl`.
 - `BL_MAIL_TRACE`: optional JSONL observation file for experiments; its parent must exist.
 
-Pi loads `pi.ts` through an explicit `-e` flag. Codex loads the included plugin manifest; the live runner uses equivalent invocation-local hook declarations. Neither installation nor this repository activates mail globally.
+Pi loads `pi.ts` through an explicit `-e` flag. Codex loads the included plugin manifest; the live runner uses equivalent invocation-local hook declarations. The repository-local plugin marketplace lists `botlake-mail` as available, not enabled. Neither installation nor this repository activates mail globally. This harness integration is private and is not published to npm.
 
 Each poll fetches up to 100 summaries with status `sent`, so urgency beyond that batch waits for another boundary. The plugin reports delivery for the announced batch, including messages covered by its count but omitted from the three displayed subjects. Codex records the receipt after writing its response; Pi records it while preparing to return the augmented tool result. Both are plugin-reported handoff evidence, not a host-confirmed read receipt. A failed report leaves messages eligible for retry.
 

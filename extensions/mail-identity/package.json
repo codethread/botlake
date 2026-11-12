@@ -1,10 +1,12 @@
 {
   "name": "@botlake/extension-mail-identity",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Explicit graph links between mail and registered identities.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

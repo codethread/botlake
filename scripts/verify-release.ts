@@ -17,6 +17,9 @@ const publicPackages = [
   { directory: "extensions/diary", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/flags", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/identity", assets: ["src", "README.md", "LICENSE"] },
+  { directory: "extensions/mail", assets: ["src", "README.md", "LICENSE"] },
+  { directory: "extensions/mail-agents", assets: ["src", "README.md", "LICENSE"] },
+  { directory: "extensions/mail-identity", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/references", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/work", assets: ["src", "README.md", "LICENSE"] },
   { directory: "extensions/work-agents", assets: ["src", "README.md", "LICENSE"] },
@@ -33,6 +36,11 @@ const excludedPackages = [
     directory: "plugins/identity",
     name: "@botlake/identity",
     reason: "harness adapters supplied from the repository-local plugin marketplace",
+  },
+  {
+    directory: "plugins/mail",
+    name: "@botlake/mail",
+    reason: "opt-in harness adapters supplied from the repository-local plugin marketplace",
   },
 ] as const;
 interface PackageMetadata {
@@ -200,6 +208,7 @@ try {
     "@botlake/extension-ct-config": "ctPriming",
     "@botlake/extension-references": "references",
     "@botlake/extension-agents": "agents",
+    "@botlake/extension-mail-agents": "mailAgents",
     "@botlake/extension-work": "work",
     "@botlake/extension-work-agents": "workAgents",
     "@botlake/extension-work-auto-bot": "workAutoBot",
@@ -213,8 +222,10 @@ import { agents as createAgents, agentReferenceProjections } from "@botlake/exte
 import { work as createWork, workReferenceProjections } from "@botlake/extension-work";
 import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 import { workAutoBot as createWorkAutoBot } from "@botlake/extension-work-auto-bot";
+import { mailAgents as createMailAgents } from "@botlake/extension-mail-agents";
 export const references = createReferences({projections: [...workReferenceProjections, ...agentReferenceProjections]});
 export const agents = createAgents({references});
+export const mailAgents = createMailAgents({agents});
 export const work = createWork({references});
 export const workAgents = createWorkAgents({checkIntervalMs: 60000});
 export const workAutoBot = createWorkAutoBot({agents, work});
@@ -373,6 +384,29 @@ export const workAutoBot = createWorkAutoBot({agents, work});
     ),
   );
   assert.equal(shown.title, "Release archive smoke");
+  const mailBody = `Release Mail ${crypto.randomUUID()}`;
+  const mailResult: unknown = JSON.parse(
+    run(
+      join(bin, "bl"),
+      ["--workspace", workspace, "mail", "send", "release-verifier", "Release mail", mailBody],
+      workspace,
+      env,
+    ),
+  );
+  assertRecord(mailResult, "sent mail");
+  const messageId = mailResult["id"];
+  assertNonEmptyString(messageId, "message id");
+  const readMail: unknown = JSON.parse(
+    run(join(bin, "bl"), ["--workspace", workspace, "mail", "read", messageId], workspace, env),
+  );
+  assertRecord(readMail, "read mail");
+  assert.equal(readMail["body"], mailBody);
+  assert.equal(readMail["status"], "sent", "Reading must not acknowledge mail");
+  const acknowledged: unknown = JSON.parse(
+    run(join(bin, "bl"), ["--workspace", workspace, "mail", "ack", messageId], workspace, env),
+  );
+  assertRecord(acknowledged, "mail acknowledgement");
+  assert.equal(acknowledged["status"], "acknowledged");
   await realpath(join(config, "world.db"));
   run(join(bin, "botlake"), ["lake", "stop", "--workspace", workspace], workspace, env);
   run(join(bin, "botlake"), ["stop"], workspace, env);

@@ -3,8 +3,26 @@
   "plugins": [
     {
       "name": "botlake-identity",
-      "source": { "source": "local", "path": "./plugins/identity" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "source": {
+        "source": "local",
+        "path": "./plugins/identity"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "botlake-mail",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mail"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
       "category": "Productivity"
     }
   ]

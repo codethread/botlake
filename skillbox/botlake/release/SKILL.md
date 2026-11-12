@@ -5,20 +5,20 @@ description: Use when packing, publishing or verifying Botlake runtime packages 
 
 # Release Botlake runtime packages
 
-Release core, native-session and the lake extensions under `extensions/`, including the shared `@botlake/extension-ct-config` preset. The root, `.botlake` lake package and `plugins/identity` are private. The identity plugin is harness-side: Claude/Codex discover its manifests through `.agents/plugins/marketplace.json`, while Pi loads `pi.ts` explicitly from that installed local plugin source.
+Release core, native-session and the lake extensions under `extensions/`, including the shared `@botlake/extension-ct-config` preset. The root, `.botlake` lake package and the harness adapters under `plugins/` are private. The identity plugin is harness-side: Claude/Codex discover its manifests through `.agents/plugins/marketplace.json`, while Pi loads `pi.ts` explicitly from that installed local plugin source.
 
 1. Choose one version for the public set, update each public manifest directly, install the lockfile, and run the repository checks. Confirm `npm whoami` has `@botlake` publish access.
 2. Pack the exact candidate with Bun:
 
    ```sh
    rm -rf dist/release && mkdir -p dist/release
-   for package in packages/core packages/native-session extensions/agents extensions/batteries extensions/cron extensions/ct-config extensions/diary extensions/flags extensions/identity extensions/references extensions/work extensions/work-agents extensions/work-auto-bot extensions/workflow; do
+   for package in packages/core packages/native-session extensions/agents extensions/batteries extensions/cron extensions/ct-config extensions/diary extensions/flags extensions/identity extensions/mail extensions/mail-agents extensions/mail-identity extensions/references extensions/work extensions/work-agents extensions/work-auto-bot extensions/workflow; do
      (cd "$package" && bun pm pack --destination "$OLDPWD/dist/release" --ignore-scripts)
    done
    bun scripts/verify-release.ts --packed
    ```
 
-   The verifier checks the complete scope, MIT metadata/text, core NOTICE, source/README/assets, fresh-cache installation, installed imports and disposable SQLite operation through a private supervisor with `BL_CORE` set to the installed core.
+   The verifier checks the complete scope, MIT metadata/text, core NOTICE, source/README/assets, fresh-cache installation, installed imports and disposable SQLite graph/Mail operations through a private supervisor with `BL_CORE` set to the installed core.
 
 3. Commit and freeze the candidate. Record the commit and archive integrities emitted by the verifier.
 4. Check npm before publishing:

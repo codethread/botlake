@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { system } from "../../tests/blackbox/fixtures/system.ts";
 
@@ -9,18 +9,16 @@ export async function mailLake(
   fixture: Fixture,
   name: string,
   mode: "graph" | "linked" = "linked",
+  additional: string[] = [],
 ) {
-  const workspace = await fixture.workspace(name, []);
   const extensions = [
     "@botlake/extension-batteries",
     "@botlake/extension-identity",
     "@botlake/extension-mail",
     ...(mode === "linked" ? ["@botlake/extension-mail-identity"] : []),
+    ...additional,
   ];
-  await Bun.write(
-    join(workspace, ".botlake/package.json"),
-    JSON.stringify({ private: true, type: "module", botlake: { name, extensions } }),
-  );
+  const workspace = await fixture.workspace(name, extensions);
   await fixture.botlake(["lake", "start", "--workspace", workspace]);
   return workspace;
 }

@@ -58,8 +58,8 @@ try {
   );
   await Bun.write(
     join(workspace, "agents.ts"),
-    `import {agents,provider} from '@botlake/extension-agents';
-const codex=provider('codex'), pi=provider('pi');
+    `import {agents,builtinProviders,agentFlags} from '@botlake/extension-agents';
+const codex=builtinProviders.codex({flag:agentFlags.codex}), pi=builtinProviders.pi({flag:agentFlags.pi});
 export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(run);return {...p,command:[p.command[0],'--no-daemon',...p.command.slice(1)],env:{...p.env,BL_BIN:${JSON.stringify(fixture.blBin)}}};}},{...pi,prepare(run){const p=pi.prepare(run);return {...p,command:[${JSON.stringify(process.env["BL_MAIL_PI_BIN"] ?? "pi")},...p.command.slice(1)],env:{...p.env,BL_BIN:${JSON.stringify(fixture.blBin)}}};}}],aliases:{'luna-codex':{parent:'codex',model:'gpt-6-luna',effort:'low',extraArgs:${JSON.stringify(codexArgs)}},'luna-pi':{parent:'pi',model:'openai-codex/gpt-6-luna',effort:'low',extraArgs:${JSON.stringify(piArgs)}}}});`,
   );
   await Bun.write(
