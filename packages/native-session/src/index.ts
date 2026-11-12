@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const text = z.compile(z.string().trim().min(1));
 
-export const providerSchema = z.compile(z.enum(["codex", "pi", "claude"]));
+export const providerSchema = z.compile(z.string().trim().min(1));
 
 export const audienceSchema = z.compile(z.enum(["human", "agent", "unknown"]));
 const audienceOverrideSchema = z.compile(

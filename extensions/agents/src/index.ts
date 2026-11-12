@@ -44,10 +44,11 @@ export { resolveSessionContext } from "./session-context.ts";
 
 export type { Audience } from "@botlake/native-session";
 
-export { provider } from "./providers/index.ts";
+export { builtinProviders } from "./providers/index.ts";
 
 export type {
   Provider,
+  BuiltinProviderOptions,
   ProviderName,
   ProviderSettings,
   ProviderRun,
@@ -56,12 +57,19 @@ export type {
 } from "./providers/contract.ts";
 
 export function agents(options: AgentOptions = {}): RuntimeExtension<Agents> {
+  const candidates = Object.values(options.aliases ?? {}).flatMap((alias) =>
+    Array.isArray(alias) ? alias : [alias],
+  );
+  const usesFlags =
+    options.providers?.some((provider) => provider.flag !== undefined) === true ||
+    candidates.some((candidate) => typeof candidate !== "string" && candidate.when !== undefined);
+
   return runtimeExtension({
     name: "agents",
     source: import.meta.url,
     requires: [
       "identity",
-      "flags",
+      ...(usesFlags ? ["flags"] : []),
       ...(options.references === undefined ? [] : [options.references.name]),
     ],
     activate(ctx) {

@@ -1,6 +1,7 @@
 import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
+  builtinProviders,
   agentReferenceProjections,
   agents as createAgents,
   type Alias,
@@ -56,6 +57,11 @@ export function configureAgents(
   aliases: Record<string, Alias> = {},
 ): ReturnType<typeof createAgents> {
   return createAgents({
+    providers: [
+      builtinProviders.codex({ bin: "co", flag: agentFlags.codex }),
+      builtinProviders.pi({ bin: "piw", flag: agentFlags.pi }),
+      builtinProviders.claude({ bin: "cl", flag: agentFlags.claude }),
+    ],
     ...roster,
     references,
     aliases: { ...roster.aliases, ...aliases },

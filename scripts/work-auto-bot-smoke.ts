@@ -18,7 +18,7 @@ import {
   agentFlags,
   agentRelations,
   agents,
-  provider,
+  builtinProviders,
 } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 import { identity } from "@botlake/extension-identity";
@@ -82,7 +82,7 @@ async function directPhase(): Promise<void> {
       clock,
       processes,
     });
-    const codex = provider("codex");
+    const codex = builtinProviders.codex({ flag: agentFlags.codex });
     agentsBinding = agents({
       providers: [
         {
@@ -425,8 +425,8 @@ export default configureFlags([[agentFlags.codex, true]]);\n`,
     );
     await Bun.write(
       join(workspace, "agents.ts"),
-      `import { agents, provider } from "@botlake/extension-agents";
-const codex = provider("codex");
+      `import { agents, builtinProviders, agentFlags } from "@botlake/extension-agents";
+const codex = builtinProviders.codex({flag:agentFlags.codex});
 export default agents({ providers: [{ ...codex, prepare() { throw new Error("packaged preparation fixture"); } }], aliases: { worker: { parent: "codex", model: "packaged-fixture" } } });\n`,
     );
     await Bun.write(

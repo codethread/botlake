@@ -44,3 +44,5 @@ export default configureAgents({
 ```
 
 Overrides merge by alias name without modifying the shared roster. Spreading an alias preserves its prompt; prompts do not inherit through `parent`. Each lake retains its own flags, database and runtime state.
+
+Built-in executables resolve through `PATH`: Codex `co`, Claude `cl`, Pi `piw`. Select `flags` alongside `agents`; each provider keeps its corresponding `agentFlags` gate.

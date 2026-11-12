@@ -485,8 +485,8 @@ console.log(JSON.stringify({type:"turn.completed"}));`,
     );
     await Bun.write(
       join(consumer, "providers.ts"),
-      `import { agents, provider } from "@botlake/extension-agents";
-const base=provider("codex");
+      `import { agents, builtinProviders, agentFlags } from "@botlake/extension-agents";
+const base=builtinProviders.codex({flag:agentFlags.codex});
 export default agents({providers:[{...base,prepare(){return {command:["bun",${JSON.stringify(child)}],stdin:"",env:{}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", source]);

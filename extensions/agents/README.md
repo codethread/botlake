@@ -1,17 +1,39 @@
 # @botlake/extension-agents
 
-TypeScript consumers currently need `skipLibCheck: true` for upstream XState v5 declarations. This skips dependency `.d.ts` validation, not Botlake’s published TypeScript source or your code. Botlake’s own strict development check retains a declaration-only XState patch; npm consumers do not inherit that checkout patch.
+Headless agent runs with provider routing, resume/retry and process custody.
 
-Tracked headless agent runs, providers, documented aliases, assignment, resume/retry and custody reconciliation. Install the `@botlake/core`, `@botlake/extension-identity` and `@botlake/extension-flags` peers; explicitly select Identity and Flags alongside this extension. Botlake supplies process custody.
+Install the Core, Identity and Flags peer packages. Explicitly select Identity and Agents in your [lake configuration](../../docs/usage.md#packages-and-extension-selection). Selecting `"@botlake/extension-agents"` gives ungated Codex, Pi and Claude defaults. Imports activate nothing; configuration changes require a lake restart. TypeScript consumers need `skipLibCheck: true` for upstream XState declarations.
 
-Select `"@botlake/extension-agents"` for Codex, Pi and Claude defaults. For configuration, select a local module instead:
+## Catalog and routing
+
+For custom routing, select a local Agents module instead. This example also requires explicit selection of its [Flags module](../flags/README.md):
 
 ```ts
-import { agents } from "@botlake/extension-agents";
+// flags.ts
+import { agentFlags } from "@botlake/extension-agents";
+import { configureFlags, flags } from "@botlake/extension-flags";
+
+export const modelFlags = flags({
+  openai: { name: "model/openai", description: "Enable OpenAI seats.", default: true },
+});
+
+export default configureFlags([
+  [agentFlags.claude, false],
+  [modelFlags.openai, true],
+]);
+```
+
+```ts
+// agents.ts
+import { agents, agentFlags, builtinProviders } from "@botlake/extension-agents";
 
 import { modelFlags } from "./flags.ts";
 
 export default agents({
+  providers: [
+    builtinProviders.pi(), // Ungated.
+    builtinProviders.claude({ flag: agentFlags.claude }),
+  ],
   aliases: {
     sol: {
       doc: "Complex implementation and debugging.",
@@ -20,104 +42,86 @@ export default agents({
       effort: "low",
       when: modelFlags.openai.name,
     },
-    opus: {
-      doc: "Greenfield features, API design and critical review.",
-      parent: "claude",
-      model: "opus",
-      when: modelFlags.anthropic.name,
-    },
-    reviewer: ["sol", "opus"],
+    opus: { parent: "claude", model: "opus" },
+    reviewer: [
+      { doc: "Prefer Sol for review.", parent: "sol" },
+      { doc: "Fallback review.", parent: "opus" },
+    ],
   },
 });
 ```
 
-In a separate selected [Flags module](../flags/README.md), import Agents' provider definitions and configure workspace defaults:
-
-```ts
-import { agentFlags } from "@botlake/extension-agents";
-import { configureFlags, flags } from "@botlake/extension-flags";
-
-export const modelFlags = flags({
-  openai: {
-    name: "model/openai",
-    description: "Enable OpenAI model seats.",
-    default: true,
-  },
-  anthropic: {
-    name: "model/anthropic",
-    description: "Enable Anthropic model seats.",
-    default: true,
-  },
-});
-
-export default configureFlags([
-  [agentFlags.codex, true],
-  [agentFlags.pi, true],
-  [agentFlags.claude, false],
-  [modelFlags.openai, true],
-  [modelFlags.anthropic, true],
-]);
-```
-
-`agentFlags.codex`, `agentFlags.pi` and `agentFlags.claude` own their provider flag names, descriptions and disabled defaults. Providers are opt-in: configure each desired provider with `[definition, true]`. Every `configureFlags` entry requires an explicit boolean, so an author's default changes cannot alter configured choices. Importing definitions does not activate Agents.
-
-Database flag overrides survive restarts; `bl flag reset NAME` restores its configured default. Unconfigured or persistently unset provider flags disable the provider. Unset custom flags are false in alias conditions.
-
-## Catalog and routing
-
-- `parent` names a provider or alias. Nearest child model/effort/extraArgs settings replace their parent's. `systemPrompt` never inherits. A concrete `provider` descriptor also works.
-- An alias can be a descriptor, another seat's name, or a nonempty ordered array of either. The first candidate whose condition and parent chain are available wins. Missing parents, cycles and disabled flags produce visible unavailability reasons. Fallback selects before launch; it is not a retry after execution failure or an installed-model probe.
-- `when` accepts a flag name or nested expressions such as `["and", "model/openai", ["not", "maintenance"]]`; `or` is also supported. Provider flags apply through every alias chain.
-- `doc` explains when to use a seat. Names inherit their selected parent's docs; use full candidate descriptors to document role-specific choices, e.g. `reviewer: [{ doc: "Prefer Sol for review.", parent: "sol" }, { doc: "Fallback review.", parent: "opus" }]`.
-- Accepted runs freeze their resolved settings. Flag changes affect new starts, not queued/running runs, retries or native resumes. Exact request replay returns its original accepted run even if the alias is now disabled.
+- `providers` is the **complete registry**, not an addition to defaults. Omit it for all three ungated built-ins; `[]` registers none. Duplicate names are errors.
+- Any provider `flag` or alias `when` requires Flags selection; otherwise Flags need not activate. Only effective `true` enables a gate; missing/unset is false. `configureFlags` requires explicit booleans, not definition defaults. Persistent overrides survive restart; `bl flag reset NAME` restores the configured default.
+- Aliases accept a descriptor, a seat name, or a nonempty ordered candidate array. `parent` names a provider/alias; `{ provider: "pi" }` also works. Nearest model/effort/extraArgs replace inherited values; **systemPrompt never inherits**.
+- The first candidate with an available condition and parent chain wins **before launch**. This is neither failure retry nor an installed-model probe. `when` accepts flag names and nested `and`/`or`/`not`, for example `["and", "model/openai", ["not", "maintenance"]]`. Unset flags are false.
 
 ```sh
-bl agent catalog                  # Available seats with docs and effective settings.
-bl agent catalog --all            # Include unavailable seats and their reasons.
-bl agent catalog reviewer         # Full candidates, settings and reasons, even when unavailable.
-bl flag set agent/claude true     # Enable Claude-backed seats.
-bl flag set model/openai false    # reviewer now selects opus.
-bl agent start --seat reviewer --cwd "$PWD" --prompt "Review the code; do not edit files."
-bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
-bl agent show RUN_ID
-bl flag set agent/claude false  # Keep Claude registered, but unavailable for new selection.
+bl agent catalog                  # Available seats, docs and settings.
+bl agent catalog --all            # Also show unavailability reasons.
+bl agent catalog reviewer        # Expand all candidates.
+bl flag set agent/claude true
+bl flag set model/openai false    # New reviewer runs now select opus.
 ```
 
-`agent start/retry/resume/cancel` return `{ id, state, substatus, settled }`, using agent state rather than node state. `agent acknowledge` returns `{ id, acknowledged }`; `agent reconcile` returns `{ reconciled: true }` after a pass, not a settlement guarantee. Prompts, settings, results and custody stay in `agent show ID` (or base `show ID`).
+## Managed run lifecycle
 
-`agent list` returns `{ runs, total, nextOffset }`: status summaries with seat, provider and identity. Filter with `--state ready|running|stopped|failed|external`; page with `--limit` (default 20, maximum 100) and `--offset nextOffset` until `nextOffset` is null. Ordering is creation time then ID; pages are not snapshots. External runs have null substatus/settled, not a custody claim. Native registration retains the identity/instruction payload consumed by adapters. All managed launches are headless, regardless of the seat's name.
+```sh
+bl agent start --seat reviewer --cwd "$PWD" \
+  --prompt "Review the code; do not edit files."
+# Example response while running:
+# {"id":"042-apple-cloud","state":"running","substatus":"pending","settled":false}
 
-Waiting requires explicitly selected [Batteries](../batteries/README.md); Agents owns the `agent-run-settled` query, not the wait operation. Check `reason: "satisfied"`, then inspect `agent/substatus`, `agent/result` and `agent/error` with `agent show`. Settlement includes failure and cancellation; `completed` indicates successful execution. Closed/stopped alone does not establish settled custody. Timeout or interruption stops only the wait, not the agent. External sessions have no settlement guarantee, and run success does not close the served task.
+bl await --query agent-run-settled --params '{"runId":"042-apple-cloud"}' --min-count 1
+bl agent show 042-apple-cloud
+```
+
+Waiting requires explicitly selected [Batteries](../batteries/README.md). Check `reason: "satisfied"`, then inspect the run; timeout/interruption stops only the wait. Example `agent show` **attribute excerpts**:
+
+```json
+{ "agent/state": "stopped", "agent/substatus": "completed", "agent/settled": true }
+```
+
+```json
+{ "agent/state": "stopped", "agent/substatus": "requested", "agent/settled": false }
+```
+
+**Settled custody is not execution success or task completion.** Settlement includes failure/cancellation; `completed` indicates successful execution. Read `agent/result` and `agent/error`. Closed/stopped alone proves neither settlement nor success. Uncertain custody blocks retry and assignment release; inactivity is not exit evidence.
+
+```sh
+bl agent list --state failed --limit 10
+bl agent retry RUN_ID
+bl agent resume RUN_ID "Continue with the next step" --request-id continuation-1
+bl agent cancel RUN_ID
+bl agent acknowledge RUN_ID
+bl agent reconcile
+```
+
+| Operation | Contract |
+| --- | --- |
+| start/retry/resume/cancel | Return `{ id, state, substatus, settled }`. Pending cancellation abandons the run. |
+| retry | Same run, new invocation; only settled failures without a served target or request binding. Clears acknowledgement. |
+| resume | New run from a settled managed run with a confirmed native session. One accepted continuation per run; no concurrent session writer. |
+| acknowledge | Settled custody acknowledgement: `{ id, acknowledged }`, including runs never launched. |
+| reconcile | `{ reconciled: true }` means a pass ran, not that custody settled. |
+| list | `{ runs, total, nextOffset }`; follow `nextOffset` until null. Default 20, maximum 100; pages are not snapshots. |
+
+Accepted runs freeze resolved settings and prompt text across retry/resume. Flag changes affect new selection only. `--request-id` enables exact replay of the original accepted request, even if its alias is now disabled. External sessions have null substatus/settled and no managed stop authority. Run success never closes its task.
 
 ## Working across repositories
-
-Choose the **owning lake** independently of the **execution directory**:
-
-```text
-Where should the run be recorded?
-  |
-  +-- Coordinator lake --> bl --workspace OWNER agent start --cwd OTHER_REPO ...
-  |
-  +-- Destination lake --> bl --workspace DEST agent start --cwd DEST_REPO ...
-                              |
-                              +-- Observe elsewhere? --> agent follow at the observer
-```
-
-The selected lake supplies seats, flags and system prompts, owns process custody and retains the run, result and native activity. `agent start --cwd` changes only the agent's execution directory; it neither starts nor selects that directory's lake. The repository's native harness instructions still come from its execution context. Linked Git worktrees normally share their main checkout's lake, rather than creating another lake.
-
-Managed agents receive `BL_WORKSPACE` set to the owning lake's absolute path. Plain `bl` commands, `botlake lake`/`bin` commands and installed native adapters use that owner even after changing directories. Global `--workspace` explicitly selects another lake for a command without moving the existing run or redirecting its native activity. Keep `BL_WORKSPACE` intact for the managed session.
 
 ### Execute elsewhere, keep ownership here
 
 ```sh
 bl --workspace OWNER agent start --seat reviewer --cwd /path/to/OTHER_REPO \
-  --target OWNER_TASK --prompt "Inspect this repo and report findings on the owner's task."
+  --target OWNER_TASK --prompt "Inspect this repo and report findings."
 bl --workspace OWNER await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1
 bl --workspace OWNER agent activity peek RUN_ID
-bl --workspace OWNER agent show RUN_ID
 ```
 
-`OTHER_REPO` need not have a Botlake lake. `OWNER_TASK` is the owner's original task ID, not an imported reference. Settlement does not close it. Operations intentionally addressing the other lake use `bl --workspace OTHER …`; cross-lake task mutations do not acquire a same-lake managed assignment binding merely because the run has an identity.
+`--workspace` selects the owner: seats, flags, prompts, custody, results and activity. `--cwd` changes only execution context and its native repository instructions; `OTHER_REPO` needs no lake. Targets must be original tasks in the owning lake, not imported references. Linked Git worktrees normally share their main checkout's lake.
+
+Managed children receive the owner's absolute `BL_WORKSPACE`. Keep it intact: plain `bl`, `botlake lake`/`bin` and native reporting stay at the owner after `cd`. Explicit `--workspace OTHER` addresses another lake without relocating the run or its activity; cross-lake mutations do not create a local managed assignment binding.
 
 ### Execute and record at the destination
 
@@ -129,172 +133,104 @@ bl --workspace OWNER agent follow RUN_ID --from-workspace DEST
 bl --workspace DEST agent show RUN_ID
 ```
 
-Start the destination lake with its required extensions and seats first. A launch at `DEST` uses its configuration, not the coordinator's. The new child receives `BL_WORKSPACE=DEST` even when its caller belongs to `OWNER`. Following is optional and requires the reference configuration below; it observes the run without copying activity, results or custody. Use the destination's original `RUN_ID` for settlement waits, activity reads, retry, resume and cancellation. A followed node's closed state is not proof of successful execution or settled custody.
-
-To coordinate **tasks** instead of just observing a run, use Work's [cross-lake links](../work/README.md#relationships), for example:
-
-```sh
-bl --workspace OWNER work link OWNER_TASK DEST_TASK --to-workspace DEST --relation depends-on
-```
-
-The tasks remain separate: the imported endpoint is a read-only summary, not a local task that can be claimed, closed or passed to `agent start --target`. Start the serving run in the task's owning lake; use an owner-recorded run executing in another repo when the task should stay at the coordinator. Remote task closure affects dependency readiness; it does not close the coordinator's task.
+Start `DEST` with its required extensions/seats first. Its configuration applies, including `BL_WORKSPACE=DEST` for the child. For task dependencies, use Work's [cross-lake links](../work/README.md#relationships); remote task closure affects readiness, not coordinator task completion.
 
 ## Following another lake's run
 
-Supply a shared [reference library](../references/README.md) to `agents({ references })` and explicitly select that library alongside Agents. Configure `agentReferenceProjections` on the source library; combine it with other domain projections when needed. Imports alone activate nothing.
+Configure `agents({ references: shared })` with an explicitly selected [reference library](../references/README.md) in both lakes. The source library needs `agentReferenceProjections`.
 
 ```sh
-bl agent follow RUN_ID --from-workspace OTHER_LAKE
+bl agent follow RUN_ID --from-workspace OWNER
 bl agent show LOCAL_REFERENCE_ID
-bl --workspace OTHER_LAKE agent show RUN_ID
+bl --workspace OWNER agent show RUN_ID
 ```
 
-Follow returns a local ID, title, core node state and source provenance. Repeating it reuses the same reference. Observations update eventually and become stale when the source disconnects. Prompts, results, detailed lifecycle and custody stay at the owner; core node state does not establish successful execution or settlement. Followed runs remain outside the local run list and cannot be started, retried or cancelled locally. `--from-workspace` names the imported node's owner; Work uses the same endpoint convention with `link --to-workspace`. Use global `--workspace` to run commands in the owning lake.
-
-`agents(options)` returns a typed runtime binding. Pass that exact configured object to consuming extensions, select it in the same lake, declare `requires: [binding.name]`, and resolve its `Agents` implementation with `binding.instance(ctx)` during consumer activation. Lookup throws before successful activation or when a different same-name binding was selected. TypeScript consumers call `Agents.follow({ workspace, nodeId }, signal)` through the resolved implementation. A source without a matching `agent/run` projection fails before creating a local import.
-
-`agentConfigSchema` validates aliases and unmanaged configuration, including callbacks. `agentConfigJsonSchema()` describes JSON configuration (string prompts only). Flags configuration belongs to Flags, not this schema. Imports are inert; configuration edits require lake restart.
-
-Caller-sensitive allow/deny visibility, live alias registration/unregistration, arbitrary overlay attributes and interactive launch are not implemented.
+Follow reuses a local read-only summary with provenance. Updates are eventual and become stale on disconnect. Prompts, results, activity and custody remain source-owned; use the owner's original run ID for waits, retry, resume and cancellation. Followed runs are outside the local run list; their core state is not settlement evidence.
 
 ## System prompts
-
-Import `brief` from `@botlake/extension-agents` for reusable delegation guidance to compose with Core's `brief` in agent prompts. Briefs are opt-in strings; importing them neither activates extensions nor installs prompts.
-
-`systemPrompt` accepts a string or synchronous `(context: SessionContext) => string`. Use `audience` to tailor communication without guessing who receives the response:
 
 ```ts
 import { brief as coreBrief } from "@botlake/core";
 import { agents, brief as agentBrief, type SessionContext } from "@botlake/extension-agents";
 
 function projectPrompt({ audience, model }: SessionContext): string {
-  const communication =
-    audience === "human"
-      ? "Communicate efficiently and include assumptions, actions and next steps when they matter."
-      : audience === "agent"
-        ? "Communicate clearly and informatively; the recipient is another agent."
-        : "Communicate clearly without assuming the recipient is human or an agent.";
-
   return [
-    communication,
+    audience === "agent"
+      ? "Report concise findings to the coordinating agent."
+      : "Explain next steps.",
     coreBrief,
     agentBrief,
-    ...(model?.startsWith("deepseek/") ? ["State acceptance criteria before editing."] : []),
+    model?.startsWith("deepseek/") ? "State acceptance criteria before editing." : "",
   ].join("\n\n");
 }
 
 export default agents({
   unmanaged: { systemPrompt: projectPrompt },
   aliases: {
-    oracle: { parent: "pi", systemPrompt: projectPrompt },
-    grunt: { parent: "pi", systemPrompt: "Complete only the assigned task. Do not delegate." },
+    reviewer: { parent: "pi", systemPrompt: projectPrompt },
+    worker: { parent: "reviewer" }, // No system prompt: it does not inherit.
   },
 });
 ```
 
-`SessionContext` contains `provider` (Pi/Claude/Codex), `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`. Unknown model/effort/seat values are `null`; cwd is the actual working directory, workspace the lake's configuration root. Use these values, not the lake process's `BL_MODEL`. Consumer priming can call `resolveSessionContext(ctx, invocation)` dynamically; it returns `null` for anonymous or unregistered callers and reads retained Identity/Agents evidence without activating or registering either extension.
+Prompts accept strings or synchronous callbacks. Context contains `provider`, `model`, `effort`, `seat`, `audience`, `cwd` and `workspace`; unknown model/effort/seat are null. Callbacks run after settings resolve, not during catalog inspection (`{ "dynamic": true }`). Only the selected candidate's explicit prompt applies; omission/`""` adds none.
 
-Managed Botlake launches always have audience `agent`. A native root session may set `BL_AUDIENCE=human` or `BL_AUDIENCE=agent`; absent means `unknown`, and `unknown` is not a valid environment override. Managed launches scrub `BL_AUDIENCE`, including retries and resumes. Lake startup warns when its environment contains `BL_AUDIENCE`, but never uses it as a session default.
+Managed audience is always `agent`; launches scrub inherited `BL_AUDIENCE` and `BL_ACTOR`, restoring established identity only for verified resumes. Direct native sessions may use `BL_AUDIENCE=human pi` or `BL_AUDIENCE=agent pi`; absence means `unknown`. Do not export this globally: other subprocesses can inherit it. Audience describes the recipient, not UI presence.
 
-For a direct shell launch, keep the override scoped rather than exporting it globally:
-
-```sh
-human() { BL_AUDIENCE=human "$@"; }
-human pi
-```
-
-Botlake only scrubs processes it launches. Other provider/tool subprocesses may inherit `BL_AUDIENCE`. Audience describes the intended recipient, not whether a session has a UI.
-
-Managed runs use only the selected alias candidate's explicit prompt. Omission or `""` adds none, even when the parent has a prompt; string aliases do not inherit prompts either. Callbacks run after model/effort resolution and their text is frozen across replay, retry and resume. Catalog inspection does not evaluate callbacks; detail marks them `{ "dynamic": true }`.
-
-Unmanaged sessions use only `unmanaged.systemPrompt`, delivered by an installed native adapter and a reachable lake. Pi refreshes before each turn; Claude/Codex deliver at session startup. Native metadata takes precedence over caller environment defaults. Managed sessions never receive this unmanaged prompt. Identity, task guidance and the host's base prompt remain separate.
+Unmanaged sessions receive only `unmanaged.systemPrompt` through native reporting and a reachable lake: Pi refreshes each turn, Claude/Codex at startup. Managed runs never receive it. Identity/task guidance and the host's base prompt remain separate.
 
 ## Provider strategies
 
-`agents()` accepts custom implementations of Codex, Pi and Claude through `providers`. Pass `providers: [provider("codex"), provider("pi")]` to select only those two built-ins.
+```ts
+import { agents, builtinProviders } from "@botlake/extension-agents";
 
-Each `Provider` supplies `name`, catalog `doc`, `prepare(run)` and `finish(run, exitCode, stdout, stderr)`. `ProviderRun` carries portable settings (`model`, `effort`, `extraArgs`, resolved `systemPrompt`) plus prompt and cwd. Fresh launches have no session ID; resumes carry a previously observed native ID. The strategy maps these to native flags in a `LaunchPlan` and parses native output into an `Outcome`; the runtime owns custody, persistence and native identity binding.
-
-`SessionContext`, `SystemPrompt`, `Seat`, `Alias`, `Condition`, `AgentConfig`, `AgentOptions`, `StartRun`, `Agents` and the provider contracts are public exports. `Agents.readActivity(input: ActivityRead)` exposes activity reads; stream mutation and SQL row decoders stay internal.
-
-## Node model
-
-`node-model.ts` exports `agentAttributes`, `agentRelations` and the lifecycle/run/launch/activity schemas. Consumers use the package's public exports. `agentLiveness(runSnapshot)` interprets current or committed custody and native activity evidence; an unsettled process or a quiet session is not proof of exit. `agentActivityObservationSchema` is the partial activity projection, not the complete stored metadata contract.
-
-```mermaid
-classDiagram
-  class Identity
-  class Run
-  class Task
-  class ActivityHandle
-  Identity --> Run : performed
-  Run --> Run : continues
-  Run --> Task : serves
-  ActivityHandle --> Run : records run
-  ActivityHandle --> Identity : records identity
+export default agents({
+  providers: [
+    builtinProviders.claude({ bin: "claude-wrapper" }), // Your wrapper on PATH.
+    builtinProviders.codex(),
+    builtinProviders.pi(),
+  ],
+});
 ```
 
-Identity retains session attribution and last-reported activity across runs. A resumed run continues an earlier run. `serves` records the task a run was launched for; Work owns the current assignment separately. Work Agents binds that assignment's exact token to a run/invocation before applying release policy. Managed custody settlement and external native session-end evidence retain distinct meanings.
+Each factory accepts either `bin?: string` for one executable resolved normally via PATH, or `command: readonly [string, ...string[]]` for a full argv prefix, such as `["bun", "/path/to/wrapper.ts"]`. They are mutually exclusive; omitting both keeps the usual built-in executable. Optional `flag` is independent and accepts your own `FlagDefinition`. The wrapper must preserve the host's JSON/print protocol. Argument order is prefix, provider protocol, run `extraArgs`, generated model/effort/prompt, then resume arguments.
 
-## Managed run lifecycle
+A custom `Provider` supplies a unique `name`, `doc`, optional `flag`, and:
 
-Agents uses a pure XState machine. `agent/lifecycle` stores its state value; `agent/state`, `agent/substatus`, `agent/settled` and the graph node state are projections written in the same transaction. Process launch, cancellation and output reading remain in Botlake's custody adapter and run reconciler. Restoring the machine executes no effects.
+- `prepare(run)` → `{ command: string[], stdin: string, env: Record<string, string> }`.
+- `finish(run, exitCode, stdout, stderr)` → `{ success, result, sessionId, error }`; the latter three values are strings or null.
 
-| Lifecycle | Custody | Next action |
-| --- | --- | --- |
-| `pending` | Not launched | Launch when the target is ready, or abandon |
-| `running` | Outstanding | Observe process evidence |
-| `awaitingExit` | Stop uncertain | Reconcile; retain assignment |
-| `reconciling` | Evidence unavailable | Reconcile; retain assignment |
-| `completed`, `cancelled`, `abandoned` | Settled | Resume a verified session as a new run, where available |
-| `preparationFailed`, `launchFailed`, `executionFailed`, `sessionFailed` | Settled | Explicit retry, subject to request/target restrictions |
-
-```mermaid
-flowchart LR
-  Pending["pending"] --> Launched["running / awaitingExit / reconciling"]
-  Pending --> Abandoned["abandoned"]
-  Pending --> Preparation["preparationFailed"]
-  Launched --> Success["completed / cancelled"]
-  Launched --> Failure["launchFailed / executionFailed / sessionFailed"]
-  Preparation -- retry --> Pending
-  Failure -- retry --> Pending
-```
-
-All three launched states accept subsequent custody evidence. An uncertain stop or reconciliation failure cannot enable retry or release an assignment. A retry keeps the run ID and creates a new invocation; native callbacks and Work Agents bindings remain fenced to their invocation and assignment token. External sessions retain their separate native activity observations and have no managed lifecycle. Inactivity is not an event in this machine; stall policy remains separate.
-
-Acknowledgement also succeeds for settled runs that never launched, without querying process custody. Retry clears the previous invocation's acknowledgement.
+Those methods permit execution; an observed output `sessionId` can bind identity after exit. Full in-session identity/activity or unmanaged observation requires **harness-native reporting**, not necessarily a separate plugin artifact.
 
 ## Run activity
-
-Native plugins supply small observations for search and liveness inspection. `run_activity` stores a stream header; `run_activity_events` stores received turn boundaries, tool calls, visible message excerpts and reported usage. SQLite FTS5 indexes excerpts. The graph handle has the same ID as its header and links to its run and observed identity. Managed retries create separate handles per invocation. Provider stdout still supplies results and custody evidence; it is not an activity feed.
 
 ```sh
 bl agent activity peek RUN_ID
 bl agent activity peek IDENTITY_NAME
 bl agent activity list ACTIVITY_HANDLE --limit 20
 bl agent activity list ACTIVITY_HANDLE --after NEXT_CURSOR
-bl agent activity search "VPN access"
 bl agent activity search "VPN access" --target RUN_ID
 ```
 
-A run ID selects its current invocation; an identity selects its latest stream. A handle selects that exact stream, including after expiry. Without a target, search/pages cover all retained events. `nextCursor` is a received sequence, not a time or offset. Peek returns recent events, tool starts without an observed end, elapsed time since the latest recorded activity event and the latest scoped usage report. Results are observations, not proof of useful progress; `completed` means a tool returned, not that its intended outcome succeeded.
+Equivalent structured request, with an example empty search response:
 
-Structured requests use `command: "activity"` with `operation: "list"`, `"search"` or `"peek"`. List/search accept `after` and `limit`; search requires `query`. Peek requires `id` and accepts only `limit`.
+```sh
+bl --input '{"command":"activity","operation":"search","query":"VPN access","after":0,"limit":20}' agent
+# {"stream":null,"events":[],"nextCursor":null}
+```
 
-Messages and tool summaries are capped at 2,048 characters and carry `truncated`; tool output and reasoning are not copied. The header retains native `sessionId` and `sessionPath` for the complete native transcript. A missing hook or transcript reference stays unknown. The adapters translate host payloads without reading transcript content. Native subagents are represented only by their caller's tool events; their sessions are not registered or inspected.
+A run selects its current invocation, an identity its latest stream, and a handle that exact stream. Omit the list/search target for all retained events. `nextCursor` is a received sequence, not time/offset. Peek bounds recent events, outstanding tool starts and scoped usage; observations prove neither progress nor liveness.
 
-Pi reports message-level token counts and cost when supplied by its harness. Missing values remain null, zero remains zero, and reported cost is retained without recalculating prices. Usage carries `message`, `turn` or `session` scope; peek does not add cumulative and incremental reports together. Codex/Claude hooks currently supply tools and available user/final assistant text, without usage reports. See the [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude hooks](https://code.claude.com/docs/en/hooks) and [Pi extension events](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
+Optional native reporting supplies turn/tool events and visible excerpts capped at 2,048 characters (`truncated` marks clipping). Tool output/reasoning stay in the native transcript, referenced by `sessionId`/`sessionPath` when available. Stdout results are not an activity feed. Native subagents appear only as caller tool events. Pi reports harness-supplied usage/cost; Claude/Codex currently do not. Unknown values stay null; peek does not sum cumulative and incremental usage.
 
 ```ts
 agents({ activity: { retentionMs: 7 * 24 * 60 * 60 * 1000 } }); // Default: seven days.
 ```
 
-TTL starts at managed custody settlement or an external native session end. Quiet live streams do not expire. At expiry, one transaction deletes the entire stream's events and search entries; the existing header becomes its single tombstone, retaining dates, event count and native reference. The graph handle and links remain. Expiry wakes recover on restart; late observations cannot repopulate a tombstone. A new external session start creates a new stream.
+Retention starts at managed settlement or external session end, never mere quiet. Expiry removes events/search entries but retains a tombstone with dates, count and native reference. Late observations cannot repopulate it.
 
 ## Native integration
 
-[Native adapters](../../plugins/identity/README.md) are supplied as the private, repository-local `@botlake/identity` harness plugin rather than an npm runtime package. Agents never allocates fresh native session IDs or reserves identities. Callbacks bind provider/session evidence to the current managed invocation; direct sessions remain external and cannot be stopped through Botlake.
+The private, repository-local [native plugin](../../plugins/identity/README.md) hardcodes `claude`, `codex` and `pi` namespaces. Same-namespace executable wrappers can reuse it; use aliases for named variants. Custom callbacks must match their provider's namespace. Nothing installs automatically; this is not a published plugin SDK.
 
-Every managed launch scrubs inherited `BL_ACTOR`. A verified resume then receives its established identity, including retry attempts that resume; fresh launches rely on native observation. Launches also set `BL_AGENT_SEAT` and configured `BL_MODEL`/`BL_EFFORT`, clearing inherited tracking values when unknown. `bl agent native` defaults metadata from the caller's environment, with explicit fields taking precedence.
-
-`agent/integration` distinguishes `unobserved`, `native` and `output`. Missing plugins do not fail an otherwise successful run: native output can confirm identity, but does not fabricate activity or model metadata. Resume requires confirmed session evidence and settled custody. Activity snapshots are observations, not process state; successful processes do not automatically close their tasks.
+`agent/integration` is `unobserved`, `native` or `output`. Missing hooks do not fail otherwise successful managed execution. Output-based identity does not fabricate activity or model metadata; direct/unmanaged observation requires native reporting. Native sessions supply their own IDs—Botlake does not allocate fresh ones.
