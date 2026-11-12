@@ -97,8 +97,11 @@ async function activate(info: Awaited<ReturnType<typeof loadLakeConfig>>): Promi
   });
   runtime = activeRuntime;
   await activeRuntime.start(info.config.extensions);
+  // @ts-expect-error Bun's Unix types omit idleTimeout: oven-sh/bun#46138.
   server = Bun.serve({
     unix: launch.socket,
+    // Invocation deadlines own lifetime; quiet streams and handlers must stay connected.
+    idleTimeout: 0,
     async fetch(request) {
       if (request.method !== "POST" || new URL(request.url).pathname !== "/v1/invoke")
         return Response.json(failure(new Fault("request", "Unknown lake endpoint")), {

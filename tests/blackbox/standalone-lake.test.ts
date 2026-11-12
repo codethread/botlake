@@ -62,7 +62,7 @@ test("standalone lake publishes only after readiness and reports packed provenan
   }
 }, 60000);
 
-test("planned restart preserves completed unary results and types rejected or interrupted calls", async () => {
+test("standalone unary calls survive silence and preserve typed restart outcomes", async () => {
   const host = await system();
   try {
     const workspace = await host.workspace("restart-unary", ["./slow.ts"]);
@@ -132,6 +132,10 @@ export default {name:"slow",activate(ctx){ctx.register(defineOp({name:"slow",inp
     expect(replacement.pid).not.toBe(initial.pid);
     expect(await host.bl("restart-unary", "slow", { ms: 0, value: "replacement" })).toBe(
       "replacement",
+    );
+    // Domain deadlines, not HTTP inactivity, govern a handler awaiting its result.
+    expect(await host.bl("restart-unary", "slow", { ms: 15_000, value: "quiet result" })).toBe(
+      "quiet result",
     );
   } finally {
     await host.close();

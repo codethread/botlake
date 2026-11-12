@@ -165,7 +165,7 @@ test("assignment hooks share rollback while committed notifications remain lake-
   }
 });
 
-test("public CLI lists contracts and streams filtered committed changes with a ready handshake", async () => {
+test("public CLI streams filtered committed changes after a quiet ready handshake", async () => {
   const host = await system();
   let child: ReturnType<typeof Bun.spawn> | undefined;
   try {
@@ -208,6 +208,9 @@ test("public CLI lists contracts and streams filtered committed changes with a r
       throw new Error("Expected stream stdout");
     const lines = jsonLines(child.stdout)[Symbol.asyncIterator]();
     expect((await lines.next()).value).toEqual({ type: "ready", events: [workChanged.name] });
+    // A healthy subscription can be silent longer than Bun's default 10s idle timeout.
+    await Bun.sleep(15_000);
+    expect(child.exitCode).toBeNull();
     await host.bl(workspace, "agent", {
       command: "native",
       provider: "codex",

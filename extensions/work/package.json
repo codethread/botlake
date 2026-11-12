@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-work",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tasks, context groups, prerequisites, assignment and machine-checked gates.",
   "license": "MIT",
   "files": [
