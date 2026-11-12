@@ -11,6 +11,7 @@ import { mail as createMail } from "@botlake/extension-mail";
 import { mailAgents as createMailAgents } from "@botlake/extension-mail-agents";
 import { mailIdentity as createMailIdentity } from "@botlake/extension-mail-identity";
 import { references as createReferences } from "@botlake/extension-references";
+import { ui as createUi } from "@botlake/extension-ui";
 import {
   work as createWork,
   workReferenceProjections,
@@ -55,6 +56,8 @@ export const priming = createPriming({
 export const work = configureWork();
 
 export const workAgents = createWorkAgents({ checkIntervalMs: 60_000 });
+
+export const ui = createUi();
 
 export function configureWork(
   options: Omit<WorkOptions, "references"> = {},

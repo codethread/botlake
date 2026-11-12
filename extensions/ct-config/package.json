@@ -14,6 +14,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@botlake/extension-ui": "^0.1.3"
+  },
   "peerDependencies": {
     "@botlake/core": "workspace:^",
     "@botlake/extension-agents": "workspace:^",
