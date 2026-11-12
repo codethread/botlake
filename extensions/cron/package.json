@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-cron",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Durable calendar and interval jobs with occurrence history.",
   "license": "MIT",
   "files": [

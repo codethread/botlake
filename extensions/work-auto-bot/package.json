@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-work-auto-bot",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Once-per-task admission of opted-in ready Work tasks to managed Agents.",
   "license": "MIT",
   "files": [

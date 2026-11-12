@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-batteries",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Everyday node, edge, query, batch and wait operations.",
   "license": "MIT",
   "files": [
