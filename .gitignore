@@ -1,6 +1,10 @@
 # dependencies (bun install)
 node_modules
 
+# generated skill installations (skillbox sync)
+/.agents/skills/
+/.claude/skills
+
 # output
 out
 dist

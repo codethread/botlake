@@ -2,14 +2,16 @@
 
 ## Setup
 
-Requires Bun, Go, mise and a sibling `botlake-ui` checkout, as referenced by the [dogfood manifest](../../.botlake/package.json). From the Botlake checkout:
+Requires Bun, Go, mise and the [Skillbox CLI](https://github.com/codethread/skillbox) on `PATH`. The [dogfood manifest](../../.botlake/package.json) installs `@botlake/extension-ui` from npm, as TypeScript source, including its executable Bun CLI; no UI checkout or build is needed. From the Botlake checkout, run:
 
 ```sh
 mise run install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The [mise tasks](../../mise.toml) install workspace dependencies and both Go CLIs into `~/.local/bin`. The installed binaries use this checkout's core by default; keep its source and dependencies in place.
+The [mise tasks](../../mise.toml) restore agent skills, install development dependencies, install the shared configuration package and the independent lake and place both Go CLIs in `~/.local/bin`.
+
+`skillbox sync` restores the bundles selected in `skillbox/config.json`, verifying contents against `skillbox/lock.json`; commit both files together. Botlake-owned sources live in `skillbox/botlake/`. Edit those sources, not the ignored `.agents/skills/` installation or its `.claude/skills` link. Sync rejects source hash drift rather than updating the lock.
 
 If no supervisor is running, start one in a separate terminal:
 
@@ -23,21 +25,22 @@ Then start the development lake:
 botlake lake start
 ```
 
-The `setup` mise task also requests `botlake bin build ui`; the UI server itself starts separately from the UI checkout. Inspect `botlake bin list` and `botlake bin help build` before using that task with a different UI extension build contract.
+The `setup` mise task installs Botlake and starts this checkout's lake. The UI server itself starts separately from the UI checkout.
 
 ## Development lake
 
-The private `.botlake` package uses workspace dependencies and explicitly selected extensions. Source configuration lives in its [manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` package is an independent consumer. Its lockfile pins the cutover Core and UI archives in `vendor/botlake-cutover` and resolves the remaining public dependencies from npm. Source configuration lives in its [lake definition](../../.botlake/lake.ts), [package manifest](../../.botlake/package.json), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
-Install the [native identity adapter](../../plugins/identity/README.md) explicitly before launching native sessions. Managed runs are headless. For configured seats and delegation, use the [Agents guide](../../extensions/agents/README.md#catalog-and-routing); flags and database overrides are described by [Flags](../../extensions/flags/README.md).
+Install the repository-local [native identity adapter](../../plugins/identity/README.md) through the supported harness tooling before launching native sessions. It is private harness integration, not an npm runtime package. Managed runs are headless. For configured seats and delegation, use the [Agents guide](../../extensions/agents/README.md#catalog-and-routing); flags and database overrides are described by [Flags](../../extensions/flags/README.md).
 
 ## Rebuild and reload
 
 - Go changes: rebuild with `mise run install` and restart the supervisor through its process manager, or stop/start it manually. Supervisor replacement ends process custody and clears published lake routes; start the required lakes again.
-- Workspace TypeScript/configuration changes: `botlake lake restart`.
-- Host changes: `botlake restart-host` restores active lakes without replacing the supervisor.
+- Lake-local configuration changes: `botlake lake restart`.
+- Shared configuration changes: release `@botlake/extension-ct-config`, update consumer lockfiles and restart affected lakes.
+- Public runtime changes: release and update the installed package before restarting; source edits do not change the running npm package.
 
 Core stays extension-independent. Cross-package imports use declared dependencies and public exports, never relative source paths; Oxlint enforces the seam. Package prerequisites must be selected explicitly. See [contribution rules](../../AGENTS.md).
 

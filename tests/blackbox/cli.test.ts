@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import { system } from "./fixtures/system.ts";
+import { install, system } from "./fixtures/system.ts";
 
 interface CliResult {
   code: number;
@@ -18,6 +18,13 @@ interface TerminalResult {
 }
 
 const idResult = z.compile(z.object({ id: z.string() }));
+const cliVersion = z.compile(
+  z.object({
+    cli_version: z.string(),
+    cli_build_id: z.string(),
+    protocol_version: z.number(),
+  }),
+);
 
 test("botlake controls lakes and evaluates scripts while bl commits structured nodes", async () => {
   const host = await system();
@@ -350,37 +357,69 @@ process.exit(Number(process.env.BIN_EXIT??0));
   }
 }, 60000);
 
-test("botlake init bootstraps a fresh empty workspace without replacing selected configuration", async () => {
+test("botlake init bootstraps Batteries without replacing selected configuration", async () => {
   const host = await system();
   try {
     const workspace = join(host.dir, "fresh-project");
     await mkdir(workspace);
-    expect(await host.botlake(["init", "--workspace", workspace, "--name", "fresh"])).toMatchObject(
-      {
-        created: true,
-        name: "fresh",
-      },
+    await install(
+      workspace,
+      Object.fromEntries(
+        Object.entries(host.packages).filter(
+          ([name]) => name === "@botlake/core" || name === "@botlake/extension-batteries",
+        ),
+      ),
     );
+    const initialized = await runCli(
+      host,
+      ["init", "--workspace", workspace, "--name", "fresh"],
+      "",
+      {},
+      host.botlakeBin,
+    );
+    expect(initialized.code).toBe(0);
+    expect(JSON.parse(initialized.stdout)).toMatchObject({ created: true, name: "fresh" });
+    expect(initialized.stderr).toContain("Root bun.lock found. Skipping installation");
+    expect(initialized.stderr).toContain("No root bunfig.toml found; consider adding one");
     const config = Bun.file(join(workspace, ".botlake/package.json"));
+    const coreArchive =
+      "https://raw.githubusercontent.com/codethread/botlake/fd8044ef4d340b50d02120eff285136b5aea6ced/vendor/botlake-cutover/botlake-core-0.2.0.tgz";
     expect(await config.json()).toEqual({
       private: true,
       type: "module",
-      botlake: { name: "fresh", extensions: [] },
+      dependencies: {
+        "@botlake/core": coreArchive,
+        "@botlake/extension-batteries": "0.2.0",
+      },
+      overrides: { "@botlake/core": coreArchive },
+    });
+    const lakeConfig = Bun.file(join(workspace, ".botlake/lake.ts"));
+    expect(await lakeConfig.text()).toContain('export const lake = createLake({ name: "fresh"');
+    expect(await Bun.file(join(workspace, ".botlake/.gitignore")).text()).toBe(
+      "/node_modules/\n/world.db*\n",
+    );
+    expect(Bun.TOML.parse(await Bun.file(join(workspace, ".botlake/bunfig.toml")).text())).toEqual({
+      install: {
+        linker: "isolated",
+        minimumReleaseAge: 604800,
+        minimumReleaseAgeExcludes: ["@botlake/core", "@botlake/extension-batteries"],
+      },
     });
     await host.botlake(["lake", "start", "--workspace", workspace]);
+    expect(await host.bl("fresh", "node", { command: "add", title: "Ready to use" })).toMatchObject(
+      {
+        title: "Ready to use",
+      },
+    );
     expect(await host.cli(["--workspace", "fresh", "bins", "list"])).toMatchObject({ bins: [] });
     await host.botlake(["lake", "stop", "--workspace", "fresh"]);
-    await Bun.write(
-      config,
-      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
-    );
+    const selected = 'export const lake = {name:"renamed",extensions:[]};\n';
+    await Bun.write(lakeConfig, selected);
     expect(await host.botlake(["init", "--workspace", workspace])).toMatchObject({
       created: false,
-      name: "renamed",
+      name: "fresh-project",
     });
-    expect(await config.text()).toBe(
-      '{"private":true,"botlake":{"name":"renamed","extensions":["./selected.ts"]}}\n',
-    );
+    expect(await lakeConfig.text()).toBe(selected);
     expect(
       await host.botlake(["init", "--workspace", workspace, "--name", "other"], false),
     ).toContain("already exists");
@@ -566,9 +605,12 @@ export default {name:"payloads",activate(ctx){
       JSON.parse((await runCli(host, ["--json", "--help"], "", unavailable)).stdout),
     ).toContain("--stdin");
     expect((await runCli(host, [], "", unavailable)).code).toBe(0);
-    expect(JSON.parse((await runCli(host, ["--version"], "", unavailable)).stdout)).toMatchObject({
-      protocol_version: 1,
-    });
+    const version = cliVersion.parse(
+      JSON.parse((await runCli(host, ["--version"], "", unavailable)).stdout),
+    );
+    expect(version.cli_version).toMatch(/^\d+\.\d+\.\d+$/u);
+    expect(version.protocol_version).toBe(1);
+    expect(version.cli_build_id.length).toBeGreaterThan(0);
     const error = await runCli(host, [...prefix, "unknown"], "", {
       BL_ERROR_FORMAT: "json",
     });

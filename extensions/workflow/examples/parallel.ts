@@ -1,9 +1,10 @@
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
 
-export const inputSchema = z.object({});
-export const commandSchemas = { approved: z.object({}), next: z.object({}), revise: z.object({}) };
-export function runBrief() {
+const inputSchema = z.object({});
+const commandSchemas = { approved: z.object({}), next: z.object({}), revise: z.object({}) };
+function runBrief() {
   return {
     description: "Prepare, implement and verify documentation and API branches, then hand off.",
     title: "Parallel implementation",
@@ -11,7 +12,7 @@ export function runBrief() {
 }
 
 // Commands are scoped to a branch: an unqualified NEXT would reach both regions.
-export const machine = setup({}).createMachine({
+const machine = setup({}).createMachine({
   id: "parallel-work",
   initial: "prepare",
   states: {
@@ -97,4 +98,14 @@ export const machine = setup({}).createMachine({
       on: { PREPARED: "implementation" },
     },
   },
+});
+
+export const workflow = defineWorkflow({
+  name: "parallel",
+  version: "1.0.0",
+  description: "Prepare, implement and verify parallel documentation and API branches.",
+  inputSchema,
+  commandSchemas,
+  machine,
+  runBrief,
 });

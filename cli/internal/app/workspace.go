@@ -43,8 +43,9 @@ func readMember(path string) (Member, error) {
 	}
 
 	var config struct {
-		Name       json.RawMessage `json:"name"`
-		Extensions []string        `json:"extensions"`
+		Name        json.RawMessage `json:"name"`
+		Extensions  []string        `json:"extensions"`
+		MinimumCore json.RawMessage `json:"minimumCore"`
 	}
 	if err := decode(raw, &config); err != nil {
 		return Member{}, fmt.Errorf(".botlake/package.json botlake: %w", err)
@@ -69,6 +70,10 @@ func readMember(path string) (Member, error) {
 }
 
 func defaultWorkspace(cwd string) (string, error) {
+	if workspace := os.Getenv("BL_WORKSPACE"); workspace != "" {
+		return workspace, nil
+	}
+
 	_, common, err := gitContext(cwd)
 	if err != nil {
 		return "", err

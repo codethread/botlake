@@ -26,12 +26,12 @@ Commands:
   lake <command>     Manage a workspace lake or evaluate code
   bin <command>      List, build or run extension-provided programs
   completions zsh    Print the zsh completion script
-  --version          Print CLI, build and protocol versions
+  --version          Print this CLI's build and protocol versions
 
 Use "botlake COMMAND --help", "botlake GROUP COMMAND --help", or
 "botlake help COMMAND [SUBCOMMAND]" for details. Commands that select a
-workspace default to the main Git checkout. BL_HOME selects the supervisor home
-(default: ~/.botlake).
+workspace use --workspace, then BL_WORKSPACE, then the main Git checkout.
+BL_HOME selects the supervisor home (default: ~/.botlake).
 `
 
 const lakeUsage = `Usage:
@@ -46,9 +46,10 @@ Commands:
   list        List active lakes
   eval        Run trusted JavaScript against a running lake
 
-For start, restart, stop, status and info, --workspace PATH|NAME defaults to
-the main Git checkout. Outside Git, pass --workspace. New lakes require a path;
-published names select active lakes. "botlake help lake COMMAND" shows details.
+Workspace selection: --workspace PATH|NAME overrides BL_WORKSPACE; otherwise use
+the main Git checkout. Outside Git, set BL_WORKSPACE or pass --workspace.
+New lakes require a path; published names select active lakes.
+"botlake help lake COMMAND" shows details.
 `
 
 func warnAudienceEnvironment() {
@@ -99,7 +100,7 @@ func helpCLI(path []string) int {
 		}
 	case "--version":
 		if len(path) == 1 {
-			return writeHelp("Usage:\n  botlake --version\n\nPrint the CLI version, build ID and protocol version as JSON.\n")
+			return writeHelp("Usage:\n  botlake --version\n\nPrint this executable's CLI version, build ID and wire protocol version as JSON. This is offline; use botlake status for the running supervisor and loaded core.\n")
 		}
 	}
 
@@ -121,7 +122,13 @@ running while using lakes. BL_HOME selects the supervisor home (default:
 		return `Usage:
   botlake status
 
-Show the supervisor process, Bun host readiness and registered lakes. ` + common + "\n"
+Show the running supervisor build/protocol, loaded core version, Bun host readiness
+and registered lakes. activeProcesses maps canonical lake paths to nonterminal
+supervisor-owned processes ({handle, owner, key}), including custody retained for
+stopped lakes. owner/key are opaque consumer identifiers for further inspection.
+Empty arrays mean no active custody records; terminal evidence is excluded.
+This is an in-memory snapshot, not a restart lock: new activity can start afterwards.
+` + common + "\n"
 	case "stop":
 		return `Usage:
   botlake stop
@@ -137,50 +144,49 @@ configuration. ` + common + "\n"
 		return `Usage:
   botlake host-status
 
-Inspect Bun host readiness and runtime status. ` + common + "\n"
+Inspect Bun host readiness, loaded core version and runtime status. ` + common + "\n"
 	default:
 		return botlakeUsage
 	}
 }
 
 func lakeCommandHelp(command string) string {
-	common := `Flags:
-  --workspace PATH|NAME  Select a workspace (default: main Git checkout)
-
-Outside Git, pass --workspace. For start, a new lake needs a workspace path;
+	flags := `Flags:
+  --workspace PATH|NAME  Select a workspace (overrides BL_WORKSPACE)
+`
+	selection := `
+Without either selection, use the main Git checkout (shared by linked worktrees).
+Outside Git, set BL_WORKSPACE or pass --workspace. A new lake needs a path;
 published names refer to active lakes.
 `
+	common := flags + selection
 	switch command {
 	case "start":
 		return `Usage:
-  botlake lake start [--workspace PATH|NAME]
+  botlake lake start [--workspace PATH|NAME] [--install]
 
-Start the selected workspace lake. Without --workspace, use the main Git
-checkout (including when invoked from a linked worktree).
+Start the selected workspace lake. An already-running lake is returned as-is.
 
-` + common
+` + flags + "  --install              Run bun install in .botlake before starting\n" + selection
 	case "restart":
 		return `Usage:
   botlake lake restart [--workspace PATH|NAME]
 
-Reload the selected workspace configuration and restart its lake. Without
---workspace, use the main Git checkout.
+Reload the selected workspace configuration and restart its lake.
 
 ` + common
 	case "stop":
 		return `Usage:
   botlake lake stop [--workspace PATH|NAME]
 
-Stop the selected lake without stopping the supervisor. Without --workspace,
-use the main Git checkout.
+Stop the selected lake without stopping the supervisor.
 
 ` + common
 	case "status":
 		return `Usage:
   botlake lake status [--workspace PATH|NAME]
 
-Report whether the selected lake is ready. Without --workspace, use the main
-Git checkout.
+Report whether the selected lake is ready and the loaded core version.
 
 ` + common
 	case "info":
@@ -188,7 +194,7 @@ Git checkout.
   botlake lake info [--workspace PATH|NAME]
 
 Show the running lake's startup snapshot as JSON:
-{path,name,packageJson,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
+{path,name,packageJson,coreVersion,minimumCore,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
 
 Extensions follow selection order. Their name is the runtime extension name,
 not the package name. description comes from package.json, or null when absent.
@@ -196,7 +202,6 @@ Paths are absolute; packageJson and readme
 are null when absent. module is the selected entry; source is its defining
 module, preserved by configured factories. Configuration edits appear after
 restart. This command neither loads modules nor starts inactive lakes.
-Without --workspace, select the main Git checkout.
 
 ` + common
 	case "list":
@@ -291,6 +296,10 @@ func Botlake(args []string) int {
 		flags := flag.NewFlagSet("botlake lake "+action, flag.ContinueOnError)
 		flags.SetOutput(io.Discard)
 		target := flags.String("workspace", "", "workspace path or published name")
+		install := false
+		if action == "start" {
+			flags.BoolVar(&install, "install", false, "install the lake's dependencies before starting")
+		}
 		if err := flags.Parse(args[2:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return writeHelp(lakeCommandHelp(action))
@@ -315,7 +324,11 @@ func Botlake(args []string) int {
 			warnAudienceEnvironment()
 			payload = map[string]any{"env": environment()}
 		}
-		return Relay(request("lake-"+action, *target, payload))
+		operation := "lake-" + action
+		if install {
+			operation = lakeInstallStart
+		}
+		return Relay(request(operation, *target, payload))
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":

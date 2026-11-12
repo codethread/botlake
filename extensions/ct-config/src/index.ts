@@ -1,6 +1,7 @@
 import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
+  builtinProviders,
   agentReferenceProjections,
   agents as createAgents,
   type Alias,
@@ -34,9 +35,10 @@ export const agents = configureAgents();
 
 export const priming = createPriming({
   work: [
-    "The Notes field is for recording a concise outcome before closing a task.",
     "Assign to the user via `--audience HITL --assignee=$(whoami)`",
     "Assigning to the user must only be done as a last resort when oracle can't unblock you or if given prior consent to do so",
+    "Search for historical work before beginning to gather wider context",
+    "Always work under a group, reuse existing where applicable, or re-open old groups if appropriate",
   ].join("\n"),
   agent: agentPrimer,
 });
@@ -55,6 +57,11 @@ export function configureAgents(
   aliases: Record<string, Alias> = {},
 ): ReturnType<typeof createAgents> {
   return createAgents({
+    providers: [
+      builtinProviders.codex({ bin: "co", flag: agentFlags.codex }),
+      builtinProviders.pi({ bin: "piw", flag: agentFlags.pi }),
+      builtinProviders.claude({ bin: "cl", flag: agentFlags.claude }),
+    ],
     ...roster,
     references,
     aliases: { ...roster.aliases, ...aliases },

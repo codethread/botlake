@@ -7,7 +7,9 @@
 ## Runtime
 
 - [Limits and smoke verification](LIMITS.md)
-- [Pool measurements](pool-benchmark.json)
+- [Opt-in lake pool contract](lake-pools.md)
+- [Standalone measurements](standalone-benchmark.json)
+- [Historical shared-process measurements](pool-benchmark.json)
 
 - [Graph-native Mail experiment](mail-graph.md)
 

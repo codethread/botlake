@@ -18,21 +18,15 @@ test("native providers preserve complete evidence on interrupted output and requ
     const workspace = await host.workspace("providers", [
       "@botlake/extension-batteries",
       "@botlake/extension-identity",
-      "./flags.ts",
       "./providers.ts",
     ]);
-    await Bun.write(
-      join(workspace, "flags.ts"),
-      `import { agentFlags } from "@botlake/extension-agents";
-import { configureFlags } from "@botlake/extension-flags";
-export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], [agentFlags.claude, true]]);`,
-    );
     const executable = join(workspace, "native-cli");
     await Bun.write(
       executable,
       `#!/usr/bin/env bun
 import {spawnSync} from "node:child_process";
-const args=Bun.argv.slice(2), name=process.env.FIXTURE_PROVIDER;
+const args=Bun.argv.slice(2), name=args[1];
+if(args[0]!=="--fixture-provider" || !args.includes("--fixture-extra"))throw new Error("Missing configured base/run arguments");
 const scenario=(await Bun.stdin.text()).trim();
 function option(key){return args[args.indexOf(key)+1];}
 if(option("--model")!=="fixture" || !args.includes(name==="codex"?"--json": "--print")) throw new Error("Wrong prepared command: "+JSON.stringify(args));
@@ -65,9 +59,9 @@ if(name==="claude") {
     await chmod(executable, 0o755);
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {agents,provider} from "@botlake/extension-agents";
+      `import {agents,builtinProviders} from "@botlake/extension-agents";
 const names=["codex","pi","claude"];
-export default agents({providers:names.map(name=>{const base=provider(name);return {...base,prepare(run){const plan=base.prepare(run);return {...plan,command:[${JSON.stringify(executable)},...plan.command.slice(1)],env:{...plan.env,FIXTURE_PROVIDER:name}};}};}),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",systemPrompt:"policy"}]))});`,
+export default agents({providers:names.map(name=>builtinProviders[name]({command:[${JSON.stringify(executable)},"--fixture-provider",name]})),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",extraArgs:["--fixture-extra"],systemPrompt:"policy"}]))});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {

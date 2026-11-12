@@ -195,10 +195,27 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
           input,
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
-          about:
-            "Tasks express work; groups supply shared context; gates evaluate trusted configured probes and record their results. Dependencies determine readiness, references retain connections. Remote prerequisites must reference source-verified tasks, groups or gates and require a current closed observation; stale or missing observations remain waiting. Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness. Description is the brief; notes hold conclusions; optional criteria constrain closure.",
-          primer:
-            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work. When work is blocked on a machine-checkable condition, use `bl gate create … --dependent TASK`; the gate blocks while open and either closed outcome satisfies readiness. Gate status explains evaluation but never affects readiness directly. Gates never enter queues. Show reveals the local brief, ancestor context, criteria, notes and relationships. Claim reserves responsibility, not proof of execution; defaults to the invocation caller. Every added criterion needs an explicit resolution before close, including unmet or retired conditions. Groups close only after all contained tasks close; only groups can be parents. Dependencies can target tasks, groups or gates and do not assert success. Closure never advances a workflow; submit its authored action explicitly. New scope is new work. Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened. Release requires the current assignment token so stale observations cannot clear a newer owner. List defaults to open work; search includes closed work. Pages are not snapshots.",
+          about: [
+            "Tasks express work; groups supply shared context; gates evaluate trusted configured probes and record their results.",
+            "Dependencies determine readiness, references retain connections.",
+            "Remote prerequisites require source-verified tasks, groups or gates with a current closed observation; stale or missing observations wait.",
+            "Diagnosis follows recorded prerequisites, including closed historical work; cycles do not establish current blockedness.",
+            "Description is the brief; notes hold conclusions; optional criteria constrain closure.",
+          ].join(" "),
+          primer: [
+            "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work.",
+            "Use `bl gate create … --dependent TASK` for machine-checkable blockers; open gates block work, and either closed outcome satisfies readiness.",
+            "Gates never enter queues.",
+            "Claim reserves responsibility, not proof of execution; defaults to the invocation caller.",
+            "Groups stay open until explicitly closed; closing requires all descendant tasks to be closed.",
+            "Only groups can be parents.",
+            "Dependencies can target tasks, groups or gates and do not assert success.",
+            "New scope is new work.",
+            "Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened.",
+            "Release requires the current assignment token so stale observations cannot clear a newer owner.",
+            "List defaults to open work; search includes closed work.",
+            "The Notes field is for recording a concise outcome before closing a task.",
+          ].join(" "),
           cli: {
             description: "Create, route, inspect and close tasks, context groups and gates",
             examples: [
@@ -352,13 +369,13 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
                   offset: {
                     type: "number",
                     description:
-                      "Zero-based nonnegative integer (default 0); continue at nextOffset, null when exhausted; pages are not snapshots",
+                      "Zero-based nonnegative integer (default 0); continue at nextOffset, null when exhausted. Results can change between page requests.",
                   },
                 },
               },
               tree: {
                 description:
-                  "Complete unpaged containment projection (all matching work or descendants of ID; open by default): roots, summary nodes, edges, context, components and omittedLinks",
+                  "Complete unpaged containment of matching work or ID's descendants (open by default): roots, summary nodes, edges, context, components and omittedLinks",
                 examples: ["bl work tree --lean", "bl work tree GROUP --state all -sd -ss"],
                 positionals: [
                   { name: "id", type: "string", description: "Optional work-item anchor" },
@@ -367,7 +384,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
               },
               graph: {
                 description:
-                  "Complete unpaged dependency projection for all matching work or transitive links from ID; open by default; returns summary nodes, edges, components and omittedLinks",
+                  "Complete unpaged dependencies of matching work or transitive links from ID (open by default): summary nodes, edges, components and omittedLinks",
                 examples: ["bl work graph TASK", "bl work graph TASK --direction dependents"],
                 positionals: [
                   { name: "id", type: "string", description: "Optional dependency root" },
@@ -429,7 +446,8 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
                   limit: { type: "number", description: "Page size (default 20, maximum 100)" },
                   offset: {
                     type: "number",
-                    description: "Continue at nextOffset (default 0); pages are not snapshots",
+                    description:
+                      "Continue at nextOffset (default 0). Results can change between page requests.",
                   },
                 },
               },

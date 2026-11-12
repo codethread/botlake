@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
@@ -13,14 +14,141 @@ const workItem = z.compile(
 );
 const workDetail = z.compile(z.object({ item: z.object({ title: z.string() }) }));
 
+test("lake start --install installs before activation and leaves an active lake alone", async () => {
+  const host = await system();
+  try {
+    const workspace = join(host.dir, "install");
+    const config = join(workspace, ".botlake");
+    const manifest = join(config, "package.json");
+    await mkdir(config, { recursive: true });
+    await Bun.write(
+      manifest,
+      JSON.stringify({
+        private: true,
+        type: "module",
+        dependencies: {
+          "@botlake/core": host.packages["@botlake/core"],
+          "install-fixture": "file:./fixture",
+        },
+      }),
+    );
+
+    await Bun.write(
+      join(config, "lake.ts"),
+      'import {createLake} from "@botlake/core"; import installed from "install-fixture"; export const lake=createLake({extensions:[installed]});',
+    );
+
+    const start = ["lake", "start", "--install", "--workspace"];
+    expect(await host.botlake([...start, workspace], false)).toContain("bun install in");
+    expect(await host.botlake(["lake", "list"])).toEqual([]);
+    expect(await Bun.file(join(config, "world.db")).exists()).toBe(false);
+
+    const fixture = join(config, "fixture");
+    await Bun.write(
+      join(fixture, "package.json"),
+      '{"name":"install-fixture","version":"1.0.0","type":"module","exports":"./index.ts"}',
+    );
+    await Bun.write(
+      join(fixture, "index.ts"),
+      'export default { name: "installed", activate() {} };',
+    );
+    expect(await host.botlake([...start, workspace])).toMatchObject({ name: "install" });
+    expect(await host.botlake(["lake", "info", "--workspace", "install"])).toMatchObject({
+      extensions: [{ name: "installed" }],
+    });
+    expect(await Bun.file(join(config, "world.db")).exists()).toBe(true);
+
+    await Bun.write(manifest, '{"botlake":{},"dependencies":{"missing":"file:./missing"}}');
+    expect(await host.botlake([...start, "install"])).toMatchObject({ name: "install" });
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
+test("lake minimumCore uses the supervisor's loaded core and reports compatibility versions", async () => {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("compatibility", []);
+    const lakeConfig = join(workspace, ".botlake/lake.ts");
+    const installedCoreManifest = join(workspace, "node_modules/@botlake/core/package.json");
+    const installedCore = z
+      .compile(z.record(z.string(), z.unknown()))
+      .parse(await Bun.file(installedCoreManifest).json());
+    const loadedCoreVersion = "9.0.0";
+    await Bun.write(
+      installedCoreManifest,
+      JSON.stringify({ ...installedCore, version: loadedCoreVersion }),
+    );
+    await Bun.write(
+      lakeConfig,
+      'import {createLake} from "@botlake/core"; export const lake=createLake({name:"compatibility",minimumCore:"9999.0.0",extensions:[]});',
+    );
+
+    const incompatible = await host.botlake(["lake", "start", "--workspace", workspace], false);
+    expect(incompatible).toContain(
+      `Lake requires @botlake/core 9999.0.0 or newer, but the running supervisor loaded ${loadedCoreVersion}`,
+    );
+    expect(incompatible).toContain("Upgrade the supervisor's @botlake/core package");
+    expect(await host.botlake(["lake", "list"])).toEqual([]);
+
+    await Bun.write(
+      lakeConfig,
+      `import {createLake} from "@botlake/core"; export const lake=createLake({name:"compatibility",minimumCore:${JSON.stringify(loadedCoreVersion)},extensions:[]});`,
+    );
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    expect(await host.botlake(["lake", "info", "--workspace", workspace])).toMatchObject({
+      coreVersion: loadedCoreVersion,
+      minimumCore: loadedCoreVersion,
+    });
+    expect(await host.botlake(["lake", "status", "--workspace", workspace])).toMatchObject({
+      ready: true,
+      coreVersion: loadedCoreVersion,
+    });
+    const cli = z.object({ cli_version: z.string() }).parse(await host.botlake(["--version"]));
+    expect(await host.botlake(["status"])).toMatchObject({
+      supervisorVersion: cli.cli_version,
+      protocolVersion: 1,
+      coreVersion: loadedCoreVersion,
+    });
+    expect(await host.botlake(["host-status"])).toMatchObject({
+      coreVersion: loadedCoreVersion,
+    });
+
+    const primer = Bun.spawn(
+      ["bun", "-e", 'import { brief } from "@botlake/core"; console.log(brief)'],
+      {
+        cwd: workspace,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [primerExit, primerOutput, primerError] = await Promise.all([
+      primer.exited,
+      new Response(primer.stdout).text(),
+      new Response(primer.stderr).text(),
+    ]);
+    expect(primerExit, primerError).toBe(0);
+    const documentationUrl = /Read (file:\/\/\S+) for core documentation/u.exec(primerOutput)?.[1];
+    expect(documentationUrl).toBeDefined();
+    if (documentationUrl === undefined) throw new Error(primerOutput);
+    expect(fileURLToPath(documentationUrl)).toEndWith("@botlake/core/README.md");
+    expect(await Bun.file(fileURLToPath(documentationUrl)).exists()).toBe(true);
+  } finally {
+    await host.close();
+  }
+}, 60000);
+
 test("packed core runs alone; installed extensions require explicit selection and own their configuration", async () => {
   const host = await system();
   try {
     const bare = join(host.dir, "bare");
     await mkdir(join(bare, ".botlake"), { recursive: true });
+    const packedCore = host.packages["@botlake/core"];
+    if (packedCore === undefined) throw new Error("Packed core fixture is unavailable");
+    await install(join(bare, ".botlake"), { "@botlake/core": packedCore });
     await Bun.write(
-      join(bare, ".botlake/package.json"),
-      '{"name":"@example/not-the-lake-name","private":true,"botlake":{}}',
+      join(bare, ".botlake/lake.ts"),
+      'import {createLake} from "@botlake/core"; export const lake=createLake({extensions:[]});',
     );
     await host.botlake(["lake", "start", "--workspace", bare]);
     expect(catalog.parse(await host.bl("bare", "help", {}))).toEqual([
@@ -38,13 +166,9 @@ test("packed core runs alone; installed extensions require explicit selection an
         ),
       ),
     );
-    const manifest = Bun.file(join(bare, ".botlake/package.json"));
     await Bun.write(
-      manifest,
-      JSON.stringify({
-        ...z.compile(z.record(z.string(), z.unknown())).parse(await manifest.json()),
-        botlake: { extensions: ["@botlake/extension-batteries"] },
-      }),
+      join(bare, ".botlake/lake.ts"),
+      'import {createLake} from "@botlake/core"; import {batteries} from "@botlake/extension-batteries"; export const lake=createLake({extensions:[batteries()]});',
     );
     await host.botlake(["lake", "restart", "--workspace", "bare"]);
     expect(
@@ -61,13 +185,8 @@ test("packed core runs alone; installed extensions require explicit selection an
       "requires explicitly selected identity",
     );
     await Bun.write(
-      join(board, ".botlake/package.json"),
-      JSON.stringify({
-        botlake: {
-          name: "board",
-          extensions: ["@botlake/extension-work", "@botlake/extension-identity"],
-        },
-      }),
+      join(board, ".botlake/lake.ts"),
+      'import {createLake} from "@botlake/core"; import work from "@botlake/extension-work"; import identity from "@botlake/extension-identity"; export const lake=createLake({name:"board",extensions:[work,identity]});',
     );
     await host.botlake(["lake", "start", "--workspace", board]);
     expect(
@@ -95,9 +214,9 @@ test("packed core runs alone; installed extensions require explicit selection an
     );
     await Bun.write(
       join(agents, "agents.ts"),
-      `import { agents, agentConfigSchema } from "@botlake/extension-agents";
+      `import { agents, agentConfigSchema, builtinProviders, agentFlags } from "@botlake/extension-agents";
 import config from "./agents.json";
-export default agents(agentConfigSchema.parse(config));`,
+export default agents({...agentConfigSchema.parse(config), providers: [builtinProviders.codex({flag: agentFlags.codex}), builtinProviders.pi({flag: agentFlags.pi}), builtinProviders.claude({flag: agentFlags.claude})]});`,
     );
     await host.botlake(["lake", "start", "--workspace", agents]);
     expect(
@@ -118,20 +237,15 @@ export default configureFlags([[agentFlags.codex, true], [agentFlags.pi, true], 
 export default workAgents({ checkIntervalMs: 60000 });`,
     );
     await Bun.write(
-      join(agents, ".botlake/package.json"),
-      JSON.stringify({
-        botlake: {
-          name: "configured",
-          extensions: [
-            "@botlake/extension-identity",
-            "./flags.ts",
-            "./agents.ts",
-            "@botlake/extension-work",
-            "./work-agents.ts",
-            "@botlake/extension-cron",
-          ],
-        },
-      }),
+      join(agents, ".botlake/lake.ts"),
+      `import {createLake} from "@botlake/core";
+import identity from "@botlake/extension-identity";
+import flags from "../flags.ts";
+import agents from "../agents.ts";
+import work from "@botlake/extension-work";
+import workAgents from "../work-agents.ts";
+import cron from "@botlake/extension-cron";
+export const lake=createLake({name:"configured",extensions:[identity,flags,agents,work,workAgents,cron]});`,
     );
     await host.botlake(["lake", "restart", "--workspace", agents]);
     expect(

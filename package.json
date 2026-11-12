@@ -1,8 +1,8 @@
 {
   "name": "botlake",
   "private": true,
+  "license": "MIT",
   "workspaces": [
-    ".botlake",
     "packages/*",
     "extensions/*",
     "plugins/*"
@@ -26,6 +26,7 @@
     "@botlake/extension-agents": "workspace:*",
     "@botlake/extension-batteries": "workspace:*",
     "@botlake/extension-cron": "workspace:*",
+    "@botlake/extension-ct-config": "workspace:*",
     "@botlake/extension-diary": "workspace:*",
     "@botlake/extension-flags": "workspace:*",
     "@botlake/extension-identity": "workspace:*",
@@ -38,6 +39,7 @@
     "@botlake/extension-work-auto-bot": "workspace:*",
     "@botlake/extension-workflow": "workspace:*",
     "@botlake/native-session": "workspace:*",
+    "@codethread/skillbox": "^0.2.0",
     "@types/bun": "^1.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",

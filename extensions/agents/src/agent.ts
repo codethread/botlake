@@ -55,8 +55,10 @@ export function registerAgent(ctx: Context, service: Agents): void {
       name: "agent",
       about:
         "Managed runs own process custody and an invocation-fenced lifecycle; settlement is independent of task completion. Native sessions and activity/output records are observations, not custody or proof of liveness. Follow retains a source-owned run summary; full execution state and commands remain at its owner. Retries and resumes retain accepted provider settings.",
-      primer:
+      primer: [
         'Choose a seat with bl agent catalog [SEAT], start it with bl agent start --seat SEAT --cwd DIR --prompt TEXT, and keep the returned id. With Batteries selected, run bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied before bl agent show RUN_ID. Use activity peek for recent events or search for retained excerpts; the native transcript remains the full record. A wait timeout does not stop the run, and settlement itself does not close a served task.',
+        "Across repos, global --workspace selects the run's owner and its seats/config; agent start --cwd only sets the execution directory. Managed children inherit BL_WORKSPACE, keeping plain bl commands and native activity at that owner after cd. To record in another lake, start with bl --workspace DEST agent start. A --target must be owned by the run's lake; imported references are read-only. agent follow RUN_ID --from-workspace OWNER retains a local summary, not execution authority or activity. Wait, inspect activity and control the run at OWNER using its original ID. See bl help agent start for cross-repo examples.",
+      ].join("\n\n"),
       input,
       output: jsonSchema,
       jsonSchema: { input, output: jsonSchema },
@@ -243,7 +245,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
               provider: {
                 type: "string",
                 required: true,
-                description: "Provider: codex, pi or claude",
+                description: "Provider namespace (for example: codex, pi, claude)",
               },
               "native-session-id": {
                 key: "nativeSessionId",
@@ -317,14 +319,20 @@ export function registerAgent(ctx: Context, service: Agents): void {
             },
           },
           start: {
-            description: "Start a managed run; returns { id, state, substatus, settled }",
-            examples: [`bl agent start --seat reviewer --cwd "$PWD" --prompt 'Review the change'`],
+            description:
+              "Start a managed run owned by the selected lake, independently of cwd; returns { id, state, substatus, settled }",
+            examples: [
+              `bl agent start --seat reviewer --cwd "$PWD" --prompt 'Review the change'`,
+              "bl --workspace OWNER agent start --seat reviewer --cwd /path/to/OTHER_REPO --target OWNER_TASK --prompt 'Review the other repo; report here'",
+              "bl --workspace DEST agent start --seat reviewer --cwd /path/to/DEST --prompt 'Work and record in DEST'",
+            ],
             flags: {
               seat: { type: "string", required: true, description: "Available catalog seat" },
               cwd: {
                 type: "string",
                 required: true,
-                description: 'Existing directory; pass an absolute path such as "$PWD"',
+                description:
+                  'Execution directory only; the selected lake keeps custody, activity and BL_WORKSPACE. Pass an absolute path such as "$PWD"',
               },
               prompt: { type: "string", required: true, description: "Instructions for this run" },
               model: {
@@ -342,7 +350,11 @@ export function registerAgent(ctx: Context, service: Agents): void {
                 description:
                   "JSON string array replacing seat extraArgs; [] clears; retained on retry and resume",
               },
-              target: { type: "string", description: "Optional task or node ID served by the run" },
+              target: {
+                type: "string",
+                description:
+                  "Optional owned task or node ID in the selected lake; references cannot be served",
+              },
               "request-id": {
                 key: "requestId",
                 type: "string",

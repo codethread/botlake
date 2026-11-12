@@ -161,9 +161,9 @@ export default references({projections:[...agentReferenceProjections,...workRefe
     );
   await Bun.write(
     join(workspace, "agents.ts"),
-    `import { agents, provider } from "@botlake/extension-agents";
+    `import { agents, builtinProviders, agentFlags } from "@botlake/extension-agents";
 ${withReferences ? 'import references from "./references.ts";' : ""}
-const base=provider("codex");
+const base=builtinProviders.codex({flag:agentFlags.codex});
 export default agents({${withReferences ? "references," : ""}providers:[{...base,prepare(){throw new Error("fixture has no process");}}],aliases:{fixture:{provider:"codex"}}});`,
   );
   return realpath(workspace);

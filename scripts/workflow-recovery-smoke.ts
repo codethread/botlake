@@ -1,6 +1,7 @@
 // Run: bun scripts/workflow-recovery-smoke.ts — disposable SQLite, packed CLIs and deliberate worker exits.
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { attributesSchema, ManualClock, q, Runtime } from "@botlake/core";
 import { identity } from "@botlake/extension-identity";
@@ -11,13 +12,19 @@ import {
   workStore,
   type GateCommand,
 } from "@botlake/extension-work";
-import { workflowAttributes as attrs, workflows } from "@botlake/extension-workflow";
+import {
+  defineWorkflow,
+  workflowAttributes as attrs,
+  workflows,
+  type Definition,
+} from "@botlake/extension-workflow";
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
-import { copyWorkflowExample } from "../tests/blackbox/fixtures/workflows.ts";
+import { writeWorkflowExtension } from "../tests/blackbox/fixtures/workflows.ts";
 
 const idSchema = z.object({ id: z.string() });
+const workflowModuleSchema = z.object({ workflow: z.custom<Definition>() });
 const viewSchema = z.object({
   run: z.object({ id: z.string(), status: z.string() }),
   tasks: z.array(idSchema),
@@ -36,7 +43,7 @@ try {
   const workspace = await host.workspace("workflow-recovery", [
     "@botlake/extension-batteries",
     "@botlake/extension-identity",
-    "@botlake/extension-workflow",
+    "./workflow-extension.ts",
     "./work.ts",
     "./crash.ts",
   ]);
@@ -52,7 +59,7 @@ export default work({ probes: [defineProbe({
 })] });
 `,
   );
-  // Exit from an after-commit subscriber, while reconciliation awaits the catalogue.
+  // Exit from an after-commit subscriber before frontier publication.
   await Bun.write(
     join(workspace, "crash.ts"),
     `
@@ -81,12 +88,13 @@ export default {
     join(workspace, "recovery.ts"),
     `
 import { readFileSync } from "node:fs";
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({ marker: z.string() });
-export const commandSchemas = { again: z.object({}), finish: z.object({}) };
-export function runBrief() { return { title: "Recover publication", description: "Durable self-loop visits" }; }
-export const machine = setup({}).createMachine({
+const inputSchema = z.object({ marker: z.string() });
+const commandSchemas = { again: z.object({}), finish: z.object({}) };
+function runBrief() { return { title: "Recover publication", description: "Durable self-loop visits" }; }
+const machine = setup({}).createMachine({
   context: ({ input }) => input,
   initial: "work",
   states: {
@@ -101,17 +109,19 @@ export const machine = setup({}).createMachine({
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "recovery", version: "1.0.0", description: "Recover publication", inputSchema, commandSchemas, runBrief, machine });
 `,
   );
   await Bun.write(
     join(workspace, "reserved.ts"),
     `
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({ attributes: z.record(z.string(), z.json()), group: z.boolean().default(false) });
-export const commandSchemas = { done: z.object({}) };
-export function runBrief() { return { title: "Reserved fields", description: "Reject protected task attributes" }; }
-export const machine = setup({}).createMachine({
+const inputSchema = z.object({ attributes: z.record(z.string(), z.json()), group: z.boolean().default(false) });
+const commandSchemas = { done: z.object({}) };
+function runBrief() { return { title: "Reserved fields", description: "Reject protected task attributes" }; }
+const machine = setup({}).createMachine({
   context: ({ input }) => input,
   initial: "choose",
   states: {
@@ -121,9 +131,20 @@ export const machine = setup({}).createMachine({
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "reserved", version: "1.0.0", description: "Reserved fields", inputSchema, commandSchemas, runBrief, machine });
 `,
   );
+  await writeInitialMapping(workspace);
+  await writeParallelEvidence(workspace);
   await gateEvidence(workspace);
+  await writeWorkflowExtension(workspace, [
+    "./recovery.ts",
+    "./reserved.ts",
+    "./evidence.ts",
+    "./initial-mapping.ts",
+    "./parallel-evidence.ts",
+    "@botlake/extension-workflow/examples/gate-escalation",
+  ]);
   await host.botlake(["lake", "start", "--workspace", workspace]);
   const cli = (args: string[], ok = true) => host.cli(["--workspace", workspace, ...args], ok);
   const node = async (id: string) =>
@@ -137,14 +158,7 @@ export const machine = setup({}).createMachine({
   const firstTask = (view: z.infer<typeof viewSchema>) => z.string().parse(view.tasks[0]?.id);
   const arm = () => Bun.write(join(workspace, "crash.arm"), "armed");
   const marker = join(workspace, "marker.txt");
-  const startArgs = [
-    "workflow",
-    "start",
-    "--source",
-    "recovery.ts",
-    "--input",
-    JSON.stringify({ marker }),
-  ];
+  const startArgs = ["workflow", "start", "recovery", "--input", JSON.stringify({ marker })];
 
   for (const key of [
     "work/kind",
@@ -162,8 +176,7 @@ export const machine = setup({}).createMachine({
             [
               "workflow",
               "start",
-              "--source",
-              "reserved.ts",
+              "reserved",
               "--input",
               JSON.stringify({ attributes: { [key]: true } }),
             ],
@@ -180,8 +193,7 @@ export const machine = setup({}).createMachine({
           [
             "workflow",
             "start",
-            "--source",
-            "reserved.ts",
+            "reserved",
             "--input",
             JSON.stringify({ attributes: {}, group: true }),
           ],
@@ -281,6 +293,7 @@ export const machine = setup({}).createMachine({
         "frozen rendering, durable visit identity and duplicate-free restart/retry",
         "exhausted gate reuse gets a fresh logical identity and retry round",
         "failed publication identifies its committed run and resumes on inspection",
+        "definition builder, duplicate registration, catalogue, missing name and version mismatch checks",
       ],
     }),
   );
@@ -292,13 +305,14 @@ async function gateEvidence(workspace: string): Promise<void> {
   await Bun.write(
     join(workspace, "evidence.ts"),
     `
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { assign, setup } from "xstate";
 import { z } from "zod";
-export const inputSchema = z.object({ target: z.enum(["pending", "waiting", "exhausted", "cleared", "dismissed"]) });
-export const commandSchemas = { done: z.object({}) };
-export function runBrief() { return { title: "Gate evidence", description: "Retain the whole event" }; }
+const inputSchema = z.object({ target: z.enum(["pending", "waiting", "exhausted", "cleared", "dismissed"]) });
+const commandSchemas = { done: z.object({}) };
+function runBrief() { return { title: "Gate evidence", description: "Retain the whole event" }; }
 const remember = assign({ received: ({ event }) => event.data });
-export const machine = setup({}).createMachine({
+const machine = setup({}).createMachine({
   context: ({ input }) => ({ target: input.target, received: null }), initial: "choose",
   states: {
     choose: { always: [
@@ -317,7 +331,28 @@ export const machine = setup({}).createMachine({
     done: { type: "final" },
   },
 });
+export const workflow = defineWorkflow({ name: "evidence", version: "1.0.0", description: "Gate evidence", inputSchema, commandSchemas, runBrief, machine });
 `,
+  );
+  const definitions = await Promise.all(
+    ["recovery.ts", "reserved.ts", "evidence.ts", "initial-mapping.ts", "parallel-evidence.ts"].map(
+      async (filename) => {
+        const module: unknown = await import(pathToFileURL(join(workspace, filename)).href);
+        return workflowModuleSchema.parse(module).workflow;
+      },
+    ),
+  );
+  const gateEscalationModule = await import("@botlake/extension-workflow/examples/gate-escalation");
+  definitions.push(gateEscalationModule.workflow);
+  const firstDefinition = definitions[0];
+  if (firstDefinition === undefined) throw new Error("Missing workflow fixture definition");
+  assert.throws(
+    () => defineWorkflow({ ...firstDefinition, version: "not-semver" }),
+    /Expected a full semantic version/u,
+  );
+  assert.throws(
+    () => workflows({ definitions: [...definitions, firstDefinition] }),
+    /Duplicate workflow name/u,
   );
   const clock = new ManualClock();
   const database = join(workspace, "evidence.sqlite");
@@ -331,14 +366,26 @@ export const machine = setup({}).createMachine({
       throw new Error("Manual clock must not evaluate probes");
     },
   });
-  const open = () => runtime.start([identity(), work({ probes: [probe] }), workflows()]);
-  await open();
+  const open = () =>
+    runtime.start([identity(), work({ probes: [probe] }), workflows({ definitions })]);
   try {
+    await open();
+    const catalog = z
+      .array(z.object({ name: z.string(), version: z.string(), description: z.string() }))
+      .parse(await runtime.invoke("workflow", { command: "catalog" }));
+    assert.deepEqual(
+      catalog.map(({ name }) => name),
+      definitions.map(({ name }) => name).toSorted(),
+    );
+    await assert.rejects(
+      runtime.invoke("workflow", { command: "start", name: "missing" }, { identity: "smoke" }),
+      /not configured/u,
+    );
     for (const target of ["pending", "waiting", "exhausted", "cleared", "dismissed"] as const) {
       const started = viewSchema.parse(
         await runtime.invoke(
           "workflow",
-          { command: "start", source: "evidence.ts", input: { target } },
+          { command: "start", name: "evidence", input: { target } },
           { identity: "smoke" },
         ),
       );
@@ -415,43 +462,12 @@ export const machine = setup({}).createMachine({
       });
       assert.deepEqual(runtime.errors, []);
     }
-    await Bun.write(
-      join(workspace, "initial-mapping.ts"),
-      `
-import { existsSync } from "node:fs";
-import { assign, setup } from "xstate";
-import { z } from "zod";
-export const inputSchema = z.object({ via: z.enum(["start", "task", "event"]), marker: z.string().nullable().default(null) });
-export const commandSchemas = { next: z.object({}) };
-export function runBrief() { return { title: "Initial mapping chain", description: "Deliver only after publication commits" }; }
-const remember = assign({ received: ({ context, event }) => [...context.received, event.data] });
-export const machine = setup({}).createMachine({
-  context: ({ input }) => ({ ...input, received: [] }), initial: "choose",
-  states: {
-    choose: { always: [
-      { guard: ({ context }) => context.via === "task", target: "worker" },
-      { guard: ({ context }) => context.via === "event", target: "waiting" },
-      { target: "first" },
-    ] },
-    worker: { meta: { title: "Enter gates", commands: { next: "NEXT" }, task: () => ({ instructions: "Publish the mapped gates" }) }, on: { NEXT: "first" } },
-    waiting: { meta: { title: "Trigger chain", gate: () => ({ probe: "quiet", params: {} }), on: { cleared: "CLEARED" } }, on: { CLEARED: "first" } },
-    first: { meta: { title: "First pending", gate: () => ({ probe: "quiet", params: {} }), on: { pending: "FIRST" } }, on: { FIRST: { target: "second", actions: remember } } },
-    second: { meta: { title: "Second pending", gate: () => ({ probe: "quiet", params: {} }), on: { pending: "SECOND" } }, on: { SECOND: { target: "record", actions: remember } } },
-    record: { meta: { title: "Chain recorded", commands: { next: "DONE" }, task: ({ context }) => {
-      if (context.marker !== null && !existsSync(context.marker)) throw new Error("gate render rejected");
-      return { instructions: "Inspect both committed gates", attributes: { "consumer/chain": context.received } };
-    } }, on: { DONE: "done" } },
-    done: { type: "final" },
-  },
-});
-`,
-    );
     const chains: z.infer<typeof viewSchema>[] = [];
     for (const via of ["start", "task", "event"] as const) {
       let chain = viewSchema.parse(
         await runtime.invoke(
           "workflow",
-          { command: "start", source: "initial-mapping.ts", input: { via } },
+          { command: "start", name: "initial-mapping", input: { via } },
           { identity: "smoke" },
         ),
       );
@@ -508,7 +524,7 @@ export const machine = setup({}).createMachine({
       const started = viewSchema.parse(
         await runtime.invoke(
           "workflow",
-          { command: "start", source: "initial-mapping.ts", input: { via: "task", marker } },
+          { command: "start", name: "initial-mapping", input: { via: "task", marker } },
           { identity: "smoke" },
         ),
       );
@@ -541,7 +557,7 @@ export const machine = setup({}).createMachine({
     await assert.rejects(
       runtime.invoke(
         "workflow",
-        { command: "start", source: "initial-mapping.ts", input: { via: "start", marker } },
+        { command: "start", name: "initial-mapping", input: { via: "start", marker } },
         { identity: "smoke" },
       ),
       (error: unknown) => {
@@ -577,7 +593,6 @@ export const machine = setup({}).createMachine({
         "Start, task and event publication must remain unchanged by activation replay",
       );
     assert.deepEqual(runtime.errors, []);
-    await copyWorkflowExample(workspace, "gate-escalation");
     const retrying = viewSchema.parse(
       await runtime.invoke(
         "workflow",
@@ -625,27 +640,6 @@ export const machine = setup({}).createMachine({
     assert.deepEqual(store.gates.get(retryGate).status, { status: "pending", round: 2 });
     await runtime.drain();
     assert.deepEqual(runtime.errors, []);
-    await Bun.write(
-      join(workspace, "parallel-evidence.ts"),
-      `
-import { setup } from "xstate";
-import { z } from "zod";
-export const inputSchema = z.object({});
-export const commandSchemas = { next: z.object({}) };
-export function runBrief() { return { title: "Concurrent gate", description: "Do not lose a gate event during publication" }; }
-export const machine = setup({}).createMachine({ type: "parallel", states: {
-  worker: { initial: "first", states: {
-    first: { meta: { title: "First", commands: { next: "NEXT" }, task: () => ({ instructions: "Advance" }) }, on: { NEXT: "second" } },
-    second: { meta: { title: "Second", commands: { next: "END" }, task: () => ({ instructions: "Wait for prerequisite" }), gates: () => [{ title: "Slow preparation", probe: "slow", params: {} }] }, on: { END: "done" } },
-    done: { type: "final" },
-  } },
-  gate: { initial: "wait", states: {
-    wait: { meta: { title: "Concurrent gate", gate: () => ({ probe: "quiet", params: {} }), on: { cleared: "CLEARED" } }, on: { CLEARED: "done" } },
-    done: { type: "final" },
-  } },
-} });
-`,
-    );
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let rejectPreparation = false;
@@ -662,7 +656,7 @@ export const machine = setup({}).createMachine({ type: "parallel", states: {
     const parallel = viewSchema.parse(
       await runtime.invoke(
         "workflow",
-        { command: "start", source: "parallel-evidence.ts" },
+        { command: "start", name: "parallel-evidence" },
         { identity: "smoke" },
       ),
     );
@@ -696,7 +690,7 @@ export const machine = setup({}).createMachine({ type: "parallel", states: {
     const retryPublication = viewSchema.parse(
       await runtime.invoke(
         "workflow",
-        { command: "start", source: "parallel-evidence.ts" },
+        { command: "start", name: "parallel-evidence" },
         { identity: "smoke" },
       ),
     );
@@ -721,7 +715,91 @@ export const machine = setup({}).createMachine({ type: "parallel", states: {
     assert.notEqual(resumed.tasks[0]?.id, retryTask);
     assert.equal(runtime.graph.show(retryPublication.run.id).attributes[attrs.publication], null);
     assert.deepEqual(runtime.errors, []);
+    const persisted = chains[0];
+    if (persisted === undefined) throw new Error("Missing persisted workflow fixture");
+    await runtime.stop();
+    runtime = new Runtime({ database, workspace, clock });
+    const upgraded = definitions.map((definition) =>
+      definition.name === "initial-mapping" ? { ...definition, version: "2.0.0" } : definition,
+    );
+    await runtime.start([
+      identity(),
+      work({ probes: [probe] }),
+      workflows({ definitions: upgraded }),
+    ]);
+    const persistedTask = persisted.tasks[0]?.id;
+    if (persistedTask === undefined) throw new Error("Missing persisted workflow task");
+    await assert.rejects(
+      runtime.invoke("workflow", {
+        command: "complete",
+        id: persistedTask,
+        choice: "next",
+      }),
+      /Expected workflow initial-mapping version 1\.0\.0, found 2\.0\.0/u,
+    );
   } finally {
     await runtime.stop();
   }
+}
+
+async function writeInitialMapping(workspace: string): Promise<void> {
+  await Bun.write(
+    join(workspace, "initial-mapping.ts"),
+    `
+import { existsSync } from "node:fs";
+import { defineWorkflow } from "@botlake/extension-workflow";
+import { assign, setup } from "xstate";
+import { z } from "zod";
+const inputSchema = z.object({ via: z.enum(["start", "task", "event"]), marker: z.string().nullable().default(null) });
+const commandSchemas = { next: z.object({}) };
+function runBrief() { return { title: "Initial mapping chain", description: "Deliver only after publication commits" }; }
+const remember = assign({ received: ({ context, event }) => [...context.received, event.data] });
+const machine = setup({}).createMachine({
+  context: ({ input }) => ({ ...input, received: [] }), initial: "choose",
+  states: {
+    choose: { always: [
+      { guard: ({ context }) => context.via === "task", target: "worker" },
+      { guard: ({ context }) => context.via === "event", target: "waiting" },
+      { target: "first" },
+    ] },
+    worker: { meta: { title: "Enter gates", commands: { next: "NEXT" }, task: () => ({ instructions: "Publish the mapped gates" }) }, on: { NEXT: "first" } },
+    waiting: { meta: { title: "Trigger chain", gate: () => ({ probe: "quiet", params: {} }), on: { cleared: "CLEARED" } }, on: { CLEARED: "first" } },
+    first: { meta: { title: "First pending", gate: () => ({ probe: "quiet", params: {} }), on: { pending: "FIRST" } }, on: { FIRST: { target: "second", actions: remember } } },
+    second: { meta: { title: "Second pending", gate: () => ({ probe: "quiet", params: {} }), on: { pending: "SECOND" } }, on: { SECOND: { target: "record", actions: remember } } },
+    record: { meta: { title: "Chain recorded", commands: { next: "DONE" }, task: ({ context }) => {
+      if (context.marker !== null && !existsSync(context.marker)) throw new Error("gate render rejected");
+      return { instructions: "Inspect both committed gates", attributes: { "consumer/chain": context.received } };
+    } }, on: { DONE: "done" } },
+    done: { type: "final" },
+  },
+});
+export const workflow = defineWorkflow({ name: "initial-mapping", version: "1.0.0", description: "Initial mapping chain", inputSchema, commandSchemas, runBrief, machine });
+`,
+  );
+}
+
+async function writeParallelEvidence(workspace: string): Promise<void> {
+  await Bun.write(
+    join(workspace, "parallel-evidence.ts"),
+    `
+import { defineWorkflow } from "@botlake/extension-workflow";
+import { setup } from "xstate";
+import { z } from "zod";
+const inputSchema = z.object({});
+const commandSchemas = { next: z.object({}) };
+function runBrief() { return { title: "Concurrent gate", description: "Do not lose a gate event during publication" }; }
+const machine = setup({}).createMachine({ type: "parallel", states: {
+  worker: { initial: "first", states: {
+    first: { meta: { title: "First", commands: { next: "NEXT" }, task: () => ({ instructions: "Advance" }) }, on: { NEXT: "second" } },
+    second: { meta: { title: "Second", commands: { next: "END" }, task: () => ({ instructions: "Wait for prerequisite" }), gates: () => [{ title: "Slow preparation", probe: "slow", params: {} }] }, on: { END: "done" } },
+    done: { type: "final" },
+  } },
+  gate: { initial: "wait", states: {
+    wait: { meta: { title: "Concurrent gate", gate: () => ({ probe: "quiet", params: {} }), on: { cleared: "CLEARED" } }, on: { CLEARED: "done" } },
+    done: { type: "final" },
+  } },
+} });
+export const workflow = defineWorkflow({ name: "parallel-evidence", version: "1.0.0", description: "Concurrent gate", inputSchema, commandSchemas, runBrief, machine });
+`,
+  );
 }

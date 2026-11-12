@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
@@ -34,9 +35,10 @@ type Request struct {
 }
 
 type Frame struct {
-	OK     bool `json:"ok"`
-	Result any  `json:"result,omitempty"`
-	Error  any  `json:"error,omitempty"`
+	OK          bool   `json:"ok"`
+	Result      any    `json:"result,omitempty"`
+	Error       any    `json:"error,omitempty"`
+	Diagnostics string `json:"diagnostics,omitempty"`
 }
 
 type Member struct {
@@ -49,18 +51,28 @@ type lakeOptions struct {
 	Env map[string]string `json:"env"`
 }
 
+type hostRuntimeStatus struct {
+	CoreVersion string `json:"coreVersion"`
+}
+
+const (
+	lakeInstallStart   = "lake-install-start"
+	lakeInstallTimeout = 2 * time.Minute
+)
+
 type Daemon struct {
-	mu                     sync.Mutex
-	lifecycle              sync.Mutex
-	members                map[string]Member
-	custodies              map[string]*process.Custody
-	host                   *exec.Cmd
-	hostDone               chan struct{}
-	hostReady              bool
-	hostError              string
-	stopping               bool
-	listener               net.Listener
-	home, core, hostSocket string
+	mu                                  sync.Mutex
+	lifecycle                           sync.Mutex
+	members                             map[string]Member
+	lakes                               map[string]*lakeProcess
+	custodies                           map[string]*process.Custody
+	host                                *exec.Cmd
+	hostDone                            chan struct{}
+	hostReady                           bool
+	hostError                           string
+	stopping                            bool
+	listener                            net.Listener
+	home, core, hostSocket, coreVersion string
 }
 
 func Home() string {
@@ -151,10 +163,46 @@ func (d *Daemon) control(action, workspace string, env map[string]string) error 
 	}
 
 	if !frame.OK {
-		return fmt.Errorf("host: %v", frame.Error)
+		return hostFrameError(frame.Error)
 	}
 
 	return nil
+}
+
+func hostFrameError(value any) error {
+	if frame, ok := value.(map[string]any); ok {
+		if message, ok := frame["message"].(string); ok {
+			return fmt.Errorf("host: %s", message)
+		}
+	}
+
+	return fmt.Errorf("host: %v", value)
+}
+
+func (d *Daemon) readHostStatus() (hostRuntimeStatus, error) {
+	conn, err := d.hostCall("/control", map[string]any{"action": "status"})
+	if err != nil {
+		return hostRuntimeStatus{}, err
+	}
+
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	var frame struct {
+		OK     bool              `json:"ok"`
+		Result hostRuntimeStatus `json:"result"`
+		Error  any               `json:"error"`
+	}
+	if err := json.NewDecoder(conn).Decode(&frame); err != nil {
+		return hostRuntimeStatus{}, err
+	}
+	if !frame.OK {
+		return hostRuntimeStatus{}, hostFrameError(frame.Error)
+	}
+	if frame.Result.CoreVersion == "" {
+		return hostRuntimeStatus{}, errors.New("Bun host did not report its loaded @botlake/core version")
+	}
+
+	return frame.Result, nil
 }
 
 func (d *Daemon) bootHost() error {
@@ -190,6 +238,7 @@ func (d *Daemon) bootHost() error {
 		recover := !d.stopping && d.host == cmd && d.hostReady
 		if d.host == cmd {
 			d.hostReady = false
+			d.coreVersion = ""
 		}
 
 		d.mu.Unlock()
@@ -207,7 +256,7 @@ func (d *Daemon) bootHost() error {
 		default:
 		}
 
-		if err := d.control("status", "", nil); err == nil {
+		if status, err := d.readHostStatus(); err == nil {
 			d.mu.Lock()
 
 			select {
@@ -218,6 +267,7 @@ func (d *Daemon) bootHost() error {
 			}
 
 			d.hostReady = true
+			d.coreVersion = status.CoreVersion
 			d.mu.Unlock()
 
 			return nil
@@ -272,6 +322,10 @@ func (d *Daemon) restoreHost() error {
 
 		for _, path := range paths {
 			member, readErr := readMember(path)
+			if errors.Is(readErr, os.ErrNotExist) {
+				fmt.Fprintf(os.Stderr, "warning: skipping lake %s during host recovery: %v\n", path, readErr)
+				continue
+			}
 			if readErr != nil {
 				err = errors.Join(err, fmt.Errorf("recover %s: %w", path, readErr))
 				continue
@@ -348,7 +402,7 @@ func (d *Daemon) resolve(target, cwd string) (Member, error) {
 	return Member{}, fmt.Errorf("unknown workspace: %s", target)
 }
 
-func (d *Daemon) up(target string, env map[string]string) (Member, error) {
+func (d *Daemon) up(target string, env map[string]string, install func(Member) error) (Member, error) {
 	d.lifecycle.Lock()
 	defer d.lifecycle.Unlock()
 	path, err := canonical(target)
@@ -366,20 +420,15 @@ func (d *Daemon) up(target string, env map[string]string) (Member, error) {
 
 	d.mu.Unlock()
 
-	member, err := readMember(path)
-	if err != nil {
-		return Member{}, err
+	member := Member{Path: path, Name: filepath.Base(path), Env: env}
+
+	if install != nil {
+		if err := install(member); err != nil {
+			return Member{}, err
+		}
 	}
-	member.Env = env
 
 	d.mu.Lock()
-
-	if err := d.checkName(member); err != nil {
-		d.mu.Unlock()
-
-		return Member{}, err
-	}
-
 	if _, ok := d.custodies[path]; !ok {
 		custody, err := process.NewCustody(filepath.Join(d.home, "processes", fmt.Sprintf("%x", sha256.Sum256([]byte(path)))))
 		if err != nil {
@@ -393,16 +442,41 @@ func (d *Daemon) up(target string, env map[string]string) (Member, error) {
 
 	d.mu.Unlock()
 
-	if err := d.control("start", path, member.Env); err != nil {
+	lake, err := d.startLake(path, member.Env)
+	if err != nil {
 		return Member{}, err
 	}
+	member = lake.member
 
 	d.mu.Lock()
-
 	d.members[path] = member
+	d.lakes[path] = lake
 	d.mu.Unlock()
 
 	return member, nil
+}
+
+func installLake(ctx context.Context, member Member) (string, error) {
+	cmd := exec.CommandContext(ctx, "bun", "install", "--no-progress")
+	cmd.Dir = filepath.Join(member.Path, ".botlake")
+	cmd.Env = make([]string, 0, len(member.Env))
+	for key, value := range member.Env {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 2 * time.Second
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("bun install in %s failed: %w\n%s", cmd.Dir, errors.Join(err, ctx.Err()), bytes.TrimSpace(output))
+	}
+	return string(output), nil
 }
 
 func (d *Daemon) process(req Request) (any, error) {
@@ -489,8 +563,8 @@ func (d *Daemon) handle(conn net.Conn) {
 	}
 
 	_ = conn.SetReadDeadline(time.Time{})
-	if req.Protocol != 1 || req.ID == "" {
-		encode(conn, errFrame(errors.New("protocol_version=1 and request_id are required")))
+	if req.Protocol != protocolVersion || req.ID == "" {
+		encode(conn, errFrame(fmt.Errorf("protocol_version=%d and request_id are required", protocolVersion)))
 
 		return
 	}
@@ -538,16 +612,30 @@ func (d *Daemon) handle(conn net.Conn) {
 		}
 		payload["workspace"] = member.Path
 		payload["request_id"] = req.ID
-		response, err := d.hostCall("/invoke", payload)
+		d.mu.Lock()
+		lake := d.lakes[member.Path]
+		d.mu.Unlock()
+		if lake == nil {
+			encode(conn, errFrame(errors.New("workspace is not running")))
+			return
+		}
+		response, err := d.invokeLake(lake, payload)
 		if err != nil {
-			encode(conn, errFrame(fmt.Errorf("request delivery uncertain; not replayed: %w", err)))
-
+			var lifecycle *lakeLifecycleError
+			if errors.As(err, &lifecycle) {
+				encode(conn, Frame{Error: map[string]any{
+					"type": "error", "code": lifecycle.Code, "message": lifecycle.Message,
+					"details": map[string]any{"workspace": lifecycle.Workspace, "delivery": lifecycle.Delivery},
+				}})
+			} else {
+				encode(conn, errFrame(fmt.Errorf("response ended; request delivery uncertain and was not replayed: %w", err)))
+			}
 			return
 		}
 		defer response.Close()
 		go func() { _, _ = io.Copy(io.Discard, conn); _ = response.Close() }()
 		_, _ = io.Copy(conn, response)
-	case "lake-start":
+	case "lake-start", lakeInstallStart:
 		var options lakeOptions
 		if err := decode(req.Payload, &options); err != nil {
 			encode(conn, errFrame(err))
@@ -561,12 +649,28 @@ func (d *Daemon) handle(conn net.Conn) {
 		if !filepath.IsAbs(target) && req.CWD != "" {
 			target = filepath.Join(req.CWD, target)
 		}
-		member, err := d.up(target, options.Env)
-		if err != nil {
-			encode(conn, errFrame(err))
-		} else {
-			encode(conn, Frame{OK: true, Result: member})
+		var install func(Member) error
+		var diagnostics string
+		if req.Operation == lakeInstallStart {
+			ctx, cancel := context.WithTimeout(context.Background(), lakeInstallTimeout)
+			defer cancel()
+			go func() {
+				_, _ = io.Copy(io.Discard, conn)
+				cancel()
+			}()
+			install = func(member Member) error {
+				var err error
+				diagnostics, err = installLake(ctx, member)
+				return err
+			}
 		}
+		member, err := d.up(target, options.Env, install)
+		frame := Frame{OK: true, Result: member}
+		if err != nil {
+			frame = errFrame(err)
+		}
+		frame.Diagnostics = diagnostics
+		encode(conn, frame)
 	case "lake-restart", "lake-stop":
 		var options lakeOptions
 		if err := decode(req.Payload, &options); err != nil {
@@ -576,40 +680,30 @@ func (d *Daemon) handle(conn net.Conn) {
 
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
-		if err == nil && req.Operation == "lake-restart" {
-			member, err = readMember(member.Path)
-			member.Env = options.Env
-			if err == nil {
-				d.mu.Lock()
-
-				err = d.checkName(member)
-				d.mu.Unlock()
-			}
-		}
-
 		if err == nil {
-			action := "restart"
-			if req.Operation == "lake-stop" {
-				action = "stop"
+			d.mu.Lock()
+			lake := d.lakes[member.Path]
+			d.mu.Unlock()
+			restarting := req.Operation == "lake-restart"
+			reason := "stop"
+			if restarting {
+				reason = "restart"
 			}
-
-			err = d.control(action, member.Path, member.Env)
-			if req.Operation == "lake-restart" {
-				d.mu.Lock()
-
+			err = d.stopLake(lake, reason)
+			d.mu.Lock()
+			delete(d.members, member.Path)
+			delete(d.lakes, member.Path)
+			d.mu.Unlock()
+			if err == nil && restarting {
+				var replacement *lakeProcess
+				replacement, err = d.startLake(member.Path, options.Env)
 				if err == nil {
+					member = replacement.member
+					d.mu.Lock()
 					d.members[member.Path] = member
-				} else {
-					delete(d.members, member.Path)
+					d.lakes[member.Path] = replacement
+					d.mu.Unlock()
 				}
-
-				d.mu.Unlock()
-			}
-
-			if req.Operation == "lake-stop" {
-				d.mu.Lock()
-				delete(d.members, member.Path)
-				d.mu.Unlock()
 			}
 		}
 		d.lifecycle.Unlock()
@@ -621,18 +715,37 @@ func (d *Daemon) handle(conn net.Conn) {
 	case "restart-host":
 		d.lifecycle.Lock()
 		d.mu.Lock()
-		previous := d.host
-		done := d.hostDone
+		lakes := make([]*lakeProcess, 0, len(d.lakes))
+		for _, lake := range d.lakes {
+			lakes = append(lakes, lake)
+		}
 		d.mu.Unlock()
-		err := previous.Process.Kill()
-		if err == nil || errors.Is(err, os.ErrProcessDone) {
-			<-done
-
-			err = d.restoreHost()
+		var restartErr error
+		for _, lake := range lakes {
+			if err := d.stopLake(lake, "restart"); err != nil {
+				restartErr = errors.Join(restartErr, err)
+			}
+			d.mu.Lock()
+			delete(d.members, lake.member.Path)
+			delete(d.lakes, lake.member.Path)
+			d.mu.Unlock()
+		}
+		if restartErr == nil {
+			for _, previous := range lakes {
+				lake, err := d.startLake(previous.member.Path, previous.member.Env)
+				if err != nil {
+					restartErr = errors.Join(restartErr, fmt.Errorf("restart %s: %w", previous.member.Path, err))
+					continue
+				}
+				d.mu.Lock()
+				d.members[lake.member.Path] = lake.member
+				d.lakes[lake.member.Path] = lake
+				d.mu.Unlock()
+			}
 		}
 		d.lifecycle.Unlock()
-		if err != nil {
-			encode(conn, errFrame(err))
+		if restartErr != nil {
+			encode(conn, errFrame(restartErr))
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]bool{"ready": true}})
 		}
@@ -640,30 +753,39 @@ func (d *Daemon) handle(conn net.Conn) {
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
 		if err == nil {
-			err = d.control("member-status", member.Path, nil)
+			d.mu.Lock()
+			_, running := d.lakes[member.Path]
+			d.mu.Unlock()
+			if !running {
+				err = errors.New("workspace is not running")
+			}
 		}
 		d.lifecycle.Unlock()
 		if err != nil {
 			encode(conn, errFrame(err))
 		} else {
-			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true}})
+			d.mu.Lock()
+			lake := d.lakes[member.Path]
+			d.mu.Unlock()
+			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true, "coreVersion": lake.info["coreVersion"], "pid": lake.cmd.Process.Pid}})
 		}
 	case "lake-info":
 		d.lifecycle.Lock()
 		member, err := d.resolve(req.Workspace, req.CWD)
-		var response net.Conn
-		if err == nil {
-			response, err = d.hostCall("/control", map[string]any{"action": "member-info", "workspace": member.Path})
-		}
 		if err != nil {
 			d.lifecycle.Unlock()
 			encode(conn, errFrame(err))
-
 			return
 		}
-		defer d.lifecycle.Unlock()
-		defer response.Close()
-		_, _ = io.Copy(conn, response)
+		d.mu.Lock()
+		lake := d.lakes[member.Path]
+		d.mu.Unlock()
+		d.lifecycle.Unlock()
+		if lake == nil {
+			encode(conn, errFrame(errors.New("workspace is not running")))
+			return
+		}
+		encode(conn, Frame{OK: true, Result: lake.info})
 	case "status", "lake-list":
 		d.mu.Lock()
 		members := make([]Member, 0, len(d.members))
@@ -671,23 +793,39 @@ func (d *Daemon) handle(conn net.Conn) {
 			members = append(members, member)
 		}
 		sort.Slice(members, func(i, j int) bool { return members[i].Path < members[j].Path })
-		pid := d.host.Process.Pid
-		ready, hostError := d.hostReady, d.hostError
+		lakePids := map[string]int{}
+		activeProcesses := map[string][]process.ActiveProcess{}
+		if req.Operation == "status" {
+			for path, custody := range d.custodies {
+				activeProcesses[path] = custody.ActiveProcesses()
+			}
+		}
+		var coreVersion string
+		for path, lake := range d.lakes {
+			lakePids[path] = lake.cmd.Process.Pid
+			if coreVersion == "" {
+				coreVersion, _ = lake.info["coreVersion"].(string)
+			}
+		}
 		d.mu.Unlock()
 		if req.Operation == "lake-list" {
 			encode(conn, Frame{OK: true, Result: members})
 		} else {
-			encode(conn, Frame{OK: true, Result: map[string]any{"pid": os.Getpid(), "hostPid": pid, "hostReady": ready, "hostError": hostError, "members": members}})
+			encode(conn, Frame{OK: true, Result: map[string]any{
+				"pid": os.Getpid(), "supervisorVersion": Version, "supervisorBuildId": buildID(), "protocolVersion": protocolVersion,
+				"hostPid": 0, "hostReady": true, "hostError": "", "coreVersion": coreVersion, "lakePids": lakePids, "members": members,
+				"activeProcesses": activeProcesses,
+			}})
 		}
 	case "host-status":
-		response, err := d.hostCall("/control", map[string]any{"action": "status"})
-		if err != nil {
-			encode(conn, errFrame(err))
-
-			return
+		d.mu.Lock()
+		var coreVersion string
+		for _, lake := range d.lakes {
+			coreVersion, _ = lake.info["coreVersion"].(string)
+			break
 		}
-		defer response.Close()
-		_, _ = io.Copy(conn, response)
+		d.mu.Unlock()
+		encode(conn, Frame{OK: true, Result: map[string]any{"coreVersion": coreVersion, "members": len(d.lakes)}})
 	case "stop":
 		encode(conn, Frame{OK: true, Result: map[string]bool{"stopping": true}})
 		go d.shutdown()
@@ -718,15 +856,19 @@ func (d *Daemon) shutdown() {
 
 	d.mu.Unlock()
 
-	if host != nil {
-		_ = host.Process.Signal(syscall.SIGTERM)
-
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			_ = host.Process.Kill()
-		}
+	_ = host
+	_ = done
+	var lakeStops sync.WaitGroup
+	for _, lake := range d.lakes {
+		lakeStops.Add(1)
+		go func(lake *lakeProcess) {
+			defer lakeStops.Done()
+			if err := d.stopLake(lake, "stop"); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+		}(lake)
 	}
+	lakeStops.Wait()
 
 	for _, custody := range custodies {
 		if err := custody.Shutdown(); err != nil {
@@ -767,10 +909,7 @@ func Serve() error {
 	}
 
 	defer os.Remove(socket())
-	d := &Daemon{home: home, core: Core(), hostSocket: filepath.Join(home, "host.sock"), members: map[string]Member{}, custodies: map[string]*process.Custody{}, listener: listener}
-	if err := d.bootHost(); err != nil {
-		return err
-	}
+	d := &Daemon{home: home, core: Core(), hostSocket: filepath.Join(home, "host.sock"), members: map[string]Member{}, lakes: map[string]*lakeProcess{}, custodies: map[string]*process.Custody{}, listener: listener}
 
 	encode(os.Stdout, map[string]bool{"ready": true})
 
@@ -806,7 +945,11 @@ func Dial(req Request, output io.Writer) error {
 	}
 
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	timeout := 30 * time.Second
+	if req.Operation == lakeInstallStart {
+		timeout += lakeInstallTimeout
+	}
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return err
 	}
@@ -823,5 +966,5 @@ func request(operation, target string, payload any) Request {
 		panic(err)
 	}
 
-	return Request{Protocol: 1, ID: rand.Text(), Operation: operation, Workspace: target, CWD: cwd, Payload: data}
+	return Request{Protocol: protocolVersion, ID: rand.Text(), Operation: operation, Workspace: target, CWD: cwd, Payload: data}
 }

@@ -17,6 +17,7 @@ interface System {
   bl(workspace: string, op: string, input: unknown, ok?: boolean): Promise<unknown>;
   cli(args: string[], ok?: boolean): Promise<unknown>;
   wire(request: unknown): Promise<string>;
+  stopSupervisor(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -33,7 +34,7 @@ export async function install(path: string, dependencies: Record<string, string>
       ),
     }),
   );
-  const child = Bun.spawn(["bun", "install", "--ignore-scripts", "--offline"], {
+  const child = Bun.spawn(["bun", "install", "--ignore-scripts"], {
     cwd: path,
     stdout: "pipe",
     stderr: "pipe",
@@ -77,6 +78,7 @@ export async function system(): Promise<System> {
     "cron",
     "flags",
     "agents",
+    "ct-config",
     "work",
     "work-agents",
     "work-auto-bot",
@@ -90,6 +92,7 @@ export async function system(): Promise<System> {
   const env = {
     ...process.env,
     BL_ACTOR: "fixture",
+    BL_WORKSPACE: undefined,
     BL_HOME: home,
     BL_CORE: join(engine, "node_modules/@botlake/core"),
     BL_BIN: blBin,
@@ -128,13 +131,27 @@ export async function system(): Promise<System> {
       return error;
     }
 
-    if (code !== 0)
+    if (code !== 0) {
+      const hostLog = Bun.file(join(home, "host.log"));
       throw new Error(
-        `${args.join(" ")}: ${error}\n${await Bun.file(join(home, "host.log")).text()}`,
+        `${args.join(" ")}: ${error}\n${(await hostLog.exists()) ? await hostLog.text() : ""}`,
       );
+    }
 
     return JSON.parse(output);
   }
+  async function stopSupervisor(): Promise<void> {
+    const timeout = setTimeout(() => {
+      daemon.kill("SIGKILL");
+    }, 10000);
+    try {
+      if (daemon.exitCode === null) await run(botlakeBin, ["stop"]);
+      await daemon.exited;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   return {
     dir,
     home,
@@ -147,7 +164,19 @@ export async function system(): Promise<System> {
       await mkdir(join(path, ".botlake"), { recursive: true });
       await Bun.write(
         join(path, ".botlake/package.json"),
-        JSON.stringify({ private: true, type: "module", botlake: { name, extensions } }),
+        JSON.stringify({
+          private: true,
+          type: "module",
+          dependencies: { ...packages, zod: "^4.6.7" },
+        }),
+      );
+      const imports = extensions.map(
+        (specifier, index) =>
+          `import extension${index} from ${JSON.stringify(specifier.startsWith(".") ? `../${specifier.slice(2)}` : specifier)};`,
+      );
+      await Bun.write(
+        join(path, ".botlake/lake.ts"),
+        `${imports.join("\n")}\nimport {createLake} from "@botlake/core";\nexport const lake=createLake({name:${JSON.stringify(name)},extensions:[${extensions.map((_, index) => `extension${index}`).join(",")}]});\n`,
       );
       await install(path, { ...packages, zod: "^4.6.7" });
       return path;
@@ -177,15 +206,11 @@ export async function system(): Promise<System> {
         connection.on("error", reject);
       });
     },
+    stopSupervisor,
     async close() {
-      const timeout = setTimeout(() => {
-        daemon.kill("SIGKILL");
-      }, 10000);
       try {
-        await run(botlakeBin, ["stop"]);
-        await daemon.exited;
+        await stopSupervisor();
       } finally {
-        clearTimeout(timeout);
         await rm(dir, { recursive: true, force: true });
       }
     },

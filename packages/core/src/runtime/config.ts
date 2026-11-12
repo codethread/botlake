@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 
 import type { Extension } from "./context.ts";
+import { coreVersion, requireCoreVersion, semanticVersionSchema } from "./version.ts";
 
 const extensionModuleSchema = z.compile(
   z.object({
@@ -23,6 +24,7 @@ const configSchema = z.compile(
       .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
       .optional(),
     extensions: z.array(z.string().min(1)).default([]),
+    minimumCore: semanticVersionSchema.optional(),
   }),
 );
 
@@ -34,9 +36,9 @@ export const extensionInfoSchema = z.compile(
   z.object({
     name: z.string(),
     description: z.string().nullable(),
-    specifier: z.string(),
-    module: z.string(),
-    source: z.string(),
+    specifier: z.string().nullable(),
+    module: z.string().nullable(),
+    source: z.string().nullable(),
     packageJson: z.string().nullable(),
     readme: z.string().nullable(),
   }),
@@ -46,7 +48,10 @@ export const workspaceInfoSchema = z.compile(
   z.object({
     path: z.string(),
     name: z.string(),
+    configPath: z.string(),
     packageJson: z.string(),
+    coreVersion: semanticVersionSchema,
+    minimumCore: semanticVersionSchema.nullable(),
     extensions: z.array(extensionInfoSchema),
   }),
 );
@@ -61,11 +66,15 @@ export async function loadWorkspace(
   const workspace = resolve(path);
   const packageJson = join(workspace, ".botlake/package.json");
   const { botlake: config } = workspaceSchema.parse(await Bun.file(packageJson).json());
+  requireCoreVersion(config.minimumCore);
   const extensions: Extension[] = [];
   const info: WorkspaceInfo = {
     path: workspace,
     name: config.name ?? basename(workspace),
+    configPath: packageJson,
     packageJson,
+    coreVersion,
+    minimumCore: config.minimumCore ?? null,
     extensions: [],
   };
 

@@ -1,12 +1,12 @@
 import { Database } from "bun:sqlite";
 import assert from "node:assert/strict";
-import { cp, mkdir } from "node:fs/promises";
+import { cp } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
 
 import { source, system } from "../tests/blackbox/fixtures/system.ts";
-import { copyWorkflowExample } from "../tests/blackbox/fixtures/workflows.ts";
+import { writeWorkflowExtension } from "../tests/blackbox/fixtures/workflows.ts";
 
 const commandSchema: z.ZodType<Command> = z.lazy(() =>
   z.object({
@@ -49,6 +49,7 @@ const expected = [
   "edge",
   "events",
   "flag",
+  "gate",
   "identity",
   "node",
   "query",
@@ -69,14 +70,14 @@ try {
     "@botlake/extension-agents",
     "@botlake/extension-work",
     "./work-agents.ts",
-    "@botlake/extension-workflow",
+    "./workflow-extension.ts",
     "@botlake/extension-cron",
   ]);
   await Bun.write(
     join(fresh, "work-agents.ts"),
     'import {workAgents} from "@botlake/extension-work-agents"; export default workAgents({checkIntervalMs:60000});',
   );
-  await copyWorkflowExample(fresh, "parallel");
+  await writeWorkflowExtension(fresh, ["@botlake/extension-workflow/examples/parallel"]);
   await host.botlake(["lake", "start", "--workspace", fresh]);
   await audit("cli-smoke");
   await exercise("cli-smoke", fresh);
@@ -96,21 +97,24 @@ try {
   } finally {
     database.close();
   }
-  await mkdir(join(clone, ".workflows"), { recursive: true });
-  await cp(join(source, ".workflows"), join(clone, ".workflows"), { recursive: true }).catch(
-    (error: unknown) => {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    },
-  );
   const manifest = z
     .looseObject({ botlake: z.looseObject({ extensions: z.array(z.string()) }) })
     .parse(await Bun.file(join(clone, ".botlake/package.json")).json());
   await Bun.write(
     join(clone, ".botlake/package.json"),
-    JSON.stringify({ ...manifest, botlake: { ...manifest.botlake, name: "cli-clone" } }),
+    JSON.stringify({
+      ...manifest,
+      botlake: {
+        ...manifest.botlake,
+        name: "cli-clone",
+        extensions: manifest.botlake.extensions.map((extension) =>
+          extension === "./.botlake/src/workflow.ts" ? "./workflow-extension.ts" : extension,
+        ),
+      },
+    }),
   );
+  await writeWorkflowExtension(clone, ["@botlake/extension-workflow/examples/parallel"]);
   await host.botlake(["lake", "start", "--workspace", clone]);
-  await copyWorkflowExample(clone, "parallel");
   await audit("cli-clone");
   const cloned = nodePage.parse(await call("cli-clone", "node", { command: "list", limit: 3 }));
   assert.ok(cloned.total > 0, "The cloned lake must retain real data");

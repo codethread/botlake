@@ -17,7 +17,7 @@ import {
 import { z } from "zod";
 
 import { system } from "../tests/blackbox/fixtures/system.ts";
-import { copyWorkflowExample } from "../tests/blackbox/fixtures/workflows.ts";
+import { writeWorkflowExtension } from "../tests/blackbox/fixtures/workflows.ts";
 
 const dir = await mkdtemp(join(tmpdir(), "botlake-work-gates-"));
 const runtime = new Runtime({ database: join(dir, "lake.sqlite"), clock: new ManualClock() });
@@ -205,7 +205,7 @@ async function packagedProbes(): Promise<void> {
     const workspace = await host.workspace("work-probes", [
       "@botlake/extension-batteries",
       "@botlake/extension-identity",
-      "@botlake/extension-workflow",
+      "./workflow-extension.ts",
       "./work.ts",
     ]);
     await Bun.write(
@@ -220,7 +220,9 @@ export default work({ probes: [defineProbe({
 })] });
 `,
     );
-    await copyWorkflowExample(workspace, "gate-escalation");
+    await writeWorkflowExtension(workspace, [
+      "@botlake/extension-workflow/examples/gate-escalation",
+    ]);
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const cli = (args: string[]) => host.cli(["--workspace", workspace, ...args]);
     assert.deepEqual(

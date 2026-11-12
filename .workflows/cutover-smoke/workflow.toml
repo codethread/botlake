@@ -1,3 +1,0 @@
-version = "1.0.0"
-description = "Dummy result and explicit parent checkpoint for real-lake smoke tests"
-run = "workflow.ts"

@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "source": ".",
+      "bundles": ["botlake"]
+    },
+    {
+      "source": "https://github.com/codethread/agents",
+      "bundles": ["coding", "dev", "harness", "projects", "writing"]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import {
 import { getFlag } from "@botlake/extension-flags";
 import type { ReferenceAddress, ReferenceLibrary, References } from "@botlake/extension-references";
 import {
+  providerSchema,
   registrationSchema,
   agentMetadata,
   sessionAudience,
@@ -37,7 +38,7 @@ import { agentLiveness } from "./liveness.ts";
 import { NativeSessions } from "./native.ts";
 import { agentAttributes, agentRelations, agentLaunchSchema } from "./node-model.ts";
 import type { Provider, ProviderName, ProviderRun } from "./providers/contract.ts";
-import { provider } from "./providers/index.ts";
+import { builtinProviders } from "./providers/index.ts";
 
 const text = z.compile(z.string().min(1));
 const policy = z.compile(z.enum(["stop-on-complete", "close-on-complete"]));
@@ -88,10 +89,20 @@ export class Agents {
       configuration.unmanaged?.systemPrompt,
     );
 
-    for (const entry of providers ?? [provider("codex"), provider("pi"), provider("claude")]) {
-      if (this.providers.has(entry.name))
-        throw new Fault("collision", `Duplicate provider: ${entry.name}`);
-      this.providers.set(entry.name, entry);
+    for (const entry of providers ?? [
+      builtinProviders.codex(),
+      builtinProviders.pi(),
+      builtinProviders.claude(),
+    ]) {
+      const name = providerSchema.parse(entry.name);
+      if (this.providers.has(name)) throw new Fault("collision", `Duplicate provider: ${name}`);
+      this.providers.set(name, {
+        name,
+        doc: entry.doc,
+        ...(entry.flag === undefined ? {} : { flag: entry.flag }),
+        prepare: entry.prepare.bind(entry),
+        finish: entry.finish.bind(entry),
+      });
     }
 
     this.seats = new Catalog(

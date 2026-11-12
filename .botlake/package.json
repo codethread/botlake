@@ -1,38 +1,32 @@
 {
   "name": "@botlake/dogfood",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@botlake/core": "workspace:*",
-    "@botlake/extension-agents": "workspace:*",
-    "@botlake/extension-batteries": "workspace:*",
-    "@botlake/extension-cron": "workspace:*",
-    "@botlake/extension-diary": "workspace:*",
-    "@botlake/extension-flags": "workspace:*",
-    "@botlake/extension-identity": "workspace:*",
-    "@botlake/extension-references": "workspace:*",
-    "@botlake/extension-ui": "file:../../botlake-ui/packages/ui-extension",
-    "@botlake/extension-work": "workspace:*",
-    "@botlake/extension-work-agents": "workspace:*",
-    "@botlake/extension-workflow": "workspace:*",
-    "ct-config": "workspace:*",
+    "@botlake/core": "0.2.1",
+    "@botlake/extension-agents": "latest",
+    "@botlake/extension-batteries": "latest",
+    "@botlake/extension-cron": "latest",
+    "@botlake/extension-ct-config": "latest",
+    "@botlake/extension-diary": "latest",
+    "@botlake/extension-flags": "latest",
+    "@botlake/extension-identity": "latest",
+    "@botlake/extension-references": "latest",
+    "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz",
+    "@botlake/extension-work": "latest",
+    "@botlake/extension-work-agents": "latest",
+    "@botlake/extension-work-auto-bot": "latest",
+    "@botlake/extension-workflow": "latest",
+    "@botlake/native-session": "latest",
+    "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
-  "botlake": {
-    "name": "botlake",
-    "extensions": [
-      "@botlake/extension-batteries",
-      "@botlake/extension-identity",
-      "@botlake/extension-diary",
-      "./.botlake/src/flags.ts",
-      "./.botlake/src/references.ts",
-      "./.botlake/src/agents.ts",
-      "./.botlake/src/priming.ts",
-      "./.botlake/src/work.ts",
-      "./.botlake/src/work-agents.ts",
-      "@botlake/extension-workflow",
-      "@botlake/extension-cron",
-      "@botlake/extension-ui"
-    ]
+  "overrides": {
+    "@botlake/core": "0.2.1",
+    "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz"
+  },
+  "patchedDependencies": {
+    "xstate@5.33.3": "../patches/xstate@5.33.3.patch"
   }
 }

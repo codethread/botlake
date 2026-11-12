@@ -59,7 +59,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     );
     await Bun.write(
       join(workspace, "providers.ts"),
-      `import {agents,provider} from "@botlake/extension-agents";const base=provider("codex");export default agents({providers:[{...base,prepare(run){if(run.prompt==="preparation-failure")throw new Error("fixture preparation failure");return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
+      `import {agents,builtinProviders,agentFlags} from "@botlake/extension-agents";const base=builtinProviders.codex({flag:agentFlags.codex});export default agents({providers:[{...base,prepare(run){if(run.prompt==="preparation-failure")throw new Error("fixture preparation failure");return {command:["bun",${JSON.stringify(childPath)}],stdin:"",env:{...(run.resumes?{BL_SESSION_ID:run.sessionId}:{}),TEST_PROMPT:run.prompt}};}}],aliases:{worker:{provider:"codex"}}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     const target = workItem.parse(

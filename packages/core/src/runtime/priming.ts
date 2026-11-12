@@ -6,7 +6,7 @@ export const brief = [
   "This workspace uses Botlake, a machine local sqlite db with modular extensions (one config per repo, called a 'lake')",
   "Use `bl -h` for CLI mechanics; before unfamiliar operations, run `bl prime OP`.",
   "`botlake bin list` shows additional tooling exposed in the lake, see `botlake bin -h` for details when appropriate",
-  `In a Botlake source checkout, read ${new URL("../../../../docs/index.md", import.meta.url).href} for documentation and extension authoring.`,
+  `Read ${new URL("../../README.md", import.meta.url).href} for core documentation and extension authoring.`,
   "Use `botlake lake info` to locate selected extensions' docs and source for debugging",
 ].join("\n");
 

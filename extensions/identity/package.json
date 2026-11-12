@@ -1,10 +1,12 @@
 {
   "name": "@botlake/extension-identity",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Native session identity, activity observations and attribution.",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

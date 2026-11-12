@@ -15,21 +15,26 @@ import (
 	"golang.org/x/term"
 )
 
-var Version = "0.1.0"
+var Version = "0.2.0"
+
+const protocolVersion = 1
 
 func printVersion() int {
-	build := "development"
+	encode(os.Stdout, map[string]any{"cli_version": Version, "cli_build_id": buildID(), "protocol_version": protocolVersion})
+
+	return 0
+}
+
+func buildID() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" {
-				build = setting.Value
+				return setting.Value
 			}
 		}
 	}
 
-	encode(os.Stdout, map[string]any{"version": Version, "build_id": build, "protocol_version": 1})
-
-	return 0
+	return "development"
 }
 
 type payloadFlags []string
@@ -52,7 +57,7 @@ func BL(args []string) int {
 	var p invocationFlags
 	flags := flag.NewFlagSet("bl", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&p.workspace, "workspace", "", "workspace path or published name")
+	flags.StringVar(&p.workspace, "workspace", os.Getenv("BL_WORKSPACE"), "workspace path or published name")
 	flags.StringVar(&p.cwd, "cwd", "", "invocation working directory")
 	flags.StringVar(&p.worktree, "worktree-root", "", "explicit Git worktree root")
 	flags.StringVar(&p.common, "git-common-dir", "", "explicit Git common directory")
@@ -62,7 +67,7 @@ func BL(args []string) int {
 	flags.Var(&p.payloads, "payload", "named text payload: name=path (repeatable)")
 	flags.BoolVar(&p.stdin, "stdin", false, "read stdin into the stdin payload")
 	flags.BoolVar(&p.dryRun, "dry-run", false, "print the request without invoking it")
-	flags.BoolVar(&p.version, "version", false, "print CLI and protocol versions")
+	flags.BoolVar(&p.version, "version", false, "print this CLI's build and protocol versions")
 	flags.BoolVar(&p.help, "help", false, "show dispatcher help")
 	flags.BoolVar(&p.help, "h", false, "show dispatcher help")
 	flags.BoolVar(&p.json, "json", false, "force machine-readable output")
@@ -324,12 +329,14 @@ Global flags (before the operation):
   --identity NAME         Set caller identity, overriding nonblank BL_ACTOR
   --json                  Force JSON output, including help and errors
   --dry-run               Print the request without invoking it
-  --version               Print CLI/build/protocol versions
+  --version               Print this CLI's build/protocol versions (offline)
   -h, --help              Show this dispatcher help without a running workspace
 
-Without --workspace, Git's common directory selects the main checkout's lake.
-Linked worktrees share its configuration and data. Outside Git, pass --workspace.
-Git context overrides do not change workspace selection.
+Workspace selection: --workspace overrides BL_WORKSPACE; otherwise Git's common
+directory selects the main checkout's lake. Linked worktrees share its data.
+Outside Git, set BL_WORKSPACE or pass --workspace. Cwd and Git context remain
+independent of an explicitly selected lake; changing directory does not override
+BL_WORKSPACE.
 
 Workspace operations:
   bl help                        List selected operations

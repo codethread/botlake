@@ -1,7 +1,6 @@
 import {
   identityInstruction,
   activityExcerpt,
-  sessionIdentity,
   type NativeEvent,
   type NativeObservation,
   type RunActivityDetail,
@@ -41,8 +40,6 @@ interface PiContext {
   };
   model?: { id: string; provider?: string };
   thinkingLevel?: string;
-  hasUI?: boolean;
-  ui?: { setStatus(key: string, value: string | undefined): void };
 }
 interface PiEvents {
   session_start: { reason?: string };
@@ -97,8 +94,6 @@ export default function identityExtension(pi: PiApi): void {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    const identity = sessionIdentity(input);
-    if (ctx.hasUI === true) ctx.ui?.setStatus("botlake-identity", identity);
   }
   async function report(
     ctx: PiContext,
@@ -110,17 +105,11 @@ export default function identityExtension(pi: PiApi): void {
     if (managedSession === undefined && process.env["BL_RUN_REFERENCE"] !== undefined)
       managedSession = input.nativeSessionId;
     local(ctx);
-    const result = await reportNative(
+    return reportNative(
       { ...input, nativeEvent, activity },
       process.env,
       managedSession !== undefined && managedSession !== input.nativeSessionId,
     );
-    if (ctx.hasUI === true)
-      ctx.ui?.setStatus(
-        "botlake-tracking",
-        result.tracking === "unavailable" ? "Botlake tracking unavailable" : undefined,
-      );
-    return result;
   }
   pi.on("session_start", async (_, ctx) => {
     await report(ctx, "session-start", "session_start");
@@ -207,10 +196,6 @@ export default function identityExtension(pi: PiApi): void {
   });
   pi.on("session_shutdown", async (_, ctx) => {
     await report(ctx, "session-end", "session_shutdown");
-    if (ctx.hasUI === true) {
-      ctx.ui?.setStatus("botlake-identity", undefined);
-      ctx.ui?.setStatus("botlake-tracking", undefined);
-    }
   });
   pi.on("before_agent_start", async (event, ctx) => {
     const result = await report(ctx, "metadata", "before_agent_start");

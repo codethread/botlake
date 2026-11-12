@@ -1,22 +1,26 @@
 {
-  "name": "ct-config",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@botlake/extension-ct-config",
+  "version": "0.3.0",
+  "license": "MIT",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
-    "@botlake/core": "^0.1.0",
-    "@botlake/extension-agents": "^0.1.0",
-    "@botlake/extension-flags": "^0.1.0",
-    "@botlake/extension-identity": "^0.1.0",
-    "@botlake/extension-references": "^0.1.0",
-    "@botlake/extension-work": "^0.1.0",
-    "@botlake/extension-work-agents": "^0.1.0"
+    "@botlake/core": "workspace:^",
+    "@botlake/extension-agents": "workspace:^",
+    "@botlake/extension-flags": "workspace:^",
+    "@botlake/extension-identity": "workspace:^",
+    "@botlake/extension-references": "workspace:^",
+    "@botlake/extension-work": "workspace:^",
+    "@botlake/extension-work-agents": "workspace:^"
   }
 }

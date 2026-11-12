@@ -4,7 +4,7 @@
 - `botlake init` creates empty JSON configuration without installing or selecting extensions. Names come from configuration or the workspace basename. Durable auto-start registration and automatic temporary-database management are not implemented.
 - Operation deadlines signal cancellation cooperatively. Evaluation runs in a separate caller-side process with an enforced overall deadline; it is trusted code, not a sandbox. Completed mutations are not rolled back if a script fails.
 - Wakes and crash-recovered Cron actions are at least once. Deduplicate external effects using occurrence IDs.
-- Process custody lasts for the supervisor lifetime. Host/worker recovery adopts retained processes; supervisor replacement does not.
+- Process custody lasts for the supervisor lifetime. Lake restart, including a failed replacement and later retry, adopts retained processes; supervisor replacement does not. Orderly supervisor shutdown first sends `SIGTERM` to each Go-owned native process group, then explicitly force-kills only groups still alive after the cleanup budget expires.
 - Managed agent launches are headless. Declared executable bins retain caller terminal I/O. Interactive agent launch, a work dashboard and cross-lake identity replication are not implemented. Work and authored Workflow are optional extensions; automatic dispatch and notification delivery are not supplied.
 
 ## Agents
@@ -19,4 +19,4 @@ Provider tests use deterministic subprocess fixtures, not live model accounts. C
 
 ## Measurements
 
-[Pool measurements](pool-benchmark.json) record one local run, not a performance guarantee. Reproduce with `bun scripts/benchmark.ts 24` using packed packages, disposable lakes and real SQLite load. RSS includes the Bun host and all workers, not the Go supervisor or load clients.
+The [pool contract](lake-pools.md) compares the current [standalone baseline](standalone-benchmark.json) with the [historical shared-process probe](pool-benchmark.json). These are local measurements, not performance guarantees. Reproduce the standalone result with `bun scripts/benchmark.ts 24` using packed packages, disposable lakes and real SQLite load. RSS excludes the Go supervisor and load clients.

@@ -1,8 +1,9 @@
+import { defineWorkflow } from "@botlake/extension-workflow";
 import { setup } from "xstate";
 import { z } from "zod";
 
-export const inputSchema = z.object({});
-export const commandSchemas = { next: z.object({}) };
+const inputSchema = z.object({});
+const commandSchemas = { next: z.object({}) };
 
 interface WorkerInput {
   /** State node ID of the native group containing this actor's visits. */
@@ -11,7 +12,7 @@ interface WorkerInput {
   branch: string;
 }
 
-export const worker = setup({
+const worker = setup({
   // XState's setup interface uses this empty-object type witness.
   // oxlint-disable-next-line typescript/no-unnecessary-type-assertion, typescript/no-unsafe-type-assertion
   types: {} as { context: WorkerInput; input: WorkerInput },
@@ -48,7 +49,7 @@ export const worker = setup({
   },
 });
 
-export const machine = setup({ actors: { worker } }).createMachine({
+const machine = setup({ actors: { worker } }).createMachine({
   id: "nested-bees",
   initial: "team",
   states: {
@@ -116,10 +117,20 @@ export const machine = setup({ actors: { worker } }).createMachine({
   },
 });
 
-export function runBrief() {
+function runBrief() {
   return {
     title: "Nested Bee work",
     description:
       "Build and review two branches with Bee-dispatched visits inside child machines, then summarize their results.",
   };
 }
+
+export const workflow = defineWorkflow({
+  name: "nested-machines",
+  version: "1.0.0",
+  description: "Coordinate implementation and verification through child machines.",
+  inputSchema,
+  commandSchemas,
+  machine,
+  runBrief,
+});

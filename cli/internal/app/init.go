@@ -4,30 +4,51 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const initUsage = `Usage:
   botlake init [--workspace DIR] [--name NAME]
 
-Initialize .botlake/package.json without installing or selecting extensions.
-Existing package fields are preserved; if botlake configuration already exists,
-init reports it and makes no changes.
+Initialize inert .botlake/lake.ts configuration with Batteries selected and
+pinned dependencies for Core and Batteries in .botlake/package.json. Add .botlake/.gitignore entries for
+node_modules and the lake database. Create .botlake/bunfig.toml with isolated
+installs and a seven-day minimum release age, excluding core and Batteries.
+Existing bunfig.toml files are preserved. Run bun install --frozen-lockfile in
+.botlake unless a root bun.lock exists; then print manual installation and
+workspace guidance instead. Report guidance and install output on stderr.
+Existing package fields are preserved; if lake.ts already exists, init reports it
+and makes no changes.
 
 Flags:
-  --workspace DIR  Workspace directory (default: main Git checkout)
+  --workspace DIR  Workspace directory (overrides BL_WORKSPACE)
   --name NAME      Published workspace name (default: directory basename)
 
-Without --workspace, Git discovery selects the main checkout, including from a
-linked worktree or subdirectory. Outside Git, pass --workspace. Names start with
-a letter and contain only letters, digits, underscores or hyphens.
+Without --workspace, use BL_WORKSPACE (a directory for init), then Git discovery
+of the main checkout, including from linked worktrees and subdirectories.
+Outside Git, set BL_WORKSPACE or pass --workspace. Names start with a letter
+and contain only letters, digits, underscores or hyphens.
 
 Examples:
   botlake init
   botlake init --workspace /path/to/project --name work
 `
+
+const initBunfig = `[install]
+linker = "isolated"
+minimumReleaseAge = 604800 # 7 days
+minimumReleaseAgeExcludes = [
+  "@botlake/core",
+  "@botlake/extension-batteries",
+]
+`
+
+const initCoreArchive = "https://raw.githubusercontent.com/codethread/botlake/fd8044ef4d340b50d02120eff285136b5aea6ced/vendor/botlake-cutover/botlake-core-0.2.0.tgz"
 
 func initWorkspace(args []string) int {
 	fail := func(err error) int { return cliFailure(err, false) }
@@ -37,7 +58,7 @@ func initWorkspace(args []string) int {
 	flags := flag.NewFlagSet("botlake init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 
-	target := flags.String("workspace", "", "workspace directory (defaults to the main Git checkout)")
+	target := flags.String("workspace", "", "workspace directory (overrides BL_WORKSPACE)")
 	name := flags.String("name", "", "published workspace name (defaults to directory basename)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,10 +80,26 @@ func initWorkspace(args []string) int {
 	if *target == "" {
 		path, err = defaultWorkspace("")
 	} else {
-		path, err = canonical(*target)
+		path = *target
 	}
 
 	if err != nil {
+		return fail(err)
+	}
+	path, err = canonical(path)
+	if err != nil {
+		return fail(err)
+	}
+
+	rootFiles := map[string]bool{}
+	for _, name := range []string{"bun.lock", "bunfig.toml"} {
+		_, err := os.Stat(filepath.Join(path, name))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fail(err)
+		}
+		rootFiles[name] = err == nil
+	}
+	if _, err := io.WriteString(os.Stderr, initBunGuidance(rootFiles["bun.lock"], rootFiles["bunfig.toml"])+"\n"); err != nil {
 		return fail(err)
 	}
 
@@ -76,19 +113,15 @@ func initWorkspace(args []string) int {
 		manifest = map[string]json.RawMessage{"private": json.RawMessage("true"), "type": json.RawMessage(`"module"`)}
 	}
 
-	if _, exists := manifest["botlake"]; exists {
-		member, err := readMember(path)
-		if err != nil {
-			return fail(err)
+	lakePath := filepath.Join(path, ".botlake", "lake.ts")
+	if _, statErr := os.Stat(lakePath); statErr == nil {
+		if *name != "" {
+			return fail(errors.New("workspace already exists; edit .botlake/lake.ts to change its name"))
 		}
-
-		if *name != "" && *name != member.Name {
-			return fail(errors.New("workspace already exists; edit botlake.name in .botlake/package.json to change its name"))
-		}
-
-		encode(os.Stdout, map[string]any{"workspace": path, "name": member.Name, "created": false})
-
+		encode(os.Stdout, map[string]any{"workspace": path, "name": filepath.Base(path), "created": false})
 		return 0
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fail(statErr)
 	}
 
 	publishedName := *name
@@ -100,12 +133,38 @@ func initWorkspace(args []string) int {
 		return fail(errors.New("invalid workspace name; pass --name starting with a letter, followed by letters, digits, underscores or hyphens"))
 	}
 
-	config := map[string]any{"extensions": []string{}}
-	if *name != "" {
-		config["name"] = *name
+	dependencies := map[string]string{}
+	if raw, exists := manifest["dependencies"]; exists {
+		if err := json.Unmarshal(raw, &dependencies); err != nil {
+			return fail(err)
+		}
+		if dependencies == nil {
+			return fail(errors.New("package dependencies must be an object"))
+		}
 	}
-
-	manifest["botlake"], err = json.Marshal(config)
+	if _, exists := dependencies["@botlake/core"]; !exists {
+		dependencies["@botlake/core"] = initCoreArchive
+		overrides := map[string]json.RawMessage{}
+		if raw, exists := manifest["overrides"]; exists {
+			if err := json.Unmarshal(raw, &overrides); err != nil {
+				return fail(err)
+			}
+			if overrides == nil {
+				return fail(errors.New("package overrides must be an object"))
+			}
+		}
+		if _, exists := overrides["@botlake/core"]; !exists {
+			overrides["@botlake/core"] = json.RawMessage(fmt.Sprintf("%q", initCoreArchive))
+		}
+		manifest["overrides"], err = json.Marshal(overrides)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if _, exists := dependencies["@botlake/extension-batteries"]; !exists {
+		dependencies["@botlake/extension-batteries"] = "0.2.0"
+	}
+	manifest["dependencies"], err = json.Marshal(dependencies)
 	if err != nil {
 		return fail(err)
 	}
@@ -113,6 +172,42 @@ func initWorkspace(args []string) int {
 	filePath := filepath.Join(path, ".botlake", "package.json")
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return fail(err)
+	}
+
+	ignorePath := filepath.Join(path, ".botlake", ".gitignore")
+	ignore, err := os.ReadFile(ignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fail(err)
+	}
+	content := string(ignore)
+	for _, pattern := range []string{"/node_modules/", "/world.db*"} {
+		found := false
+		for line := range strings.SplitSeq(content, "\n") {
+			if strings.TrimSpace(line) == pattern {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += pattern + "\n"
+		}
+	}
+	if err := os.WriteFile(ignorePath, []byte(content), 0644); err != nil {
+		return fail(err)
+	}
+
+	bunfig, err := os.OpenFile(filepath.Join(path, ".botlake", "bunfig.toml"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		return fail(err)
+	}
+	if err == nil {
+		_, writeErr := io.WriteString(bunfig, initBunfig)
+		if err := errors.Join(writeErr, bunfig.Close()); err != nil {
+			return fail(err)
+		}
 	}
 
 	mode := os.O_WRONLY | os.O_TRUNC
@@ -133,7 +228,46 @@ func initWorkspace(args []string) int {
 		return fail(err)
 	}
 
+	lakeSource := "import { createLake } from \"@botlake/core\";\nimport { batteries } from \"@botlake/extension-batteries\";\n\nexport const lake = createLake({"
+	if *name != "" {
+		lakeSource += " name: " + fmt.Sprintf("%q", publishedName) + ","
+	}
+	lakeSource += " extensions: [batteries()] });\n"
+	if err := os.WriteFile(lakePath, []byte(lakeSource), 0644); err != nil {
+		return fail(err)
+	}
+
+	if !rootFiles["bun.lock"] {
+		if err := installInitializedWorkspace(path, os.Stderr); err != nil {
+			return fail(err)
+		}
+	}
+
 	encode(os.Stdout, map[string]any{"workspace": path, "name": publishedName, "created": true})
 
 	return 0
+}
+
+func installInitializedWorkspace(workspace string, output io.Writer) error {
+	cmd := exec.Command("bun", "install", "--frozen-lockfile")
+	cmd.Dir = filepath.Join(workspace, ".botlake")
+	cmd.Stdout = output
+	cmd.Stderr = output
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("workspace configuration created, but bun install --frozen-lockfile in %s failed: %w; fix the install error and rerun that command in .botlake", cmd.Dir, err)
+	}
+	return nil
+}
+
+func initBunGuidance(lockfile, bunfig bool) string {
+	switch {
+	case lockfile && bunfig:
+		return "Root bun.lock and bunfig.toml found. Skipping installation: run bun install --frozen-lockfile in .botlake yourself, or add .botlake to the root package.json workspaces and run bun install from the root. Extend the root bunfig.toml install policy as needed."
+	case lockfile:
+		return "Root bun.lock found. Skipping installation: run bun install --frozen-lockfile in .botlake yourself, or add .botlake to the root package.json workspaces and run bun install from the root. No root bunfig.toml found; consider adding one to configure repository-wide installs."
+	case bunfig:
+		return "No root bun.lock found; root bunfig.toml found. Extend its install policy as needed."
+	default:
+		return "No root bun.lock and no root bunfig.toml found."
+	}
 }
