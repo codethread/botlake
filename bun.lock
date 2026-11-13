@@ -39,23 +39,23 @@
     ".botlake": {
       "name": "@botlake/dogfood",
       "dependencies": {
-        "@botlake/core": "0.3.3",
-        "@botlake/extension-agents": "0.3.3",
-        "@botlake/extension-batteries": "0.3.1",
-        "@botlake/extension-cron": "0.3.1",
-        "@botlake/extension-ct-config": "0.3.3",
-        "@botlake/extension-diary": "0.3.1",
-        "@botlake/extension-flags": "0.3.3",
-        "@botlake/extension-identity": "0.3.3",
-        "@botlake/extension-mail": "0.3.3",
-        "@botlake/extension-mail-agents": "0.3.3",
-        "@botlake/extension-mail-identity": "0.3.3",
-        "@botlake/extension-references": "0.3.3",
-        "@botlake/extension-work": "0.3.3",
-        "@botlake/extension-work-agents": "0.3.3",
-        "@botlake/extension-work-auto-bot": "0.3.1",
-        "@botlake/extension-workflow": "0.3.1",
-        "@botlake/native-session": "0.3.1",
+        "@botlake/core": "0.4.0",
+        "@botlake/extension-agents": "0.4.0",
+        "@botlake/extension-batteries": "0.4.0",
+        "@botlake/extension-cron": "0.4.0",
+        "@botlake/extension-ct-config": "0.4.0",
+        "@botlake/extension-diary": "0.4.0",
+        "@botlake/extension-flags": "0.4.0",
+        "@botlake/extension-identity": "0.4.0",
+        "@botlake/extension-mail": "0.4.0",
+        "@botlake/extension-mail-agents": "0.4.0",
+        "@botlake/extension-mail-identity": "0.4.0",
+        "@botlake/extension-references": "0.4.0",
+        "@botlake/extension-work": "0.4.0",
+        "@botlake/extension-work-agents": "0.4.0",
+        "@botlake/extension-work-auto-bot": "0.4.0",
+        "@botlake/extension-workflow": "0.4.0",
+        "@botlake/native-session": "0.4.0",
         "xstate": "5.33.3",
         "zod": "^4.6.7",
       },
@@ -516,86 +516,8 @@
 
     "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
-    "@botlake/dogfood/@botlake/core": ["@botlake/core@0.3.3", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "dependency-graph": "^1.0.0", "fast-json-stable-stringify": "^2.1.0", "ts-pattern": "^5.9.2", "zod": "^4.6.7" } }, "sha512-bpt0ZCQezrC71vZMpbf39Bn2tY/qsN2qmWlyg6hYhwd+ZBws4ZMjavaQFzGhDHxVsLENyQlWxt5UsUb9okvYWg=="],
-
-    "@botlake/dogfood/@botlake/extension-agents": ["@botlake/extension-agents@0.3.3", "", { "dependencies": { "@botlake/extension-references": "^0.3.3", "@botlake/native-session": "^0.3.3", "ts-pattern": "^5.9.2", "xstate": "5.33.3", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-flags": "^0.3.3", "@botlake/extension-identity": "^0.3.3" } }, "sha512-EUJcqHSL3ruao2Q4pikCq3yj896vjuCkGUCxeOJ7z0rGMqsah4JWkbjBzOD92y7+ThGfzABPR0GoJbdQXw8GJQ=="],
-
-    "@botlake/dogfood/@botlake/extension-batteries": ["@botlake/extension-batteries@0.3.1", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.1" } }, "sha512-IqCoFgi3RXxN/PGpmBk6XG6wyOqHxhwXe7wz4QCOnwkKF7zwQDBHNRE8gCMYrJxjZmReoT+F3Q0YDfUNGDIQCQ=="],
-
-    "@botlake/dogfood/@botlake/extension-cron": ["@botlake/extension-cron@0.3.1", "", { "dependencies": { "cron-parser": "^5.10.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.1" } }, "sha512-j8WaKdh2+Fjnsb7phTzKC4wJGtbwLE/fQizNlc0K7Yu2rwc/x4CbEL9oWvHPGLSFAce0YTHeI6MK700G3l87oA=="],
-
-    "@botlake/dogfood/@botlake/extension-ct-config": ["@botlake/extension-ct-config@0.3.3", "", { "dependencies": { "@botlake/extension-ui": "^0.1.3" }, "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-agents": "^0.3.3", "@botlake/extension-flags": "^0.3.3", "@botlake/extension-identity": "^0.3.3", "@botlake/extension-mail": "^0.3.3", "@botlake/extension-mail-agents": "^0.3.3", "@botlake/extension-mail-identity": "^0.3.3", "@botlake/extension-references": "^0.3.3", "@botlake/extension-work": "^0.3.3", "@botlake/extension-work-agents": "^0.3.3" } }, "sha512-xLMkdgoNy0fJVoDBiMLqc6zXysO65D5bm+stTMBrDhMRo6yxdVnxzqPNGjEGe09pH9TPtkKSPztBjO8roTZdYg=="],
-
-    "@botlake/dogfood/@botlake/extension-diary": ["@botlake/extension-diary@0.3.1", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.1", "@botlake/extension-identity": "^0.3.1" } }, "sha512-5tQPl3eTbT7vBAHoF5B6DIMcFsNsDDhz7VHfA2+e03vGwDQ6Gl5yTH4A5hcTBoLgobbKnX1RRInVckExbPHfsQ=="],
-
-    "@botlake/dogfood/@botlake/extension-flags": ["@botlake/extension-flags@0.3.3", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3" } }, "sha512-93WTKl3hBRwltK+pLgMO67SzydYNz1awa/6NdEfLULcKxRmlDlEZEF9CpDYpUqUPobXiTgxsg7/7EMWJe6Yq6w=="],
-
-    "@botlake/dogfood/@botlake/extension-identity": ["@botlake/extension-identity@0.3.3", "", { "dependencies": { "@botlake/native-session": "^0.3.3", "ts-pattern": "^5.9.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3" } }, "sha512-Rt+/R5WZry2nZYoquKlGNEn9NAgOkIaRJwkAN7MFmHYJ1GGDSyoYM31R0XSLEgyaGbL999BlVx91G29u0vaWLw=="],
-
-    "@botlake/dogfood/@botlake/extension-mail": ["@botlake/extension-mail@0.3.3", "", { "dependencies": { "ts-pattern": "^5.9.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3" } }, "sha512-Of5K/HRohZvUhXj387DqjT/KwLYD7MYaSWF1dJCUYkMFa6f9Kx9UWPTq0URg3vGQFu1VthSpB1wme3J8H8z0eQ=="],
-
-    "@botlake/dogfood/@botlake/extension-mail-agents": ["@botlake/extension-mail-agents@0.3.3", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-agents": "^0.3.3", "@botlake/extension-mail": "^0.3.3" } }, "sha512-8g1xG357JLsHqeHTho4GP/M1bIaEZZzetrl6RwIRM+onKXz+at1q0z18Hkmro+k4LIMgM+MnK45AEDYt+IOXAQ=="],
-
-    "@botlake/dogfood/@botlake/extension-mail-identity": ["@botlake/extension-mail-identity@0.3.3", "", { "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-identity": "0.3.3", "@botlake/extension-mail": "0.3.3" } }, "sha512-Negd6Tqbme3XPO5Uu/G0QOxIf0dtP6KMhMYrhBabearpg1R54hQY/zwR7nqkI1XaAaTL0FzkMG2AORf67OWZQg=="],
-
-    "@botlake/dogfood/@botlake/extension-references": ["@botlake/extension-references@0.3.3", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3" } }, "sha512-ZuN1Xs/5x3Bm9GbWpl2KU1OpTGAq93cQMvBdP0rIbG7512P2AA0J4KhfrCcCuT5f4yKgOHTyLfrHCWBB7xc08g=="],
-
-    "@botlake/dogfood/@botlake/extension-work": ["@botlake/extension-work@0.3.3", "", { "dependencies": { "@botlake/extension-references": "^0.3.3", "ts-pattern": "^5.9.2", "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-identity": "^0.3.3" } }, "sha512-RHogQXlH2fUB7JsZK79zc5CQDh1q8vcmHxJWRQ16IpRGELOJ1oyX4vLyfiIlDzSdrewiPGzpRE9BD2hN92SVrg=="],
-
-    "@botlake/dogfood/@botlake/extension-work-agents": ["@botlake/extension-work-agents@0.3.3", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.3", "@botlake/extension-agents": "^0.3.3", "@botlake/extension-identity": "^0.3.3", "@botlake/extension-work": "^0.3.3" } }, "sha512-y23doRAfssBGjjvAvUV0LsB3J37+aDkvjtyxKWNE0mo4x6nhF8KaqPtGRSimBBklZWJPtzaDaOghFdUe5mHg+w=="],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot": ["@botlake/extension-work-auto-bot@0.3.1", "", { "dependencies": { "zod": "^4.6.7" }, "peerDependencies": { "@botlake/core": "^0.3.1", "@botlake/extension-agents": "^0.3.1", "@botlake/extension-work": "^0.3.1" } }, "sha512-CF9vYEoeaN2xr+IbIoN4M4E136Vx3msL+ceweMDCLBz8n8h+gDs7h5k75fL/BzbxiN5KvSZnR3uwFHp5RcpRZw=="],
-
-    "@botlake/dogfood/@botlake/extension-workflow": ["@botlake/extension-workflow@0.3.1", "", { "dependencies": { "ts-pattern": "^5.9.2" }, "peerDependencies": { "@botlake/core": "^0.3.1", "@botlake/extension-identity": "^0.3.1", "@botlake/extension-work": "^0.3.1", "xstate": "^5.33.3", "zod": "^4.6.7" } }, "sha512-oAZy7twu3m2Oguqjhs19YkWFpzsrmpw2KI+4YqmqLJ9/h81fn80mVHAYvLQeELxDFxBjNDGMFpmdO1t076qBLw=="],
-
-    "@botlake/dogfood/@botlake/native-session": ["@botlake/native-session@0.3.1", "", { "dependencies": { "unique-names-generator": "4.7.1", "zod": "^4.6.7" } }, "sha512-Va40MfBfr8OdfwBwqAmBm2NEV9ECwccJW7x7vd/kFX7NnJPRscCjau9HZzzqGoQpcglYe51Dp06WGkFmfq/f5A=="],
-
     "@botlake/extension-ui/zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
 
     "@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
-
-    "@botlake/dogfood/@botlake/extension-agents/@botlake/native-session": ["@botlake/native-session@0.3.3", "", { "dependencies": { "unique-names-generator": "4.7.1", "zod": "^4.6.7" } }, "sha512-hO+UARb93nCshPMd2UkLhihEqcff8hLqg3VP0sN+okvHivkPIlmDetxWsta+iOla/1Nz9nPwauWcykkEvmdDbw=="],
-
-    "@botlake/dogfood/@botlake/extension-batteries/@botlake/core": ["@botlake/core@workspace:packages/core"],
-
-    "@botlake/dogfood/@botlake/extension-cron/@botlake/core": ["@botlake/core@workspace:packages/core"],
-
-    "@botlake/dogfood/@botlake/extension-diary/@botlake/core": ["@botlake/core@workspace:packages/core"],
-
-    "@botlake/dogfood/@botlake/extension-diary/@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
-
-    "@botlake/dogfood/@botlake/extension-identity/@botlake/native-session": ["@botlake/native-session@0.3.3", "", { "dependencies": { "unique-names-generator": "4.7.1", "zod": "^4.6.7" } }, "sha512-hO+UARb93nCshPMd2UkLhihEqcff8hLqg3VP0sN+okvHivkPIlmDetxWsta+iOla/1Nz9nPwauWcykkEvmdDbw=="],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/core": ["@botlake/core@workspace:packages/core"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-agents": ["@botlake/extension-agents@workspace:extensions/agents"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
-
-    "@botlake/dogfood/@botlake/extension-workflow/@botlake/core": ["@botlake/core@workspace:packages/core"],
-
-    "@botlake/dogfood/@botlake/extension-workflow/@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
-
-    "@botlake/dogfood/@botlake/extension-workflow/@botlake/extension-work": ["@botlake/extension-work@workspace:extensions/work"],
-
-    "@botlake/dogfood/@botlake/extension-diary/@botlake/extension-identity/@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-agents/@botlake/extension-flags": ["@botlake/extension-flags@workspace:extensions/flags"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-agents/@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-agents/@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-agents/@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-work/@botlake/extension-identity": ["@botlake/extension-identity@workspace:extensions/identity"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-work/@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
-
-    "@botlake/dogfood/@botlake/extension-workflow/@botlake/extension-identity/@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
-
-    "@botlake/dogfood/@botlake/extension-workflow/@botlake/extension-work/@botlake/extension-references": ["@botlake/extension-references@workspace:extensions/references"],
-
-    "@botlake/dogfood/@botlake/extension-work-auto-bot/@botlake/extension-work/@botlake/extension-identity/@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
   }
 }
