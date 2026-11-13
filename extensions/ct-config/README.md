@@ -1,6 +1,6 @@
 # @botlake/extension-ct-config
 
-Shared lake configuration: agent roster and prompts, provider flags, reference projections, priming, Work, Work–Agents and Mail settings. Imports construct extension descriptors; nothing activates until the lake explicitly selects it.
+Shared lake configuration: agent roster and prompts, provider flags, reference projections, priming, UI, Work, Work–Agents and Mail settings. Imports construct extension descriptors; nothing activates until the lake explicitly selects it.
 
 Install this package and its public Botlake prerequisites from npm:
 
@@ -14,7 +14,15 @@ Keep each selected lake module as an import of the configured descriptor:
 export { agents as default } from "@botlake/extension-ct-config";
 ```
 
-The configured exports are `agents`, `flags`, `references`, `priming`, `work`, `workAgents`, `mail`, `mailIdentity` and `mailAgents`. The `agents` and `work` exports retain their typed runtime bindings through the configuration helpers. Select their descriptors in your `.botlake/lake.ts` extension array, alongside Identity and any other desired extensions. Work requires Identity. Agents and Work share the same references descriptor. Work–Agents uses a 60-second check interval. Installing the package does not select any extension.
+The configured exports are `agents`, `flags`, `references`, `priming`, `ui`, `work`, `workAgents`, `mail`, `mailIdentity` and `mailAgents`. The `agents` and `work` exports retain their typed runtime bindings through the configuration helpers. Select their descriptors in your `.botlake/lake.ts` extension array, alongside Identity and any other desired extensions. Work requires Identity. Agents and Work share the same references descriptor. Work–Agents uses a 60-second check interval.
+
+To select the UI explicitly, add its descriptor to the lake extension array:
+
+```ts
+import { ui } from "@botlake/extension-ct-config";
+```
+
+Installing or importing `@botlake/extension-ct-config` does not select the UI, start the dashboard, or start a server.
 
 Consumers that need both implementations must import these exact configured objects rather than constructing same-name replacements:
 
