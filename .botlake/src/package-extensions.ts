@@ -1,9 +1,8 @@
 import batteriesExtension from "@botlake/extension-batteries";
 import cronExtension from "@botlake/extension-cron";
-import { mail, mailAgents, mailIdentity } from "@botlake/extension-ct-config";
+import { mail, mailAgents, mailIdentity, ui } from "@botlake/extension-ct-config";
 import diaryExtension from "@botlake/extension-diary";
 import identityExtension from "@botlake/extension-identity";
-import uiExtension from "@botlake/extension-ui";
 
 export const packageExtensions = {
   batteries: batteriesExtension,
@@ -13,5 +12,5 @@ export const packageExtensions = {
   mail,
   mailAgents,
   mailIdentity,
-  ui: uiExtension,
+  ui,
 };

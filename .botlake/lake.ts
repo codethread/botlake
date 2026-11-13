@@ -12,7 +12,7 @@ import workflow from "./src/workflow.ts";
 
 export const lake = createLake({
   name: "botlake",
-  minimumCore: "0.3.1",
+  minimumCore: "0.3.2",
   extensions: [
     packageExtensions.batteries,
     packageExtensions.identity,
