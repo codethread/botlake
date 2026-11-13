@@ -358,7 +358,13 @@ export const workAutoBot = createWorkAutoBot({agents, work});
   const expectedCoreVersion = corePackage.manifest.version;
   const runtimeStatus: unknown = JSON.parse(run(join(bin, "botlake"), ["status"], workspace, env));
   assertRecord(runtimeStatus, "runtime status");
-  assert.equal(runtimeStatus["coreVersion"], expectedCoreVersion);
+  assert.deepEqual(runtimeStatus["members"], [
+    {
+      path: await realpath(workspace),
+      name: "release-verification",
+      coreVersion: expectedCoreVersion,
+    },
+  ]);
   assert.equal(
     info.extensions.length,
     packages.filter(({ directory }) => directory.startsWith("extensions/")).length,

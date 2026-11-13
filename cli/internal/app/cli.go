@@ -122,8 +122,9 @@ running while using lakes. BL_HOME selects the supervisor home (default:
 		return `Usage:
   botlake status
 
-Show the running supervisor build/protocol, loaded core version, Bun host readiness
-and registered lakes. activeProcesses maps canonical lake paths to nonterminal
+Show the running botlakeVersion, supervisorBuildId, protocolVersion, Bun host
+readiness and registered members ({path,name,coreVersion}). Each member reports
+its own loaded Core version. activeProcesses maps canonical lake paths to nonterminal
 supervisor-owned processes ({handle, owner, key}), including custody retained for
 stopped lakes. owner/key are opaque consumer identifiers for further inspection.
 Empty arrays mean no active custody records; terminal evidence is excluded.
@@ -208,8 +209,8 @@ restart. This command neither loads modules nor starts inactive lakes.
 		return `Usage:
   botlake lake list
 
-List currently active lakes and their published workspace names. This command
-does not start or discover inactive workspaces.
+List currently active lakes as {path,name,coreVersion}, sorted by canonical path.
+This command does not start or discover inactive workspaces.
 `
 	case "eval":
 		return evalUsage

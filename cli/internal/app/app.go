@@ -42,9 +42,10 @@ type Frame struct {
 }
 
 type Member struct {
-	Path string            `json:"path"`
-	Name string            `json:"name"`
-	Env  map[string]string `json:"-"`
+	Path        string            `json:"path"`
+	Name        string            `json:"name"`
+	CoreVersion string            `json:"coreVersion"`
+	Env         map[string]string `json:"-"`
 }
 
 type lakeOptions struct {
@@ -800,20 +801,16 @@ func (d *Daemon) handle(conn net.Conn) {
 				activeProcesses[path] = custody.ActiveProcesses()
 			}
 		}
-		var coreVersion string
 		for path, lake := range d.lakes {
 			lakePids[path] = lake.cmd.Process.Pid
-			if coreVersion == "" {
-				coreVersion, _ = lake.info["coreVersion"].(string)
-			}
 		}
 		d.mu.Unlock()
 		if req.Operation == "lake-list" {
 			encode(conn, Frame{OK: true, Result: members})
 		} else {
 			encode(conn, Frame{OK: true, Result: map[string]any{
-				"pid": os.Getpid(), "supervisorVersion": Version, "supervisorBuildId": buildID(), "protocolVersion": protocolVersion,
-				"hostPid": 0, "hostReady": true, "hostError": "", "coreVersion": coreVersion, "lakePids": lakePids, "members": members,
+				"pid": os.Getpid(), "botlakeVersion": Version, "supervisorBuildId": buildID(), "protocolVersion": protocolVersion,
+				"hostPid": 0, "hostReady": true, "hostError": "", "lakePids": lakePids, "members": members,
 				"activeProcesses": activeProcesses,
 			}})
 		}

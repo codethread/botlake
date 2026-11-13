@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -65,7 +65,7 @@ test("lake start --install installs before activation and leaves an active lake 
   }
 }, 60000);
 
-test("lake minimumCore uses the supervisor's loaded core and reports compatibility versions", async () => {
+test("lake minimumCore validates the selected Core and status reports versions per lake", async () => {
   const host = await system();
   try {
     const workspace = await host.workspace("compatibility", []);
@@ -106,12 +106,36 @@ test("lake minimumCore uses the supervisor's loaded core and reports compatibili
     });
     const cli = z.object({ cli_version: z.string() }).parse(await host.botlake(["--version"]));
     expect(await host.botlake(["status"])).toMatchObject({
-      supervisorVersion: cli.cli_version,
+      botlakeVersion: cli.cli_version,
       protocolVersion: 1,
-      coreVersion: loadedCoreVersion,
+      members: [
+        { path: await realpath(workspace), name: "compatibility", coreVersion: loadedCoreVersion },
+      ],
     });
     expect(await host.botlake(["host-status"])).toMatchObject({
       coreVersion: loadedCoreVersion,
+    });
+
+    const other = await host.workspace("other", []);
+    const otherCore = z
+      .object({ version: z.string() })
+      .parse(await Bun.file(join(other, "node_modules/@botlake/core/package.json")).json());
+    expect(otherCore.version).not.toBe(loadedCoreVersion);
+    await host.botlake(["lake", "start", "--workspace", other]);
+    const members = [
+      { path: await realpath(workspace), name: "compatibility", coreVersion: loadedCoreVersion },
+      { path: await realpath(other), name: "other", coreVersion: otherCore.version },
+    ];
+    expect(await host.botlake(["status"])).toMatchObject({ members });
+    expect(await host.botlake(["lake", "list"])).toEqual(members);
+    await host.botlake(["lake", "stop", "--workspace", other]);
+    await Bun.write(
+      join(workspace, "node_modules/@botlake/core/package.json"),
+      JSON.stringify({ ...installedCore, version: "9.1.0" }),
+    );
+    await host.botlake(["lake", "restart", "--workspace", workspace]);
+    expect(await host.botlake(["status"])).toMatchObject({
+      members: [{ path: await realpath(workspace), name: "compatibility", coreVersion: "9.1.0" }],
     });
 
     const primer = Bun.spawn(

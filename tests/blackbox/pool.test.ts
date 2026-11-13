@@ -103,6 +103,9 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
   const extensions = ["@botlake/extension-batteries"];
   try {
     const alpha = await host.workspace("alpha", extensions);
+    const { version: coreVersion } = z
+      .object({ version: z.string() })
+      .parse(await Bun.file(join(alpha, "node_modules/@botlake/core/package.json")).json());
     const beta = await host.workspace("beta", extensions);
     const healthy = await host.workspace("healthy", extensions);
     const configure = (path: string, name?: string): Promise<number> =>
@@ -161,8 +164,8 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
 
     await host.botlake(["restart-host"]);
     expect(await host.botlake(["lake", "list"])).toEqual([
-      { path: await realpath(alpha), name: "next" },
-      { path: await realpath(healthy), name: "healthy" },
+      { path: await realpath(alpha), name: "next", coreVersion },
+      { path: await realpath(healthy), name: "healthy", coreVersion },
     ]);
     expect(nodePage.parse(await host.bl("next", "node", { command: "list" })).nodes).toHaveLength(
       1,

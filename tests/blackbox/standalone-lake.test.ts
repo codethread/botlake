@@ -337,6 +337,9 @@ test("failed and competing starts do not publish or retain the database lease", 
   let second: ReturnType<typeof Bun.spawn> | undefined;
   try {
     const first = await host.workspace("first", []);
+    const { version: coreVersion } = z
+      .object({ version: z.string() })
+      .parse(await Bun.file(join(first, "node_modules/@botlake/core/package.json")).json());
     const duplicate = await host.workspace("duplicate", []);
     await Bun.write(
       join(duplicate, ".botlake/lake.ts"),
@@ -353,7 +356,7 @@ test("failed and competing starts do not publish or retain the database lease", 
       "bad-config",
     );
     expect(await host.botlake(["lake", "list"])).toEqual([
-      { path: await realpath(first), name: "first" },
+      { path: await realpath(first), name: "first", coreVersion },
     ]);
 
     await mkdir(secondHome);
