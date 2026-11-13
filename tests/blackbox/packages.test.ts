@@ -65,11 +65,10 @@ test("lake start --install installs before activation and leaves an active lake 
   }
 }, 60000);
 
-test("lake minimumCore validates the selected Core and status reports versions per lake", async () => {
+test("lake info and status report core-owned versions per lake", async () => {
   const host = await system();
   try {
     const workspace = await host.workspace("compatibility", []);
-    const lakeConfig = join(workspace, ".botlake/lake.ts");
     const installedCoreManifest = join(workspace, "node_modules/@botlake/core/package.json");
     const installedCore = z
       .compile(z.record(z.string(), z.unknown()))
@@ -79,26 +78,10 @@ test("lake minimumCore validates the selected Core and status reports versions p
       installedCoreManifest,
       JSON.stringify({ ...installedCore, version: loadedCoreVersion }),
     );
-    await Bun.write(
-      lakeConfig,
-      'import {createLake} from "@botlake/core"; export const lake=createLake({name:"compatibility",minimumCore:"9999.0.0",extensions:[]});',
-    );
-
-    const incompatible = await host.botlake(["lake", "start", "--workspace", workspace], false);
-    expect(incompatible).toContain(
-      `Lake requires @botlake/core 9999.0.0 or newer, but the running supervisor loaded ${loadedCoreVersion}`,
-    );
-    expect(incompatible).toContain("Upgrade the supervisor's @botlake/core package");
-    expect(await host.botlake(["lake", "list"])).toEqual([]);
-
-    await Bun.write(
-      lakeConfig,
-      `import {createLake} from "@botlake/core"; export const lake=createLake({name:"compatibility",minimumCore:${JSON.stringify(loadedCoreVersion)},extensions:[]});`,
-    );
     await host.botlake(["lake", "start", "--workspace", workspace]);
     expect(await host.botlake(["lake", "info", "--workspace", workspace])).toMatchObject({
       coreVersion: loadedCoreVersion,
-      minimumCore: loadedCoreVersion,
+      lakeWireVersion: 1,
     });
     expect(await host.botlake(["lake", "status", "--workspace", workspace])).toMatchObject({
       ready: true,

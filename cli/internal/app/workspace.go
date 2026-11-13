@@ -43,9 +43,8 @@ func readMember(path string) (Member, error) {
 	}
 
 	var config struct {
-		Name        json.RawMessage `json:"name"`
-		Extensions  []string        `json:"extensions"`
-		MinimumCore json.RawMessage `json:"minimumCore"`
+		Name       json.RawMessage `json:"name"`
+		Extensions []string        `json:"extensions"`
 	}
 	if err := decode(raw, &config); err != nil {
 		return Member{}, fmt.Errorf(".botlake/package.json botlake: %w", err)

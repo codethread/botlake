@@ -41,15 +41,15 @@ type lakeProcess struct {
 }
 
 type lakeMessage struct {
-	Version     int            `json:"v"`
-	Kind        string         `json:"kind"`
-	Generation  string         `json:"generation"`
-	WireVersion int            `json:"wire_version"`
-	Name        string         `json:"name"`
-	CoreVersion string         `json:"core_version"`
-	Info        map[string]any `json:"info"`
-	Phase       string         `json:"phase"`
-	Error       any            `json:"error"`
+	Version         int            `json:"v"`
+	Kind            string         `json:"kind"`
+	Generation      string         `json:"generation"`
+	LakeWireVersion int            `json:"wire_version"`
+	Name            string         `json:"name"`
+	CoreVersion     string         `json:"core_version"`
+	Info            map[string]any `json:"info"`
+	Phase           string         `json:"phase"`
+	Error           any            `json:"error"`
 }
 
 func (d *Daemon) startLake(path string, env map[string]string) (*lakeProcess, error) {
@@ -190,7 +190,10 @@ func (d *Daemon) startLake(path string, env map[string]string) (*lakeProcess, er
 	if prepared.Kind == "failed" {
 		return fail(fmt.Errorf("lake %s failed: %v", prepared.Phase, prepared.Error))
 	}
-	if prepared.Kind != "prepared" || prepared.Version != lakeWireVersion || prepared.WireVersion != lakeWireVersion || prepared.Generation != generation {
+	if prepared.Version != lakeWireVersion || prepared.LakeWireVersion != lakeWireVersion {
+		return fail(fmt.Errorf("incompatible lake wire protocol: supervisor lakeWireVersion=%d, lake lakeWireVersion=%d (frame v=%d); install compatible supervisor and @botlake/core versions", lakeWireVersion, prepared.LakeWireVersion, prepared.Version))
+	}
+	if prepared.Kind != "prepared" || prepared.Generation != generation {
 		return fail(errors.New("lake returned an incompatible prepared handshake"))
 	}
 	if !workspaceName.MatchString(prepared.Name) {

@@ -254,18 +254,30 @@ ctx.register(defineOp({name:"custody-status",input:z.compile(z.object({})),outpu
 test("incompatible runner wire versions fail before publication and release the lease", async () => {
   const host = await system();
   try {
-    const workspace = await host.workspace("wire-version", []);
-    const runner = join(workspace, "node_modules/@botlake/core/src/runtime/runner.ts");
-    const source = await Bun.file(runner).text();
-    await Bun.write(runner, source.replace("const wireVersion = 1;", "const wireVersion = 2;"));
+    const workspace = await host.workspace("wire-version", ["./activation.ts"]);
+    const marker = join(host.dir, "activated");
+    await Bun.write(
+      join(workspace, "activation.ts"),
+      `export default {name:"activation",async activate(){await Bun.write(${JSON.stringify(marker)},"activated");}};`,
+    );
+    const version = join(workspace, "node_modules/@botlake/core/src/runtime/version.ts");
+    const source = await Bun.file(version).text();
+    expect(source).toContain("export const lakeWireVersion = 1;");
+    await Bun.write(
+      version,
+      source.replace("export const lakeWireVersion = 1;", "export const lakeWireVersion = 2;"),
+    );
     expect(await host.botlake(["lake", "start", "--workspace", workspace], false)).toContain(
-      "incompatible prepared handshake",
+      "incompatible lake wire protocol: supervisor lakeWireVersion=1, lake lakeWireVersion=2",
     );
     expect(await host.botlake(["lake", "list"])).toEqual([]);
-    await Bun.write(runner, source);
+    expect(await Bun.file(marker).exists()).toBe(false);
+    expect(await Bun.file(join(workspace, ".botlake/world.db")).exists()).toBe(false);
+    await Bun.write(version, source);
     expect(await host.botlake(["lake", "start", "--workspace", workspace])).toMatchObject({
       name: "wire-version",
     });
+    expect(await Bun.file(marker).exists()).toBe(true);
   } finally {
     await host.close();
   }

@@ -7,8 +7,8 @@ import { botlakeServices } from "./custody.ts";
 import { loadLakeConfig } from "./lake.ts";
 import { invocationSchema } from "./protocol.ts";
 import { Runtime, isStream } from "./runtime.ts";
+import { lakeWireVersion } from "./version.ts";
 
-const wireVersion = 1;
 const launchSchema = z.compile(
   z.object({
     workspace: z.string(),
@@ -21,12 +21,12 @@ const launchSchema = z.compile(
 const controlSchema = z.compile(
   z.discriminatedUnion("kind", [
     z.strictObject({
-      v: z.literal(wireVersion),
+      v: z.literal(lakeWireVersion),
       kind: z.literal("activate"),
       generation: z.string(),
     }),
     z.strictObject({
-      v: z.literal(wireVersion),
+      v: z.literal(lakeWireVersion),
       kind: z.literal("drain"),
       generation: z.string(),
       reason: z.enum(["restart", "stop"]),
@@ -82,7 +82,7 @@ async function stop(_reason: "restart" | "stop", finishMs: number): Promise<void
   await server?.stop(true);
   await runtime?.stop();
   phase = "stopped";
-  send({ v: wireVersion, kind: "stopped", generation: launch.generation });
+  send({ v: lakeWireVersion, kind: "stopped", generation: launch.generation });
   void output.end();
   await lease.exists();
   process.exit(0);
@@ -201,7 +201,7 @@ async function activate(info: Awaited<ReturnType<typeof loadLakeConfig>>): Promi
     },
   });
   phase = "ready";
-  send({ v: wireVersion, kind: "ready", generation: launch.generation, info: info.info });
+  send({ v: lakeWireVersion, kind: "ready", generation: launch.generation, info: info.info });
 }
 
 async function handleControl(
@@ -221,10 +221,10 @@ try {
   const info = await loadLakeConfig(launch.workspace);
   phase = "prepared";
   send({
-    v: wireVersion,
+    v: lakeWireVersion,
     kind: "prepared",
     generation: launch.generation,
-    wire_version: wireVersion,
+    wire_version: lakeWireVersion,
     name: info.config.name,
     core_version: info.info.coreVersion,
   });
@@ -246,7 +246,7 @@ try {
   await stop("stop", 5_000);
 } catch (error) {
   send({
-    v: wireVersion,
+    v: lakeWireVersion,
     kind: "failed",
     generation: launch.generation,
     phase:

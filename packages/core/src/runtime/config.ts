@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 
 import type { Extension } from "./context.ts";
-import { coreVersion, requireCoreVersion, semanticVersionSchema } from "./version.ts";
+import { coreVersion, lakeWireVersion, semanticVersionSchema } from "./version.ts";
 
 const extensionModuleSchema = z.compile(
   z.object({
@@ -24,7 +24,6 @@ const configSchema = z.compile(
       .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
       .optional(),
     extensions: z.array(z.string().min(1)).default([]),
-    minimumCore: semanticVersionSchema.optional(),
   }),
 );
 
@@ -51,7 +50,7 @@ export const workspaceInfoSchema = z.compile(
     configPath: z.string(),
     packageJson: z.string(),
     coreVersion: semanticVersionSchema,
-    minimumCore: semanticVersionSchema.nullable(),
+    lakeWireVersion: z.number().int().positive(),
     extensions: z.array(extensionInfoSchema),
   }),
 );
@@ -66,7 +65,6 @@ export async function loadWorkspace(
   const workspace = resolve(path);
   const packageJson = join(workspace, ".botlake/package.json");
   const { botlake: config } = workspaceSchema.parse(await Bun.file(packageJson).json());
-  requireCoreVersion(config.minimumCore);
   const extensions: Extension[] = [];
   const info: WorkspaceInfo = {
     path: workspace,
@@ -74,7 +72,7 @@ export async function loadWorkspace(
     configPath: packageJson,
     packageJson,
     coreVersion,
-    minimumCore: config.minimumCore ?? null,
+    lakeWireVersion,
     extensions: [],
   };
 

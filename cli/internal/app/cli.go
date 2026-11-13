@@ -195,7 +195,7 @@ Report whether the selected lake is ready and the loaded core version.
   botlake lake info [--workspace PATH|NAME]
 
 Show the running lake's startup snapshot as JSON:
-{path,name,packageJson,coreVersion,minimumCore,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
+{path,name,packageJson,coreVersion,lakeWireVersion,extensions:[{name,description,specifier,module,source,packageJson,readme}]}.
 
 Extensions follow selection order. Their name is the runtime extension name,
 not the package name. description comes from package.json, or null when absent.

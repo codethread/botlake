@@ -40,14 +40,13 @@ import { priming } from "./priming.ts";
 
 export const lake = createLake({
   name: "work",
-  minimumCore: "0.2.0",
   extensions: [batteries(), priming],
 });
 ```
 
 `name` defaults to the workspace directory basename, not the package name. An explicit name starts with a letter and contains only letters, digits, underscores or hyphens; active lake names must be unique. `extensions` is required and may be empty. Importing or installing an extension does not activate it; only values in this array are selected.
 
-`minimumCore` is an optional semantic version, not a range. Lake startup compares it with the `@botlake/core` package loaded from that lake's installation and fails with both versions when unsatisfied. `botlake lake status` and `botlake lake info` report the loaded version. Lake info also reports the configured minimum.
+`botlake lake info` reports `coreVersion` from the lake's installed `@botlake/core/package.json` and the core-defined `lakeWireVersion`. The supervisor checks wire compatibility before activating extensions; a mismatch fails startup with both versions. Declare core requirements in package dependencies and extension peer dependencies; the lake definition needs no version constraint.
 
 The definition is trusted TypeScript and is imported only during explicit start or restart. Each lake therefore runs the runner and core pinned by its own `.botlake/bun.lock`; the Go supervisor does not parse TypeScript or share a Bun host between lakes.
 

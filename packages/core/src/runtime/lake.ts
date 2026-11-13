@@ -5,17 +5,15 @@ import { z } from "zod";
 
 import type { WorkspaceInfo } from "./config.ts";
 import type { Extension } from "./context.ts";
-import { coreVersion, requireCoreVersion, semanticVersionSchema } from "./version.ts";
+import { coreVersion, lakeWireVersion } from "./version.ts";
 
 export interface LakeDefinition {
   readonly name?: string;
-  readonly minimumCore?: string;
   readonly extensions: readonly Extension[];
 }
 
 export interface LakeConfig {
   readonly name: string;
-  readonly minimumCore: string | null;
   readonly extensions: Extension[];
 }
 
@@ -25,7 +23,6 @@ const definitionSchema = z.compile(
       .string()
       .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/u)
       .optional(),
-    minimumCore: semanticVersionSchema.optional(),
     extensions: z.array(
       z.object({
         name: z.string(),
@@ -52,7 +49,6 @@ export async function loadLakeConfig(workspace: string): Promise<{
   );
   const parsedModule = z.object({ lake: z.unknown() }).parse(module);
   const definition = definitionSchema.parse(parsedModule.lake);
-  requireCoreVersion(definition.minimumCore);
   const packageJson = join(root, ".botlake/package.json");
   const extensions = definition.extensions.map((extension) => ({
     ...extension,
@@ -64,7 +60,7 @@ export async function loadLakeConfig(workspace: string): Promise<{
     configPath,
     packageJson,
     coreVersion,
-    minimumCore: definition.minimumCore ?? null,
+    lakeWireVersion,
     extensions: [],
   };
 
@@ -84,7 +80,6 @@ export async function loadLakeConfig(workspace: string): Promise<{
   return {
     config: {
       name: info.name,
-      minimumCore: definition.minimumCore ?? null,
       extensions,
     },
     info,

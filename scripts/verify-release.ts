@@ -270,7 +270,7 @@ export const workAutoBot = createWorkAutoBot({agents, work});
     .map((_, index) => `extension${index}`);
   await writeFile(
     join(config, "lake.ts"),
-    `import { createLake } from "@botlake/core";\n${extensionImports.join("\n")}\n\nexport const lake = createLake({\n  name: "release-verification",\n  minimumCore: ${JSON.stringify(corePackage.manifest.version)},\n  extensions: [${extensionValues.join(", ")}],\n});\n`,
+    `import { createLake } from "@botlake/core";\n${extensionImports.join("\n")}\n\nexport const lake = createLake({\n  name: "release-verification",\n  extensions: [${extensionValues.join(", ")}],\n});\n`,
   );
   await writeFile(
     join(config, "bunfig.toml"),
