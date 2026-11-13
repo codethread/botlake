@@ -10,6 +10,10 @@
 - Cross-package imports use declared dependencies and public exports; relative imports stay within a package. Preserve Oxlint's `no-restricted-imports` boundary.
 - Extension imports stay inert. Consumers explicitly select extensions and prerequisites; installation never activates them.
 
+## Development setup
+
+From the repository root, install mise and trust `mise.toml` if prompted, then run `mise run` (or `mise run bootstrap`) to prepare pinned tools, skills, the root workspace (including the private dogfood lake), and local CLI builds without starting services or installing global commands. `mise run setup` also starts this lake and requires a running supervisor. The explicit `mise run install` installs both CLIs into `GOBIN` or `~/.local/bin`; preserve that handoff for dots host bootstrap.
+
 ## Development cycle
 
 1. build (make it work)

@@ -3,30 +3,29 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --deny-warnings .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "bun run format:check && bun run lint && bun run typecheck"
+  },
   "dependencies": {
     "@botlake/core": "0.2.1",
-    "@botlake/extension-agents": "latest",
-    "@botlake/extension-batteries": "latest",
-    "@botlake/extension-cron": "latest",
-    "@botlake/extension-ct-config": "latest",
-    "@botlake/extension-diary": "latest",
-    "@botlake/extension-flags": "latest",
-    "@botlake/extension-identity": "latest",
-    "@botlake/extension-references": "latest",
+    "@botlake/extension-agents": "0.2.0",
+    "@botlake/extension-batteries": "0.2.0",
+    "@botlake/extension-cron": "0.2.0",
+    "@botlake/extension-ct-config": "0.2.0",
+    "@botlake/extension-diary": "0.2.0",
+    "@botlake/extension-flags": "0.2.0",
+    "@botlake/extension-identity": "0.2.0",
+    "@botlake/extension-references": "0.2.0",
     "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz",
-    "@botlake/extension-work": "latest",
-    "@botlake/extension-work-agents": "latest",
-    "@botlake/extension-work-auto-bot": "latest",
-    "@botlake/extension-workflow": "latest",
-    "@botlake/native-session": "latest",
+    "@botlake/extension-work": "0.2.0",
+    "@botlake/extension-work-agents": "0.2.0",
+    "@botlake/extension-work-auto-bot": "0.2.0",
+    "@botlake/extension-workflow": "0.2.0",
+    "@botlake/native-session": "0.2.0",
     "xstate": "5.33.3",
     "zod": "^4.6.7"
-  },
-  "overrides": {
-    "@botlake/core": "0.2.1",
-    "@botlake/extension-ui": "file:../vendor/botlake-cutover/botlake-extension-ui-0.1.3.tgz"
-  },
-  "patchedDependencies": {
-    "xstate@5.33.3": "../patches/xstate@5.33.3.patch"
   }
 }

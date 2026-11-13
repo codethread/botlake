@@ -1,17 +1,29 @@
-[tasks.install]
-description = "Restore agent skills, install workspace dependencies and the Botlake CLIs"
+[tools]
+bun = "1.4.2"
+go = "1.26.8"
+
+# Repository bootstrap must not install unrelated global tools.
+[settings]
+enable_tools = ["bun", "go"]
+
+[tasks.bootstrap]
+alias = "default"
+description = "Restore agent skills, install workspace dependencies and build the Botlake CLIs"
 run = '''
 bun install --frozen-lockfile
 bun run -- skillbox sync
-bun install --cwd .botlake --frozen-lockfile
-GOBIN="$HOME/.local/bin" go -C cli install ./cmd/botlake ./cmd/bl
+bun run build:cli
 '''
 
+[tasks.install]
+description = "Prepare the checkout and install the Botlake CLIs into GOBIN or ~/.local/bin"
+depends = ["bootstrap"]
+run = 'GOBIN="${GOBIN:-$HOME/.local/bin}" go -C cli install ./cmd/botlake ./cmd/bl'
+
 [tasks.setup]
-alias = "default"
-description = "Install Botlake and start this checkout's lake (requires a running supervisor)"
-depends = ["install"]
+description = "Prepare the checkout and start its lake (requires a running supervisor)"
+depends = ["bootstrap"]
 run = '''
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="{{ config_root }}/out:$PATH"
 botlake lake start --workspace "{{ config_root }}"
 '''
