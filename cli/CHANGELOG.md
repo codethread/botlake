@@ -2,6 +2,17 @@
 
 All notable changes to Botlake CLI are documented in this file.
 
+## 0.3.0 - 2026-11-13
+
+### Changed
+
+- Report Core versions per lake in status (aca09fd)
+
+  Each published lake member carries its own loaded coreVersion, including in lake list and lifecycle acknowledgements. botlake status reports botlakeVersion for the running Go supervisor instead of supervisorVersion, and no longer samples one lake for a top-level coreVersion.
+
+  - **Breaking:** botlake status replaces supervisorVersion with botlakeVersion and removes its top-level coreVersion. Read members\[\].coreVersion for each lake instead.
+  - **Adoption (required):** Update status consumers to read botlakeVersion and members\[\].coreVersion. Upgrade the CLI, then explicitly restart the supervisor after active work finishes and start your lakes again; the running supervisor retains its previous status schema until replaced.
+
 ## 0.2.0 - 2026-11-13
 
 ### Added
