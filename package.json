@@ -56,6 +56,10 @@
     "xstate": "5.33.3",
     "zod": "^4.6.7"
   },
+  "overrides": {
+    "@botlake/extension-references@0.3.1": "0.3.1",
+    "@botlake/native-session@0.3.1": "0.3.1"
+  },
   "lint-staged": {
     "*.{ts,mts,cts,js,mjs,cjs}": [
       "oxlint --fix --deny-warnings",
