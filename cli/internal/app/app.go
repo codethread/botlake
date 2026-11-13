@@ -799,7 +799,9 @@ func (d *Daemon) handle(conn net.Conn) {
 		activeProcesses := map[string][]process.ActiveProcess{}
 		if req.Operation == "status" {
 			for path, custody := range d.custodies {
-				activeProcesses[path] = custody.ActiveProcesses()
+				if processes := custody.ActiveProcesses(); len(processes) > 0 {
+					activeProcesses[path] = processes
+				}
 			}
 		}
 		for path, lake := range d.lakes {

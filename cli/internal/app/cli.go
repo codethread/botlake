@@ -129,7 +129,7 @@ protocolVersion describes CLI-supervisor communication.
 activeProcesses maps canonical lake paths to nonterminal
 supervisor-owned processes ({handle, owner, key}), including custody retained for
 stopped lakes. owner/key are opaque consumer identifiers for further inspection.
-Empty arrays mean no active custody records; terminal evidence is excluded.
+Lakes with no active custody records are omitted; terminal evidence is excluded.
 This is an in-memory snapshot, not a restart lock: new activity can start afterwards.
 ` + common + "\n"
 	case "stop":
