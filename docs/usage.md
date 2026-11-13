@@ -1,6 +1,6 @@
 # Workspace configuration
 
-Requires Bun and `botlake`/`bl` on `PATH`; see [checkout setup](engdocs/development.md#setup) for installation from source. Runtime commands describe themselves through `bl -h`, `bl help`, `bl prime OP` and `botlake -h`.
+Requires Bun and `botlake`/`bl` on `PATH`; see [Homebrew installation](../README.md#install-with-homebrew) or [checkout setup](engdocs/development.md#setup) for installation from source. Runtime commands describe themselves through `bl -h`, `bl help`, `bl prime OP` and `botlake -h`.
 
 ## Lake definition and workspace selection
 

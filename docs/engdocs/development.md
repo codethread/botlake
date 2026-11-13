@@ -20,7 +20,7 @@ Install the repository-local [native identity adapter](../../plugins/identity/RE
 
 ## CLI changelog
 
-`botlake` and `bl` share one Go CLI version, so their release history belongs to `cli/`, separate from the independently versioned published Bun packages. Curate verified release facts in [`cli/changelog.json`](../../cli/changelog.json); it starts empty rather than claiming undocumented history. Generate `cli/CHANGELOG.md` with `bun run changelog:generate`, validate generated-file sync with `bun run changelog:check`, and query recorded releases with `bun run changelog -- --since VERSION` or `--release VERSION`. Queries use `out/botlake --version`; `--version VERSION` selects another installed-version cutoff. `bun run check` includes the sync validation.
+`botlake` and `bl` share one Go CLI version, so their release history belongs to `cli/`, separate from the independently versioned published Bun packages. Curate verified release facts in [`cli/changelog.json`](../../cli/changelog.json), starting with the first tagged CLI release. Follow the [CLI release procedure](cli-release.md) to publish the Go binaries through Homebrew. Generate `cli/CHANGELOG.md` with `bun run changelog:generate`, validate generated-file sync with `bun run changelog:check`, and query recorded releases with `bun run changelog -- --since VERSION` or `--release VERSION`. Queries use `out/botlake --version`; `--version VERSION` selects another installed-version cutoff. `bun run check` includes the sync validation.
 
 ## Rebuild and reload
 

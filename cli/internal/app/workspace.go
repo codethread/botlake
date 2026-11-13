@@ -69,6 +69,19 @@ func readMember(path string) (Member, error) {
 	return Member{Path: path, Name: name}, nil
 }
 
+// Core can be installed in the lake package or hoisted to its root workspace.
+func lakeRuntimeScript(workspace, entry string) (string, error) {
+	for _, base := range []string{filepath.Join(workspace, ".botlake"), workspace} {
+		path := filepath.Join(base, "node_modules", "@botlake", "core", "src", "runtime", entry+".ts")
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("lake %s is unavailable from the workspace install: install @botlake/core in .botlake or the workspace root", entry)
+}
+
 func defaultWorkspace(cwd string) (string, error) {
 	if workspace := os.Getenv("BL_WORKSPACE"); workspace != "" {
 		return workspace, nil

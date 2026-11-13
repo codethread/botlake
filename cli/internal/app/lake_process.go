@@ -95,18 +95,15 @@ func (d *Daemon) startLake(path string, env map[string]string) (*lakeProcess, er
 		return nil, err
 	}
 
-	runner := filepath.Join(botlakeDir, "node_modules", "@botlake", "core", "src", "runtime", "runner.ts")
-	if _, err := os.Stat(runner); err != nil {
-		runner = filepath.Join(path, "node_modules", "@botlake", "core", "src", "runtime", "runner.ts")
-		if _, err := os.Stat(runner); err != nil {
-			controlRead.Close()
-			controlWrite.Close()
-			replyRead.Close()
-			replyWrite.Close()
-			lease.Close()
-			cleanup()
-			return nil, fmt.Errorf("lake runner is unavailable from the workspace install: %w", err)
-		}
+	runner, err := lakeRuntimeScript(path, "runner")
+	if err != nil {
+		controlRead.Close()
+		controlWrite.Close()
+		replyRead.Close()
+		replyWrite.Close()
+		lease.Close()
+		cleanup()
+		return nil, err
 	}
 	launch, err := json.Marshal(map[string]any{
 		"workspace": path, "generation": generation, "socket": socket,

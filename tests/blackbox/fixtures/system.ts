@@ -102,11 +102,14 @@ export async function system(): Promise<System> {
     ["botlake", botlakeBin],
     ["bl", blBin],
   ]) {
-    const child = Bun.spawn(["go", "build", "-o", binary ?? "", `./cmd/${name ?? ""}`], {
-      cwd: join(source, "cli"),
-      env: { ...process.env, GOPROXY: "off" },
-      stderr: "pipe",
-    });
+    const child = Bun.spawn(
+      ["go", "build", "-trimpath", "-o", binary ?? "", `./cmd/${name ?? ""}`],
+      {
+        cwd: join(source, "cli"),
+        env: { ...process.env, GOPROXY: "off" },
+        stderr: "pipe",
+      },
+    );
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     if (code !== 0) throw new Error(stderr);
   }

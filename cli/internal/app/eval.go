@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -114,7 +115,25 @@ func evalCLI(args []string) int {
 		source = string(raw)
 	}
 
-	core, err := filepath.Abs(Core())
+	var response bytes.Buffer
+	resolve := request("lake-resolve", *target, nil)
+	resolve.CWD = *cwd
+	if err := Dial(resolve, &response); err != nil {
+		return fail(err)
+	}
+	var resolved struct {
+		OK     bool            `json:"ok"`
+		Result Member          `json:"result"`
+		Error  json.RawMessage `json:"error"`
+	}
+	if err := decode(response.Bytes(), &resolved); err != nil {
+		return fail(err)
+	}
+	if !resolved.OK {
+		return renderError(resolved.Error, true)
+	}
+	*target = resolved.Result.Path
+	script, err := lakeRuntimeScript(*target, "eval")
 	if err != nil {
 		return fail(err)
 	}
@@ -145,7 +164,7 @@ func evalCLI(args []string) int {
 
 	defer result.Close()
 	defer os.Remove(result.Name())
-	cmd := exec.CommandContext(ctx, "bun", filepath.Join(core, "src/runtime/eval.ts"))
+	cmd := exec.CommandContext(ctx, "bun", script)
 	cmd.Dir = *cwd
 	cmd.Stdin = strings.NewReader(string(input))
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr

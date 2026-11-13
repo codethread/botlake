@@ -3,6 +3,7 @@
 ## Development
 
 - [Checkout setup, development lake and verification](development.md)
+- [Go CLI and Homebrew releases](cli-release.md)
 
 ## Runtime
 
