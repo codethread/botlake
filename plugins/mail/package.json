@@ -1,6 +1,6 @@
 {
   "name": "@botlake/mail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "files": [
@@ -9,6 +9,7 @@
     "pi.ts",
     "summary.ts",
     ".codex-plugin",
+    ".claude-plugin",
     "README.md"
   ],
   "type": "module",
@@ -18,5 +19,10 @@
   "dependencies": {
     "@botlake/native-session": "workspace:^",
     "zod": "^4.6.7"
+  },
+  "pi": {
+    "extensions": [
+      "./pi.ts"
+    ]
   }
 }

@@ -10,8 +10,9 @@ import {
   traceMail,
 } from "./client.ts";
 
+const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
 const hookInput = z.object({
-  hook_event_name: z.enum(["SessionStart", "PostToolUse"]),
+  hook_event_name: z.enum(["SessionStart", "PostToolUse", "PostToolUseFailure"]),
   session_id: z.string().min(1),
   agent_id: z.string().optional(),
 });
@@ -26,9 +27,14 @@ async function main(): Promise<void> {
       return;
     }
     const config = loadMailConfig(process.env);
-    const identity = sessionIdentity({ provider: "codex", nativeSessionId: input.session_id });
+    const identity = sessionIdentity({ provider, nativeSessionId: input.session_id });
     if (input.hook_event_name === "SessionStart") {
-      await traceMail(config, { event: "session-start", identity, sessionId: input.session_id });
+      await traceMail(config, {
+        event: "session-start",
+        provider,
+        identity,
+        sessionId: input.session_id,
+      });
       await output({
         hookSpecificOutput: {
           hookEventName: "SessionStart",
@@ -49,7 +55,10 @@ async function main(): Promise<void> {
       result.notice === ""
         ? {}
         : {
-            hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: result.notice },
+            hookSpecificOutput: {
+              hookEventName: input.hook_event_name,
+              additionalContext: result.notice,
+            },
           },
     );
     written = true;

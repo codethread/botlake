@@ -1,0 +1,16 @@
+{
+  "name": "botlake-local",
+  "owner": { "name": "Botlake" },
+  "plugins": [
+    {
+      "name": "botlake-identity",
+      "source": "./plugins/identity",
+      "description": "Native Claude session attribution for Botlake"
+    },
+    {
+      "name": "botlake-mail",
+      "source": "./plugins/mail",
+      "description": "Non-steering identity-addressed Botlake mail notifications"
+    }
+  ]
+}

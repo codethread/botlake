@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { sessionIdentity } from "@botlake/native-session";
 import { z } from "zod";
 
 import { source, system } from "./fixtures/system.ts";
@@ -64,3 +65,101 @@ export const lake=createLake({name:"ct-mail", extensions:[identity, agents, flag
     await host.close();
   }
 }, 60_000);
+
+test("Mail hook delivers provider-scoped Claude and Codex notifications through native hook I/O", async () => {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("hook-mail", ["@botlake/extension-mail"]);
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    const env = { ...host.env, BL_WORKSPACE: workspace };
+    const hook = async (provider: string, input: Record<string, unknown>, hookEnv = env) => {
+      const child = Bun.spawn(["bun", join(source, "plugins/mail/hook.ts"), provider], {
+        env: hookEnv,
+        stdin: new Blob([JSON.stringify({ session_id: "shared", cwd: workspace, ...input })]),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+      expect(code).toBe(0);
+      return z.record(z.string(), z.unknown()).parse(JSON.parse(stdout));
+    };
+    const contextSchema = z.object({
+      hookSpecificOutput: z.object({ hookEventName: z.string(), additionalContext: z.string() }),
+    });
+    const claude = sessionIdentity({ provider: "claude", nativeSessionId: "shared" });
+    const codex = sessionIdentity({ provider: "codex", nativeSessionId: "shared" });
+    expect(claude).not.toBe(codex);
+
+    const start = contextSchema.parse(await hook("claude", { hook_event_name: "SessionStart" }));
+    expect(start.hookSpecificOutput.additionalContext).toContain(
+      `Your Botlake mail identity is ${claude}.`,
+    );
+    expect(start.hookSpecificOutput.additionalContext).toContain("prime mail");
+
+    const send = async (to: string, subject: string) =>
+      z
+        .object({ id: z.string() })
+        .parse(
+          await host.bl(workspace, "mail", { command: "send", to, subject, body: "secret body" }),
+        ).id;
+    const id = await send(claude, "Claude review");
+    await send(codex, "Codex only");
+    const tool = { tool_name: "Bash", tool_use_id: "t1", tool_input: { command: "true" } };
+    expect(
+      await hook("claude", { hook_event_name: "PostToolUse", agent_id: "child", ...tool }),
+    ).toEqual({});
+
+    const notice = contextSchema.parse(
+      await hook("claude", { hook_event_name: "PostToolUse", ...tool }),
+    );
+    expect(notice.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+    expect(notice.hookSpecificOutput.additionalContext).toContain("1 pending mail message:");
+    expect(notice.hookSpecificOutput.additionalContext).toContain("Claude review");
+    expect(notice.hookSpecificOutput.additionalContext).not.toContain("Codex only");
+    expect(notice.hookSpecificOutput.additionalContext).not.toContain("secret body");
+    expect(await hook("claude", { hook_event_name: "PostToolUse", ...tool })).toEqual({});
+
+    await send(claude, "After failure");
+    const failure = contextSchema.parse(
+      await hook("claude", { hook_event_name: "PostToolUseFailure", ...tool }),
+    );
+    expect(failure.hookSpecificOutput.hookEventName).toBe("PostToolUseFailure");
+    expect(failure.hookSpecificOutput.additionalContext).toContain("After failure");
+
+    const codexNotice = contextSchema.parse(
+      await hook("codex", { hook_event_name: "PostToolUse", ...tool }),
+    );
+    expect(codexNotice.hookSpecificOutput.additionalContext).toContain("Codex only");
+
+    const read = await host.cli([
+      "--workspace",
+      workspace,
+      "--identity",
+      claude,
+      "--input",
+      JSON.stringify({ command: "read", id }),
+      "mail",
+    ]);
+    expect(read).toMatchObject({ status: "delivered", body: "secret body" });
+    await host.cli([
+      "--workspace",
+      workspace,
+      "--identity",
+      claude,
+      "--input",
+      JSON.stringify({ command: "ack", id }),
+      "mail",
+    ]);
+
+    const unavailable = await hook(
+      "claude",
+      { hook_event_name: "PostToolUse", ...tool },
+      { ...env, BL_WORKSPACE: join(host.dir, "missing-lake") },
+    );
+    expect(z.object({ systemMessage: z.string() }).parse(unavailable).systemMessage).toContain(
+      "Botlake mail hook failed",
+    );
+  } finally {
+    await host.close();
+  }
+}, 120_000);

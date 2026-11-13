@@ -286,7 +286,7 @@ async function launch(
 
 function spawn(p: Session, prompt: string, resume: boolean): Bun.Subprocess {
   const phase = resume ? "feedback" : "task";
-  const hookCommand = `bun '${join(root, "plugins/mail/hook.ts")}'`;
+  const hookCommand = `bun '${join(root, "plugins/mail/hook.ts")}' codex`;
   const hooks = `[ { hooks = [ { type = "command", command = ${JSON.stringify(hookCommand)}, timeout = 5, additionalContextLimit = 2000 } ] } ]`;
   const common = [
     "--ignore-user-config",

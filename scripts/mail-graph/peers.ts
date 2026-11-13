@@ -190,7 +190,7 @@ console.log(await Bun.file("assignment.txt").text());
   };
   const prompt =
     "This is an authorized disposable two-agent integration experiment. Do not delegate, inspect implementation files, or contact the other process except through the mail commands in your assignment. Follow the startup instruction to load the Botlake mail primer, then run `bun barrier.ts` first. Its output is your complete assignment. An explicit request to reply with a token is authorized; reproduce only the requested token. Finish after the assignment is complete.";
-  const hookCommand = `bun ${shellQuote(join(root, "plugins/mail/hook.ts"))}`;
+  const hookCommand = `bun ${shellQuote(join(root, "plugins/mail/hook.ts"))} codex`;
   const hooks = `[ { hooks = [ { type = "command", command = ${JSON.stringify(hookCommand)}, timeout = 5, additionalContextLimit = 2000 } ] } ]`;
   const command =
     name === "codex"
