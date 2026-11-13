@@ -106,7 +106,7 @@ bl agent reconcile
 | reconcile | `{ reconciled: true }` means a pass ran, not that custody settled. |
 | list | `{ runs, total, nextOffset }`; follow `nextOffset` until null. Default 20, maximum 100; pages are not snapshots. |
 
-Accepted runs freeze resolved settings and prompt text across retry/resume. Flag changes affect new selection only. `--request-id` enables exact replay of the original accepted request, even if its alias is now disabled. External sessions have null substatus/settled and no managed stop authority. Run success never closes its task.
+Accepted runs freeze resolved settings and prompt text across retry/resume. Flag changes affect new selection only. `--request-id` enables exact replay of the original accepted request, even if its alias is now disabled. External sessions have null substatus/settled and no managed stop authority. Run success never closes its task. `agent/stopped-at` records when custody settled for the invocation, independently of success; retry clears it. Consumers such as Mail calculate their own grace periods from that timestamp.
 
 ## Working across repositories
 

@@ -17,6 +17,8 @@ export const agentAttributes = {
   accepted: "agent/accepted",
   /** Indexed lifecycle projection: custody has settled, independently of success. */
   settled: "agent/settled",
+  /** Time custody settled for this invocation; retry clears it. */
+  stoppedAt: "agent/stopped-at",
   /** Number of launch attempts. */
   attempt: "agent/attempt",
   /** Provider implementing execution and native observation. */

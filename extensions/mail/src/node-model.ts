@@ -12,6 +12,8 @@ export const mailAttributes = {
   body: "mail/body",
   /** Attention request, independent of task authority. */
   urgent: "mail/urgent",
+  /** Continuation already admitted for this message; prevents repeated wakes. */
+  wakeRun: "mail/wake-run",
   /** Observed delivery and acknowledgement lifecycle. */
   delivery: "mail/delivery",
 } as const;
@@ -26,6 +28,13 @@ export const mailRelations = {
   sentTo: "mail/sent-to",
 } as const;
 export const deliverySchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("undeliverable"),
+    reason: z.string().min(1),
+    detail: z.string().nullable(),
+    deliveredAt: z.null(),
+    acknowledgedAt: z.null(),
+  }),
   z.object({ status: z.literal("sent"), deliveredAt: z.null(), acknowledgedAt: z.null() }),
   z.object({ status: z.literal("delivered"), deliveredAt: z.number(), acknowledgedAt: z.null() }),
   z.object({
@@ -45,7 +54,7 @@ export const mailDataSchema = z.object({
 export const mailPredicate = q.eq(q.attr(mailAttributes.message), true);
 export const pendingPredicate = q.and(
   mailPredicate,
-  q.ne(q.attr(mailAttributes.delivery, "status"), "acknowledged"),
+  q.inArray(q.attr(mailAttributes.delivery, "status"), ["sent", "delivered"]),
 );
 
 export function mailData(node: Node) {

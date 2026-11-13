@@ -16,7 +16,9 @@ bl --identity neo mail list --from neo --ack=false
 bl --identity neo mail list --to trinity --status delivered --lean=false
 ```
 
-`list` is lake-wide; `inbox` selects the caller's unacknowledged mail. Filters include `from`, `to`, exact `subject`, repeatable `status`, `ack`, `urgent`, `replies-to` and `about`. Pages return `{messages, nextOffset}` with 20 summaries by default (maximum 100); use `--offset NEXT_OFFSET` with unchanged filters. `--lean=false` includes bodies and outgoing graph links. Pages observe live data in creation-time/ID order. When acknowledging while draining an inbox, restart at offset zero because acknowledged entries leave that selection.
+`list` is lake-wide; `inbox` selects the caller's deliverable unacknowledged mail. Filters include `from`, `to`, exact `subject`, repeatable `status`, `ack`, `urgent`, `replies-to` and `about`. Pages return `{messages, nextOffset}` with 20 summaries by default (maximum 100); use `--offset NEXT_OFFSET` with unchanged filters. `--lean=false` includes bodies and outgoing graph links. Pages observe live data in creation-time/ID order. When acknowledging while draining an inbox, restart at offset zero because acknowledged entries leave that selection.
+
+With configured [agent delivery](../mail-agents/README.md), send/reply transparently wake a normally stopped recipient within its grace window (five minutes by default). Check the returned status: `undeliverable` means the recipient is inactive or resumption was refused. The message leaves the live inbox and is never retried automatically; inspect `reason`/`detail` and resend only if appropriate. A retained terminal record is available through read/list. Standalone Mail remains a durable mailbox without reachability checks.
 
 Reading does not mutate state. Acknowledgement means seen, not agreement, completion or a stopped process. `ack` and `delivered --id ID` are recipient-scoped and idempotent; attribution is not authentication. List and read are not privacy boundaries.
 
@@ -29,6 +31,7 @@ One node stores one message: title is the subject, with `mail/message`, `mail/fr
 - `sent`: stored; no reported notification handoff.
 - `delivered`: recipient plugin reported a notification handoff, with `deliveredAt`.
 - `acknowledged`: recipient explicitly reported seeing the message, with `acknowledgedAt`; `deliveredAt` can remain null when read directly.
+- `undeliverable`: terminal delivery refusal with `reason` and nullable diagnostic `detail`; excluded from pending queries/inbox and cannot be delivered or acknowledged.
 
 A late delivery report preserves acknowledgement. Message content and reply relationships are changed through the Mail API. There are no mail-specific SQL tables or mirrored records.
 
@@ -42,14 +45,14 @@ With Batteries explicitly selected, existing `await` can observe mail:
 bl --identity trinity await --query mail-pending --params '{"recipient":"trinity"}' --min-count 1 --timeout-secs 30
 ```
 
-Inspect `reason`: `satisfied` permits reading the matching inbox; timeout means the condition was not met within the window. Continue waiting if required by the assignment. Acknowledge seen messages before waiting for more. Await neither reads nor acknowledges mail and cannot resume a session that has exited. For managed runs that must end their turn while waiting, optionally select [Mail–Agents](../mail-agents/README.md) and arm one continuation before exiting.
+Inspect `reason`: `satisfied` permits reading the matching inbox; timeout means the condition was not met within the window. Continue waiting if required by the assignment. Acknowledge seen messages before waiting for more. Await neither reads nor acknowledges mail and cannot resume a session that has exited. Configured [Mail–Agents](../mail-agents/README.md) automatically resumes eligible stopped sessions without any extra caller operation. Mail accepted during a live run can later become undeliverable; inspect it through `read` or await `mail-undeliverable` if needed.
 
-| Named query                                       | Parameters  |
-| ------------------------------------------------- | ----------- |
-| `mail-received`, `mail-sent`                      | `identity`  |
-| `mail-pending`, `mail-urgent-pending`             | `recipient` |
-| `mail-unacknowledged-from`                        | `sender`    |
-| `mail-acknowledged`, `mail-replies`, `mail-about` | `id`        |
+| Named query                                                             | Parameters  |
+| ----------------------------------------------------------------------- | ----------- |
+| `mail-received`, `mail-sent`                                            | `identity`  |
+| `mail-pending`, `mail-urgent-pending`                                   | `recipient` |
+| `mail-unacknowledged-from`                                              | `sender`    |
+| `mail-acknowledged`, `mail-undeliverable`, `mail-replies`, `mail-about` | `id`        |
 
 Queries return graph nodes, whose attributes include bodies; use lean Mail operations for concise agent output. `mail-replies` selects direct children, not recursive conversation history.
 

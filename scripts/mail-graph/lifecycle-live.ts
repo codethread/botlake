@@ -21,7 +21,7 @@ try {
     "@botlake/extension-identity",
     "./flags.ts",
     "./agents.ts",
-    "@botlake/extension-mail",
+    "./mail.ts",
     "./mail-agents.ts",
   ]);
   const identityHook = `bun '${join(root, "plugins/identity/hook.ts")}' codex`;
@@ -62,9 +62,10 @@ try {
 const codex=builtinProviders.codex({flag:agentFlags.codex}), pi=builtinProviders.pi({flag:agentFlags.pi});
 export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(run);return {...p,command:[p.command[0],'--no-daemon',...p.command.slice(1)],env:{...p.env,BL_BIN:${JSON.stringify(fixture.blBin)}}};}},{...pi,prepare(run){const p=pi.prepare(run);return {...p,command:[${JSON.stringify(process.env["BL_MAIL_PI_BIN"] ?? "pi")},...p.command.slice(1)],env:{...p.env,BL_BIN:${JSON.stringify(fixture.blBin)}}};}}],aliases:{'luna-codex':{parent:'codex',model:'gpt-6-luna',effort:'low',extraArgs:${JSON.stringify(codexArgs)}},'luna-pi':{parent:'pi',model:'openai-codex/gpt-6-luna',effort:'low',extraArgs:${JSON.stringify(piArgs)}}}});`,
   );
+  await Bun.write(join(workspace, "mail.ts"), `export { default } from "@botlake/extension-mail";`);
   await Bun.write(
     join(workspace, "mail-agents.ts"),
-    `import {mailAgents} from '@botlake/extension-mail-agents'; import agents from './agents.ts'; export default mailAgents({agents});`,
+    `import {mailAgents} from '@botlake/extension-mail-agents'; import agents from './agents.ts'; import mail from './mail.ts'; export default mailAgents({agents,mail});`,
   );
   await fixture.botlake(["lake", "start", "--workspace", workspace]);
   const trials = await Promise.allSettled(
@@ -72,7 +73,7 @@ export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(r
       const cwd = join(workspace, provider);
       await mkdir(cwd);
       const prompt =
-        "This is a disposable managed-session mail test. Use your actual identity from startup. Load prime mail and prime mail-agent. In this first turn, arm your current run for 180 seconds using mail-agent arm; RUN_ID is the part of BL_RUN_REFERENCE before the colon. Save the JSON response to armed.json in this directory, then finish immediately without polling or waiting. Your task is still awaiting mail. On a later continuation, read and acknowledge incoming mail, write its exact body to result.txt (trailing newline is okay), then finish without arming again. Do not delegate or inspect implementation files.";
+        "This is a disposable managed-session mail test. Use your actual identity from startup. Load prime mail. In this first turn, finish immediately without polling or waiting. Your task is still awaiting mail. On a later continuation, read and acknowledge incoming mail, write its exact body to result.txt (trailing newline is okay), then finish. Do not delegate or inspect implementation files.";
       const first = z.object({ id: z.string() }).parse(
         await call(fixture, workspace, "test", "agent", {
           command: "start",
@@ -88,18 +89,6 @@ export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(r
       await Bun.write(join(output, `${provider}-original.json`), JSON.stringify(original, null, 2));
       assert.equal(original.attributes["agent/lifecycle"], "completed");
       const identity = z.string().parse(original.attributes["agent/identity"]);
-      const wait = z
-        .object({ id: z.string(), status: z.literal("armed") })
-        .parse(await Bun.file(join(cwd, "armed.json")).json());
-      assert.equal(
-        z.object({ status: z.string() }).parse(
-          await call(fixture, workspace, "test", "mail-agent", {
-            command: "show",
-            id: wait.id,
-          }),
-        ).status,
-        "armed",
-      );
       const token = crypto.randomUUID();
       const message = z.object({ id: z.string() }).parse(
         await call(fixture, workspace, "sender", "mail", {
@@ -110,25 +99,17 @@ export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(r
           urgent: true,
         }),
       );
-      const observed = z.object({ reason: z.literal("satisfied") }).parse(
-        await call(fixture, workspace, "test", "await", {
-          query: "mail-agent-wait-settled",
-          params: { id: wait.id },
-          minCount: 1,
-          timeoutSecs: 20,
-        }),
-      );
-      assert.equal(observed.reason, "satisfied");
       const resumed = z
-        .object({ status: z.literal("resumed"), continuation: z.string() })
+        .object({ attributes: z.record(z.string(), z.json()) })
         .parse(
-          await call(fixture, workspace, "test", "mail-agent", { command: "show", id: wait.id }),
+          await call(fixture, workspace, "sender", "node", { command: "show", id: message.id }),
         );
-      await settled(resumed.continuation);
+      const continuationId = z.string().parse(resumed.attributes["mail/wake-run"]);
+      await settled(continuationId);
       const continuation = node.parse(
         await call(fixture, workspace, "test", "agent", {
           command: "show",
-          id: resumed.continuation,
+          id: continuationId,
         }),
       );
       await Bun.write(

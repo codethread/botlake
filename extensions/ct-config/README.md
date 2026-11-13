@@ -33,7 +33,7 @@ import { workAutoBot } from "@botlake/extension-work-auto-bot";
 export default workAutoBot({ agents, work });
 ```
 
-Mail is opt-in, including within this preset. Select `mail` for direct messages; add `mailIdentity` alongside Identity for registered identity links. Select `mailAgents` alongside the exact exported `agents`, `flags`, `references` and Identity descriptors for explicit one-shot resumption. Selecting Mail does not install notification hooks or arm any wait.
+Mail is opt-in, including within this preset. Select `mail` for direct messages; add `mailIdentity` alongside Identity for registered identity links. Select `mailAgents` alongside the exact exported `agents`, `flags`, `references` and Identity descriptors for automatic live-agent delivery and a five-minute post-stop resumption window. Selecting Mail alone does not install notification hooks or enable resumption. No per-turn arming is needed.
 
 ```ts
 import { createLake } from "@botlake/core";
@@ -52,7 +52,7 @@ export const lake = createLake({
 });
 ```
 
-If you use `configureAgents(...)` to replace the exported Agents binding, compose `mailAgents({ agents: yourAgents })` from `@botlake/extension-mail-agents` instead of selecting the preset's `mailAgents` descriptor. See [Mail](../mail/README.md) and [Mail–Agents](../mail-agents/README.md) for operations and wait semantics.
+If you use `configureAgents(...)` to replace the exported Agents binding, compose `mailAgents({ agents: yourAgents, mail, graceSecs: 300 })` from `@botlake/extension-mail-agents` instead of selecting the preset's `mailAgents` descriptor. See [Mail](../mail/README.md) and [Mail–Agents](../mail-agents/README.md) for operations and delivery semantics.
 
 Use `configureWork({ probes })` instead of the configured `work` descriptor to add [trusted lake-local probes](../work/README.md#gates) while retaining the shared references binding.
 

@@ -222,6 +222,7 @@ export class Agents {
         id,
         { type: "RETRY" },
         {
+          [agentAttributes.stoppedAt]: null,
           [agentAttributes.error]: null,
           [agentAttributes.result]: null,
           [agentAttributes.invocation]: null,
@@ -685,7 +686,13 @@ export class Agents {
       if (Object.keys(values).length > 0) this.ctx.graph.setAttributes(id, values);
       const run = this.ctx.graph.update(id, {
         ...update,
-        attributes: { ...removals, ...update.attributes },
+        attributes: {
+          ...removals,
+          ...update.attributes,
+          ...(update.attributes[agentAttributes.settled] === true
+            ? { [agentAttributes.stoppedAt]: this.ctx.clock.now() }
+            : {}),
+        },
       });
       if (runLifecycle(run).hasTag("settled")) this.activity.settle(run);
       return run;

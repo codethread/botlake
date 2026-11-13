@@ -209,6 +209,7 @@ try {
     "@botlake/extension-references": "references",
     "@botlake/extension-agents": "agents",
     "@botlake/extension-mail-agents": "mailAgents",
+    "@botlake/extension-mail": "mail",
     "@botlake/extension-work": "work",
     "@botlake/extension-work-agents": "workAgents",
     "@botlake/extension-work-auto-bot": "workAutoBot",
@@ -222,10 +223,12 @@ import { agents as createAgents, agentReferenceProjections } from "@botlake/exte
 import { work as createWork, workReferenceProjections } from "@botlake/extension-work";
 import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 import { workAutoBot as createWorkAutoBot } from "@botlake/extension-work-auto-bot";
+import { mail as createMail } from "@botlake/extension-mail";
 import { mailAgents as createMailAgents } from "@botlake/extension-mail-agents";
 export const references = createReferences({projections: [...workReferenceProjections, ...agentReferenceProjections]});
 export const agents = createAgents({references});
-export const mailAgents = createMailAgents({agents});
+export const mail = createMail();
+export const mailAgents = createMailAgents({agents, mail});
 export const work = createWork({references});
 export const workAgents = createWorkAgents({checkIntervalMs: 60000});
 export const workAutoBot = createWorkAutoBot({agents, work});
