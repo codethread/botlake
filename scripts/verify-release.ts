@@ -363,6 +363,7 @@ export const workAutoBot = createWorkAutoBot({agents, work});
       path: await realpath(workspace),
       name: "release-verification",
       coreVersion: expectedCoreVersion,
+      lakeWireVersion: 1,
     },
   ]);
   assert.equal(

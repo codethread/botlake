@@ -46,7 +46,7 @@ export const lake = createLake({
 
 `name` defaults to the workspace directory basename, not the package name. An explicit name starts with a letter and contains only letters, digits, underscores or hyphens; active lake names must be unique. `extensions` is required and may be empty. Importing or installing an extension does not activate it; only values in this array are selected.
 
-`botlake lake info` reports `coreVersion` from the lake's installed `@botlake/core/package.json` and the core-defined `lakeWireVersion`. The supervisor checks wire compatibility before activating extensions; a mismatch fails startup with both versions. Declare core requirements in package dependencies and extension peer dependencies; the lake definition needs no version constraint.
+`botlake status` reports `coreVersion` and `lakeWireVersion` per member, as do `botlake lake list`, lake lifecycle responses and `botlake lake status`. The top-level `protocolVersion` describes CLI–supervisor communication, not lake compatibility. `botlake lake info` reports `coreVersion` from the lake's installed `@botlake/core/package.json` and the core-defined `lakeWireVersion`. The supervisor checks wire compatibility before activating extensions; a mismatch fails startup with both versions. Declare core requirements in package dependencies and extension peer dependencies; the lake definition needs no version constraint.
 
 The definition is trusted TypeScript and is imported only during explicit start or restart. Each lake therefore runs the runner and core pinned by its own `.botlake/bun.lock`; the Go supervisor does not parse TypeScript or share a Bun host between lakes.
 

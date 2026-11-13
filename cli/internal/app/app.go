@@ -42,10 +42,11 @@ type Frame struct {
 }
 
 type Member struct {
-	Path        string            `json:"path"`
-	Name        string            `json:"name"`
-	CoreVersion string            `json:"coreVersion"`
-	Env         map[string]string `json:"-"`
+	Path            string            `json:"path"`
+	Name            string            `json:"name"`
+	CoreVersion     string            `json:"coreVersion"`
+	LakeWireVersion int               `json:"lakeWireVersion"`
+	Env             map[string]string `json:"-"`
 }
 
 type lakeOptions struct {
@@ -768,7 +769,7 @@ func (d *Daemon) handle(conn net.Conn) {
 			d.mu.Lock()
 			lake := d.lakes[member.Path]
 			d.mu.Unlock()
-			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true, "coreVersion": lake.info["coreVersion"], "pid": lake.cmd.Process.Pid}})
+			encode(conn, Frame{OK: true, Result: map[string]any{"path": member.Path, "name": member.Name, "ready": true, "coreVersion": member.CoreVersion, "lakeWireVersion": member.LakeWireVersion, "pid": lake.cmd.Process.Pid}})
 		}
 	case "lake-info":
 		d.lifecycle.Lock()

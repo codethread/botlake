@@ -368,7 +368,7 @@ test("failed and competing starts do not publish or retain the database lease", 
       "bad-config",
     );
     expect(await host.botlake(["lake", "list"])).toEqual([
-      { path: await realpath(first), name: "first", coreVersion },
+      { path: await realpath(first), name: "first", coreVersion, lakeWireVersion: 1 },
     ]);
 
     await mkdir(secondHome);

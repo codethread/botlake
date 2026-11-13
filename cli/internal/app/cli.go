@@ -123,8 +123,10 @@ running while using lakes. BL_HOME selects the supervisor home (default:
   botlake status
 
 Show the running botlakeVersion, supervisorBuildId, protocolVersion, Bun host
-readiness and registered members ({path,name,coreVersion}). Each member reports
-its own loaded Core version. activeProcesses maps canonical lake paths to nonterminal
+readiness and registered members ({path,name,coreVersion,lakeWireVersion}).
+Each member reports its own loaded Core version and lake wire protocol version.
+protocolVersion describes CLI-supervisor communication.
+activeProcesses maps canonical lake paths to nonterminal
 supervisor-owned processes ({handle, owner, key}), including custody retained for
 stopped lakes. owner/key are opaque consumer identifiers for further inspection.
 Empty arrays mean no active custody records; terminal evidence is excluded.
@@ -187,7 +189,7 @@ Stop the selected lake without stopping the supervisor.
 		return `Usage:
   botlake lake status [--workspace PATH|NAME]
 
-Report whether the selected lake is ready and the loaded core version.
+Report whether the selected lake is ready, its coreVersion and lakeWireVersion.
 
 ` + common
 	case "info":
@@ -209,7 +211,7 @@ restart. This command neither loads modules nor starts inactive lakes.
 		return `Usage:
   botlake lake list
 
-List currently active lakes as {path,name,coreVersion}, sorted by canonical path.
+List currently active lakes as {path,name,coreVersion,lakeWireVersion}, sorted by canonical path.
 This command does not start or discover inactive workspaces.
 `
 	case "eval":

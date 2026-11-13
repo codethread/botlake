@@ -164,8 +164,8 @@ test("Botlake lake lifecycle publishes validated names and refreshes routes on m
 
     await host.botlake(["restart-host"]);
     expect(await host.botlake(["lake", "list"])).toEqual([
-      { path: await realpath(alpha), name: "next", coreVersion },
-      { path: await realpath(healthy), name: "healthy", coreVersion },
+      { path: await realpath(alpha), name: "next", coreVersion, lakeWireVersion: 1 },
+      { path: await realpath(healthy), name: "healthy", coreVersion, lakeWireVersion: 1 },
     ]);
     expect(nodePage.parse(await host.bl("next", "node", { command: "list" })).nodes).toHaveLength(
       1,

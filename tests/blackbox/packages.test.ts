@@ -78,7 +78,11 @@ test("lake info and status report core-owned versions per lake", async () => {
       installedCoreManifest,
       JSON.stringify({ ...installedCore, version: loadedCoreVersion }),
     );
-    await host.botlake(["lake", "start", "--workspace", workspace]);
+    expect(await host.botlake(["status"])).toMatchObject({ members: [] });
+    expect(await host.botlake(["lake", "start", "--workspace", workspace])).toMatchObject({
+      coreVersion: loadedCoreVersion,
+      lakeWireVersion: 1,
+    });
     expect(await host.botlake(["lake", "info", "--workspace", workspace])).toMatchObject({
       coreVersion: loadedCoreVersion,
       lakeWireVersion: 1,
@@ -86,13 +90,19 @@ test("lake info and status report core-owned versions per lake", async () => {
     expect(await host.botlake(["lake", "status", "--workspace", workspace])).toMatchObject({
       ready: true,
       coreVersion: loadedCoreVersion,
+      lakeWireVersion: 1,
     });
     const cli = z.object({ cli_version: z.string() }).parse(await host.botlake(["--version"]));
     expect(await host.botlake(["status"])).toMatchObject({
       botlakeVersion: cli.cli_version,
       protocolVersion: 1,
       members: [
-        { path: await realpath(workspace), name: "compatibility", coreVersion: loadedCoreVersion },
+        {
+          path: await realpath(workspace),
+          name: "compatibility",
+          coreVersion: loadedCoreVersion,
+          lakeWireVersion: 1,
+        },
       ],
     });
     expect(await host.botlake(["host-status"])).toMatchObject({
@@ -106,8 +116,18 @@ test("lake info and status report core-owned versions per lake", async () => {
     expect(otherCore.version).not.toBe(loadedCoreVersion);
     await host.botlake(["lake", "start", "--workspace", other]);
     const members = [
-      { path: await realpath(workspace), name: "compatibility", coreVersion: loadedCoreVersion },
-      { path: await realpath(other), name: "other", coreVersion: otherCore.version },
+      {
+        path: await realpath(workspace),
+        name: "compatibility",
+        coreVersion: loadedCoreVersion,
+        lakeWireVersion: 1,
+      },
+      {
+        path: await realpath(other),
+        name: "other",
+        coreVersion: otherCore.version,
+        lakeWireVersion: 1,
+      },
     ];
     expect(await host.botlake(["status"])).toMatchObject({ members });
     expect(await host.botlake(["lake", "list"])).toEqual(members);
@@ -116,9 +136,19 @@ test("lake info and status report core-owned versions per lake", async () => {
       join(workspace, "node_modules/@botlake/core/package.json"),
       JSON.stringify({ ...installedCore, version: "9.1.0" }),
     );
-    await host.botlake(["lake", "restart", "--workspace", workspace]);
+    expect(await host.botlake(["lake", "restart", "--workspace", workspace])).toMatchObject({
+      coreVersion: "9.1.0",
+      lakeWireVersion: 1,
+    });
     expect(await host.botlake(["status"])).toMatchObject({
-      members: [{ path: await realpath(workspace), name: "compatibility", coreVersion: "9.1.0" }],
+      members: [
+        {
+          path: await realpath(workspace),
+          name: "compatibility",
+          coreVersion: "9.1.0",
+          lakeWireVersion: 1,
+        },
+      ],
     });
 
     const primer = Bun.spawn(

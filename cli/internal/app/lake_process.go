@@ -199,7 +199,7 @@ func (d *Daemon) startLake(path string, env map[string]string) (*lakeProcess, er
 	if !workspaceName.MatchString(prepared.Name) {
 		return fail(fmt.Errorf("invalid workspace name %q", prepared.Name))
 	}
-	member := Member{Path: path, Name: prepared.Name, CoreVersion: prepared.CoreVersion, Env: env}
+	member := Member{Path: path, Name: prepared.Name, CoreVersion: prepared.CoreVersion, LakeWireVersion: prepared.LakeWireVersion, Env: env}
 	d.mu.Lock()
 	err = d.checkName(member)
 	d.mu.Unlock()
