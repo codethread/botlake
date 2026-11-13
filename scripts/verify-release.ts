@@ -205,7 +205,7 @@ try {
   await mkdir(home);
   await mkdir(bin);
   const configuredExtensions: Record<string, string> = {
-    "@botlake/extension-ct-config": "ctPriming",
+    "@botlake/extension-ct-config": "ctUi",
     "@botlake/extension-references": "references",
     "@botlake/extension-agents": "agents",
     "@botlake/extension-mail-agents": "mailAgents",
@@ -216,7 +216,7 @@ try {
   await writeFile(
     join(config, "bindings.ts"),
     `
-export { priming as ctPriming } from "@botlake/extension-ct-config";
+export { priming as ctPriming, ui as ctUi } from "@botlake/extension-ct-config";
 import { references as createReferences } from "@botlake/extension-references";
 import { agents as createAgents, agentReferenceProjections } from "@botlake/extension-agents";
 import { work as createWork, workReferenceProjections } from "@botlake/extension-work";
@@ -271,7 +271,9 @@ export const workAutoBot = createWorkAutoBot({agents, work});
   );
   await writeFile(
     join(config, "bunfig.toml"),
-    `[install]\nlinker = "isolated"\nminimumReleaseAge = 604800\nminimumReleaseAgeExcludes = ${JSON.stringify(packages.map(({ manifest }) => manifest.name))}\n`,
+    `[install]\nlinker = "isolated"\nminimumReleaseAge = 604800\nminimumReleaseAgeExcludes = ${JSON.stringify(
+      [...packages.map(({ manifest }) => manifest.name), "@botlake/extension-ui"],
+    )}\n`,
   );
   run(
     "bun",
@@ -358,10 +360,17 @@ export const workAutoBot = createWorkAutoBot({agents, work});
     info.extensions.length,
     packages.filter(({ directory }) => directory.startsWith("extensions/")).length,
   );
+  assert.equal(
+    info.extensions.filter(({ source, packageJson }) => source === null && packageJson === null)
+      .length,
+    1,
+    "The configured ct-config UI descriptor is the only extension without direct package provenance",
+  );
   for (const extension of info.extensions) {
     assert.equal(extension.specifier, null);
     assert.equal(extension.module, null);
     for (const path of [extension.source, extension.packageJson]) {
+      if (path === null) continue;
       assert.ok(
         path.startsWith(`${installedRoot}${sep}`),
         `Lake resolved outside the fresh consumer: ${path}`,
@@ -407,6 +416,13 @@ export const workAutoBot = createWorkAutoBot({agents, work});
   );
   assertRecord(acknowledged, "mail acknowledgement");
   assert.equal(acknowledged["status"], "acknowledged");
+  const uiHelp = run(
+    join(bin, "botlake"),
+    ["bin", "run", "--workspace", workspace, "ui", "--help"],
+    workspace,
+    env,
+  );
+  assert.match(uiHelp, /clients|open/u);
   await realpath(join(config, "world.db"));
   run(join(bin, "botlake"), ["lake", "stop", "--workspace", workspace], workspace, env);
   run(join(bin, "botlake"), ["stop"], workspace, env);
@@ -493,8 +509,8 @@ function lakeInfo(value: unknown): {
   extensions: Array<{
     specifier: null;
     module: null;
-    source: string;
-    packageJson: string;
+    source: string | null;
+    packageJson: string | null;
   }>;
 } {
   assertRecord(value, "lake info");
@@ -512,8 +528,9 @@ function lakeInfo(value: unknown): {
       const extensionPackageJson = extension["packageJson"];
       assert.equal(specifier, null);
       assert.equal(module, null);
-      assertNonEmptyString(source, "extension source");
-      assertNonEmptyString(extensionPackageJson, "extension packageJson");
+      if (source !== null) assertNonEmptyString(source, "extension source");
+      if (extensionPackageJson !== null)
+        assertNonEmptyString(extensionPackageJson, "extension packageJson");
       return { specifier, module, source, packageJson: extensionPackageJson };
     }),
   };

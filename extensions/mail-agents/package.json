@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-mail-agents",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Explicit one-shot mail waits for managed agent sessions.",
   "license": "MIT",
   "files": [
