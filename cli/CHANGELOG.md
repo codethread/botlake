@@ -2,6 +2,16 @@
 
 All notable changes to Botlake CLI are documented in this file.
 
+## 0.3.1 - 2026-11-13
+
+### Added
+
+- Report the core-owned lake wire version per lake (58c91a6)
+
+  Each published lake reports lakeWireVersion beside coreVersion in status members, lake list, selected-lake status and lifecycle acknowledgements. The value comes from the validated runner handshake, not lake configuration. Top-level protocolVersion still describes CLI-supervisor requests. Startup wire mismatches report supervisor and lake versions before extension activation.
+
+  - **Adoption (optional):** Upgrade both CLIs and explicitly restart the supervisor after active work finishes to see members\[\].lakeWireVersion. Runtime 0.4.0 independently removes minimumCore from lake configuration; remove that field before upgrading the runtime. Core requirements belong in package dependencies and extension peer dependencies.
+
 ## 0.3.0 - 2026-11-13
 
 ### Changed
