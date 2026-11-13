@@ -2,6 +2,16 @@
 
 All notable changes to Botlake CLI are documented in this file.
 
+## 0.3.2 - 2026-11-13
+
+### Fixed
+
+- Omit empty lake process lists from status (f812606)
+
+  botlake status includes a lake in activeProcesses only when it has nonterminal supervisor-owned processes. Nonempty lists, including custody retained for stopped lakes, are unchanged. With no active custody records, activeProcesses is an empty object.
+
+  - **Adoption (optional):** Upgrade both CLIs and explicitly restart the supervisor after active work finishes to receive the quieter status output. Installing the release does not restart a running supervisor.
+
 ## 0.3.1 - 2026-11-13
 
 ### Added
