@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-agents",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Managed headless agent runs, provider seats and native session observations.",
   "license": "MIT",
   "files": [

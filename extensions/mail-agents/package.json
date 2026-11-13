@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-mail-agents",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Automatic live mail delivery and grace-period agent resumption.",
   "license": "MIT",
   "files": [
