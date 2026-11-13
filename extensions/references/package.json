@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-references",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Source-owned node summaries and cross-lake subscriptions.",
   "license": "MIT",
   "files": [

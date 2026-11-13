@@ -396,11 +396,47 @@ export const workAutoBot = createWorkAutoBot({agents, work});
     ),
   );
   assert.equal(shown.title, "Release archive smoke");
+  const refusedMail: unknown = JSON.parse(
+    run(
+      join(bin, "bl"),
+      ["--workspace", workspace, "mail", "send", "inactive-recipient", "Inactive mail", "body"],
+      workspace,
+      env,
+    ),
+  );
+  assertRecord(refusedMail, "refused mail");
+  assert.equal(refusedMail["status"], "undeliverable");
+  assert.equal(refusedMail["reason"], "recipient_inactive");
+  const nativeSession: unknown = JSON.parse(
+    run(
+      join(bin, "bl"),
+      [
+        "--workspace",
+        workspace,
+        "agent",
+        "native",
+        "--provider",
+        "codex",
+        "--native-session-id",
+        `release-${crypto.randomUUID()}`,
+        "--cwd",
+        workspace,
+        "--event",
+        "session-start",
+      ],
+      workspace,
+      env,
+    ),
+  );
+  assertRecord(nativeSession, "native session");
+  const recipient = nativeSession["identity"];
+  assertNonEmptyString(recipient, "recipient identity");
+  env.BL_ACTOR = recipient;
   const mailBody = `Release Mail ${crypto.randomUUID()}`;
   const mailResult: unknown = JSON.parse(
     run(
       join(bin, "bl"),
-      ["--workspace", workspace, "mail", "send", "release-verifier", "Release mail", mailBody],
+      ["--workspace", workspace, "mail", "send", recipient, "Release mail", mailBody],
       workspace,
       env,
     ),
