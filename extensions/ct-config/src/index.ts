@@ -42,7 +42,7 @@ export const mail = createMail();
 
 export const mailIdentity = createMailIdentity();
 
-export const mailAgents = createMailAgents({ agents });
+export const mailAgents = createMailAgents({ agents, mail });
 
 export const priming = createPriming({
   work: [

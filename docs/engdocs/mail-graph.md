@@ -1,6 +1,6 @@
 # Graph Mail verification
 
-Mail uses graph nodes and attributes as its only storage. Optional Mail–Identity owns addressing edges; optional Mail–Agents owns explicit one-shot continuation permissions and composes the configured Agents runtime binding. The dedicated-table prototype was removed after comparison. Its historical measurements remain below; no source, runtime flag or compatibility layer for it is retained.
+Mail uses graph nodes and attributes as its only storage. Optional Mail–Identity owns addressing edges; optional Mail–Agents composes the configured Mail/Agents runtime bindings for automatic live delivery and grace-period resumption. The dedicated-table prototype was removed after comparison. Its historical measurements remain below; no source, runtime flag or compatibility layer for it is retained.
 
 The reply model takes inspiration from [Beads messaging](https://github.com/gastownhall/beads/blob/main/engdocs/messaging.md): replies point to their parent without requiring a thread entity. CC, rooms and group receipt semantics are outside this change. Public contracts live in the [Mail](../../extensions/mail/README.md), [Mail–Identity](../../extensions/mail-identity/README.md), [Mail–Agents](../../extensions/mail-agents/README.md) and [plugin](../../plugins/mail/README.md) READMEs.
 
@@ -16,7 +16,7 @@ qlock exec --lock /tmp/agent-cpu.lock -w 60 -- bun run test
 qlock exec --lock /tmp/agent-cpu.lock -w 60 -- bun scripts/mail-graph/benchmark.ts
 ```
 
-`smoke.ts` exercises real CLI operations: arrival during await, timeout, ack observation, direct/late/idempotent delivery state, atomic recipient receipts, replies, context links, late identity registration, derived-edge ownership, restart, lean paging and no mail-specific tables. `lifecycle-smoke.ts` uses real SQLite and the existing ManualClock/injected-custody pattern to check explicit enrollment, identity, settlement, restart/coalescing, cancellation, expiry, failed runs, completed targets, competing continuations and external session writers (including idle turns and resumable retries). Both deterministic scripts also run through `bun run test`; they are retained blackbox verification rather than temporary implementation unit tests.
+`smoke.ts` exercises real CLI operations: arrival during await, timeout, ack observation, direct/late/idempotent delivery state, atomic recipient receipts, replies, context links, late identity registration, derived-edge ownership, restart, lean paging and no mail-specific tables. `lifecycle-smoke.ts` uses real SQLite and the existing ManualClock/injected-custody pattern to check stop timestamps, configurable grace windows, automatic resumption, settlement, restart/coalescing, prevention of repeated wakes, terminal undeliverable outcomes, cancellation/failure, completed targets, manual continuations and external session custody. Both deterministic scripts also run through `bun run test`; they are retained blackbox verification rather than temporary implementation unit tests.
 
 Native tests require authenticated Codex and Pi with Luna available. Set `BL_MAIL_PI_BIN` to the native Pi executable when a shell wrapper does not support headless flags; otherwise it defaults to `pi`. Each invocation explicitly loads its required adapters. No global configuration is changed.
 
@@ -27,7 +27,7 @@ bun scripts/mail-graph/stress.ts all
 bun scripts/mail-graph/stress.ts orchestrator deadline
 ```
 
-The direct pair verified tokens and acknowledgements across Codex/Pi. The lifecycle pair verified that both native harnesses can arm a wait, exit, receive mail afterward, and resume the same native session/identity to acknowledge mail and save its exact body. The integration does not force agents to arm, and cannot validate task-specific payloads.
+The direct pair verified tokens and acknowledgements across Codex/Pi. The lifecycle script checks that both native harnesses can exit, receive mail afterward, and automatically resume the same native session/identity to acknowledge mail and save its exact body. Native authentication is required; deterministic lifecycle verification needs no model calls.
 
 ## Historical comparison
 
@@ -60,12 +60,12 @@ The deadline trial was **not a full task-correctness pass**. A worker's send com
 
 Eleven agents executed the documented await pattern (119 calls), including two that still exited early. Some agents requested a wait operation that already existed; several guessed `mail help` instead of `help mail send`. Appended hook notices were sometimes confused with the preceding command's snapshot. Narrative claims also miscounted receipt states. Stored messages and artifacts, rather than self-reported success, determined the outcomes. There were no observed Mail hook failures or runner-cap kills. No product changes were made between those comparison trials.
 
-Graph evidence: `out/mail-graph/stress/2026-11-06T18-27-48.810Z/`, `2026-11-06T18-36-30.870Z/`, and `out/mail-graph/stress-comparison.json`. The subsequent Mail–Agents change addresses explicit waiting across completed turns; its deterministic and native lifecycle smoke results are separate from this historical stress comparison.
+Graph evidence: `out/mail-graph/stress/2026-11-06T18-27-48.810Z/`, `2026-11-06T18-36-30.870Z/`, and `out/mail-graph/stress-comparison.json`. Automatic Mail–Agents delivery addresses messages arriving across completed turns; its lifecycle verification is separate from this historical stress comparison.
 
 ## Delivery limits
 
-Delivered means the plugin reports notification handoff, not host-confirmed context consumption. Both harnesses have a crash gap; concurrent hooks may duplicate notices. Unacknowledged messages remain in the inbox, and lifecycle resumption observes pending mail regardless of notification status. Identity is attribution, not authentication. Acknowledgement means seen and never proves agreement, correct payload verification, stopped processes or task completion.
+Delivered means the plugin reports notification handoff, not host-confirmed context consumption. Both harnesses have a crash gap; concurrent hooks may duplicate notices. Deliverable unacknowledged messages remain in the inbox. Only unannounced mail that has not already caused a wake can trigger resumption; undeliverable records are terminal and leave the live inbox. Identity is attribution, not authentication. Acknowledgement means seen and never proves agreement, correct payload verification, stopped processes or task completion.
 
 ## Independent review
 
-Sol and DeepSeek reviewed correctness independently. The resolved findings were ownership of derived identity edges, invocation-scoped retry enrollment, and Agents ignoring external writers when resuming a session. Both agreed that external sessions retain their writer claim until a session-end observation. The regression reproduces the external-writer failure before the fix, then checks direct resume, automatic Mail admission, idle turns, end/release and retry. Pi notification handoff remains a documented limitation rather than a host-confirmed delivery guarantee. No group subscription or speculative lifecycle machinery was added.
+Sol and DeepSeek reviewed correctness independently. The resolved findings were ownership of derived identity edges, retry lifecycle handling, and Agents ignoring external writers when resuming a session. Both agreed that external sessions retain their writer claim until a session-end observation. The regression reproduces the external-writer failure before the fix, then checks direct resume, automatic Mail admission, idle turns, end/release and retry. Pi notification handoff remains a documented limitation rather than a host-confirmed delivery guarantee. No group subscription or speculative lifecycle machinery was added.
