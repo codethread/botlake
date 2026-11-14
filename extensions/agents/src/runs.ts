@@ -377,7 +377,7 @@ export class Agents {
 
   private create(raw: StartRun, parent?: Node, resumeSession = true): Node {
     const input = startSchema.parse(raw);
-    const cwd = realpathSync(input.cwd);
+    const cwd = admissionDirectory(input.cwd);
     const request = Object.fromEntries(
       Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
     );
@@ -769,6 +769,23 @@ export class Agents {
 }
 
 // -- Private helpers --
+
+function admissionDirectory(cwd: string): string {
+  try {
+    return realpathSync(cwd);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      throw new Fault("cwd", `Agent working directory is unavailable: ${cwd}`, {
+        cwd,
+        code: error.code,
+      });
+    throw error;
+  }
+}
 
 function fingerprint(value: unknown): string {
   return createHash("sha256")

@@ -143,6 +143,8 @@ bl --workspace DEST agent show RUN_ID
 
 Start `DEST` with its required extensions/seats first. Its configuration applies, including `BL_WORKSPACE=DEST` for the child. For task dependencies, use Work's [cross-lake links](../work/README.md#relationships); remote task closure affects readiness, not coordinator task completion.
 
+Admission rejects a missing cwd or a non-directory parent path component with a typed `cwd` fault. No native session is relocated and no fresh worker is substituted. Automatic consumers such as Mail can report this expected admission refusal without failing lake activation; unexpected filesystem defects still propagate.
+
 Resume, resumable retry and resumed launch reject another tracked writer for the same provider/session. An external session keeps that claim while working, idle or unknown; only a recorded session end releases it. A missing end observation can therefore block resumption after an external process crashes.
 
 ## Following another lake's run

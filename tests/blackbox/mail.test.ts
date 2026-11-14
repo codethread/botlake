@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -114,3 +115,111 @@ export const lake=createLake({name:"ct-mail", extensions:[identity, batteries, a
     await host.close();
   }
 }, 60_000);
+
+for (const failure of ["missing", "not-directory"] as const)
+  test(`packed Mail startup rejects ${failure} resume cwd without failing lake activation`, async () => {
+    const host = await system();
+    try {
+      const workspace = await host.workspace(`mail-cwd-${failure}`, [
+        "@botlake/extension-batteries",
+        "@botlake/extension-identity",
+        "./agents.ts",
+        "./mail.ts",
+      ]);
+      await Bun.write(
+        join(workspace, "agents.ts"),
+        `import {agents} from "@botlake/extension-agents";
+export default agents({providers:[{name:"codex",doc:"Cwd admission fixture",prepare(){return {command:[${JSON.stringify(process.execPath)},"-e","console.log('cwd-fixture-session')"],stdin:"",env:{}}},finish(_run,code,stdout){return {success:code===0,result:"done",error:null,sessionId:stdout.trim()}}}]});`,
+      );
+      await Bun.write(
+        join(workspace, "mail.ts"),
+        `import {mail} from "@botlake/extension-mail"; export default mail();`,
+      );
+      await host.botlake(["lake", "start", "--workspace", workspace]);
+      const worktree = join(workspace, "removed-worktree");
+      const cwd = join(worktree, "nested");
+      await mkdir(cwd, { recursive: true });
+      const run = z.object({ id: z.string() }).parse(
+        await host.bl(workspace, "agent", {
+          command: "start",
+          seat: "codex",
+          cwd,
+          prompt: "Complete normally without task automation",
+        }),
+      );
+      expect(
+        await host.bl(workspace, "await", {
+          query: "agent-run-settled",
+          params: { runId: run.id },
+          minCount: 1,
+          timeoutSecs: 10,
+        }),
+      ).toMatchObject({ reason: "satisfied" });
+      const observed = z
+        .object({
+          attributes: z.object({
+            "agent/identity": z.string(),
+            "agent/lifecycle": z.literal("completed"),
+          }),
+        })
+        .parse(await host.bl(workspace, "agent", { command: "show", id: run.id }));
+      const recipient = observed.attributes["agent/identity"];
+      // Mail alone stores unannounced mail; enabling routing must classify it during resource startup.
+      const message = z.object({ id: z.string(), status: z.literal("sent") }).parse(
+        await host.bl(workspace, "mail", {
+          command: "send",
+          to: recipient,
+          subject: "Pending at startup",
+          body: "Read after resume",
+        }),
+      );
+      await host.botlake(["lake", "stop", "--workspace", workspace]);
+      await rm(worktree, { recursive: true });
+      if (failure === "not-directory") await Bun.write(worktree, "No longer a directory");
+      await Bun.write(
+        join(workspace, ".botlake/lake.ts"),
+        `import {createLake} from "@botlake/core";
+import batteries from "@botlake/extension-batteries";
+import identity from "@botlake/extension-identity";
+import {mailAgents} from "@botlake/extension-mail-agents";
+import agents from "../agents.ts";
+import mail from "../mail.ts";
+export const lake=createLake({name:${JSON.stringify(`mail-cwd-${failure}`)},extensions:[batteries,identity,agents,mail,mailAgents({agents,mail,graceSecs:300})]});`,
+      );
+      await host.botlake(["lake", "start", "--workspace", workspace]);
+      const refused = z
+        .object({
+          status: z.literal("undeliverable"),
+          reason: z.literal("resume_rejected"),
+          detail: z.string(),
+        })
+        .parse(await host.bl(workspace, "mail", { command: "read", id: message.id }));
+      expect(refused.detail).toContain(cwd);
+      expect(refused.detail).toContain("working directory is unavailable");
+      expect(await host.bl(workspace, "agent", { command: "list" })).toMatchObject({ total: 1 });
+      expect(
+        await host.bl(
+          workspace,
+          "agent",
+          { command: "resume", id: run.id, prompt: "Manual resume" },
+          false,
+        ),
+      ).toContain("working directory is unavailable");
+      expect(
+        await host.bl(workspace, "mail", {
+          command: "send",
+          to: recipient,
+          subject: "Fresh refusal",
+          body: "No fallback",
+        }),
+      ).toMatchObject({ status: "undeliverable", reason: "resume_rejected" });
+      await host.botlake(["lake", "restart", "--workspace", workspace]);
+      expect(await host.bl(workspace, "agent", { command: "list" })).toMatchObject({ total: 1 });
+      expect(await host.bl(workspace, "mail", { command: "read", id: message.id })).toMatchObject({
+        status: "undeliverable",
+        reason: "resume_rejected",
+      });
+    } finally {
+      await host.close();
+    }
+  }, 60_000);
