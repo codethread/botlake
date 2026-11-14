@@ -74,7 +74,7 @@ export const agentAttributes = {
 export const agentRelations = {
   /** Run to its task; admission guidance, not the Work assignment ledger. */
   serves: "serves",
-  /** Resumed run to the earlier run whose native session it continues. */
+  /** Continuation to its parent: verified session resume or explicit pre-session launch recovery. */
   continues: "continues",
 } as const;
 

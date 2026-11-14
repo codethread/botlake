@@ -2,6 +2,7 @@ import {
   canonical,
   Fault,
   jsonSchema,
+  q,
   requireValue,
   type Context,
   type Graph,
@@ -11,11 +12,14 @@ import {
 import {
   workStore,
   workNamespace,
+  workRelations,
   gateService,
   type ProbeDefinition,
   type GateStatus,
   type Page,
   type WorkStore,
+  type AbandonmentCooperation,
+  type AbandonmentRequest,
   type WorkSummary,
 } from "@botlake/extension-work";
 import { match } from "ts-pattern";
@@ -63,6 +67,7 @@ type PublicationEntry = z.infer<typeof publicationEntrySchema>;
 type PreparedGate = Awaited<ReturnType<ReturnType<typeof gateService>["prepare"]>>;
 
 const briefSchema = z.strictObject({ title: text, description: z.string() });
+const abandonmentSchema = z.strictObject({ by: text, at: z.iso.datetime(), reason: text });
 const showOptionsSchema = z.compile(
   z.strictObject({
     limit: z.number().int().min(1).max(100).default(20),
@@ -310,6 +315,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
 
   function checkpointGate(id: string, status?: GateStatus): boolean {
     const run = containingRun(id);
+    if (run.attributes[workflowAttributes.abandonment] !== undefined) return false;
     const loaded = loadRun(run);
     return graph.atomic(() => {
       const node = graph.show(id);
@@ -355,7 +361,84 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
     }, authority);
   }
 
-  return { catalog, start, show, complete, reactToGate, reconcile: resume };
+  return { catalog, start, show, complete, abandon, reactToGate, reconcile: resume };
+
+  function abandon(request: AbandonmentRequest): AbandonmentCooperation | undefined {
+    const target = graph.show(request.id);
+    const selectedRun =
+      target.attributes[workflowAttributes.root] === true
+        ? target
+        : target.attributes[workflowAttributes.visit] === true
+          ? containingRun(target.id)
+          : undefined;
+    if (
+      selectedRun?.state === "closed" &&
+      selectedRun.attributes[workflowAttributes.abandonment] === undefined
+    )
+      throw new Fault("workflow-abandonment", "Completed workflows cannot be abandoned", {
+        run: selectedRun.id,
+      });
+    const workId = selectedRun === undefined ? request.id : runContext(selectedRun);
+    const related = graph
+      .all({
+        where: q.eq(q.attr(workflowAttributes.root), true),
+        includeArchived: true,
+      })
+      .filter((run) => containsWork(workId, runContext(run)));
+    if (related.length === 0) return undefined;
+
+    // Planning is read-only. Work applies all domain changes and containment closure
+    // synchronously in one transaction, including reason-conflict rollback.
+    const terminalized = related.filter((run) => {
+      const saved = run.attributes[workflowAttributes.abandonment];
+      if (saved !== undefined && abandonmentSchema.parse(saved).reason !== request.reason)
+        throw new Fault("workflow-abandonment", "Abandonment retry must use the original reason", {
+          run: run.id,
+        });
+      return run.state !== "closed" || saved !== undefined;
+    });
+    return {
+      workId,
+      details: serialise({ workflows: terminalized.map((run) => run.id) }),
+      apply() {
+        for (const run of terminalized) if (run.state !== "closed") terminalize(run, request);
+      },
+    };
+  }
+
+  function terminalize(run: Node, request: AbandonmentRequest): void {
+    graph.atomic(() => {
+      for (const visit of active(run.id))
+        graph.disconnect(run.id, visit.node.id, workflowRelations.active);
+      graph.update(run.id, {
+        state: "closed",
+        attributes: {
+          [workflowAttributes.publication]: null,
+          [workflowAttributes.abandonment]: {
+            by: request.by,
+            at: new Date(ctx.clock.now()).toISOString(),
+            reason: request.reason,
+          },
+        },
+      });
+    }, authority);
+  }
+
+  function containsWork(ancestor: string, descendant: string): boolean {
+    if (ancestor === descendant) return true;
+    let current = descendant;
+    while (true) {
+      let parent: string | undefined;
+      for (const edge of graph.edges(current, workRelations.parentOf))
+        if (edge.to_id === current) {
+          parent = edge.from_id;
+          break;
+        }
+      if (parent === undefined) return false;
+      if (parent === ancestor) return true;
+      current = parent;
+    }
+  }
 
   function show(...args: Parameters<typeof showUnlocked>): Promise<Json> {
     const node = graph.show(args[0]);
@@ -430,6 +513,7 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
   }
 
   async function reconcile(id: string): Promise<void> {
+    if (workflowRun(graph, id).attributes[workflowAttributes.abandonment] !== undefined) return;
     while (true) {
       await publish(id);
       // This caller owns the run queue. Deliver one committed gate internally, then
@@ -485,6 +569,9 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
         prepared.set(entry.identity, creates);
       }
       graph.atomic(() => {
+        // Abandonment may supersede this frozen frontier while probe preparation
+        // awaits. Never publish captured work after that terminal transaction.
+        if (workflowRun(graph, id).attributes[workflowAttributes.abandonment] !== undefined) return;
         const retained = new Map(active(id).map((visit) => [visit.key, visit]));
         const keys = new Set(publication.entries.map((entry) => entry.key));
         for (const old of [...retained.values()].toReversed()) {
@@ -708,7 +795,9 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       assignee: summary.assignee,
       audience: summary.audience,
       priority: summary.priority,
-      actionPending: node.attributes[workflowAttributes.consumed] !== true,
+      actionPending:
+        node.attributes[workflowAttributes.consumed] !== true &&
+        containingRun(node.id).attributes[workflowAttributes.abandonment] === undefined,
       gates,
     };
   }
@@ -721,16 +810,19 @@ export function workflowService(ctx: Context, catalogue: Catalogue) {
       id: run.id,
       context: runContext(run),
       title: work.get(runContext(run)).title,
+      abandonment: run.attributes[workflowAttributes.abandonment] ?? null,
       status:
-        run.state === "closed"
-          ? "complete"
-          : activeTasks.some((visit) =>
-                work
-                  .inspect(visit.node.id)
-                  .prerequisites.every((prerequisite) => prerequisite.state === "closed"),
-              )
-            ? "active"
-            : "blocked",
+        run.attributes[workflowAttributes.abandonment] !== undefined
+          ? "abandoned"
+          : run.state === "closed"
+            ? "complete"
+            : activeTasks.some((visit) =>
+                  work
+                    .inspect(visit.node.id)
+                    .prerequisites.every((prerequisite) => prerequisite.state === "closed"),
+                )
+              ? "active"
+              : "blocked",
     };
   }
 

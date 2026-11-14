@@ -108,6 +108,14 @@ bl agent reconcile
 
 Accepted runs freeze resolved settings and prompt text across retry/resume. Flag changes affect new selection only. `--request-id` enables exact replay of the original accepted request, even if its alias is now disabled. External sessions have null substatus/settled and no managed stop authority. Run success never closes its task. `agent/stopped-at` records when custody settled for the invocation, independently of success; retry clears it. Consumers such as Mail calculate their own grace periods from that timestamp.
 
+### Automatic continuation integrations
+
+Typed consumers use `resumeAutomatically(id, prompt, requestId)` for automatic native continuation. It shares `resume`'s session verification, idempotent replay and one-child fence. Domain extensions can register synchronous `guardAutomaticContinuation(parent)` callbacks; they run in the admission transaction before a new automatic continuation. Explicit manual `resume` (including the CLI) does not invoke those policies. `sessionAvailable(id)` reads tracked session-writer custody; idle external turns still own their session.
+
+`recoverLaunch(id, prompt, requestId)` is a narrow automatic fresh-launch path: only settled preparation/launch failures with **no native session** qualify. It creates a new run with frozen settings/cwd and a `continues` edge, but no inherited identity/session. It invokes the same guards and cannot compete with an already accepted resume. Execution/session failures and cancellation do not qualify. This does not loosen generic `retry` or provide a CLI retry bypass. The `continues` relation therefore records both verified session resumption and explicit pre-session launch recovery; `agent/resumes` distinguishes them.
+
+[Work Auto Bot](../work-auto-bot/README.md) supplies its task eligibility and bounded policy through this seam. Agents itself installs no retry loop or Work policy.
+
 ## Working across repositories
 
 ### Execute elsewhere, keep ownership here
@@ -134,6 +142,8 @@ bl --workspace DEST agent show RUN_ID
 ```
 
 Start `DEST` with its required extensions/seats first. Its configuration applies, including `BL_WORKSPACE=DEST` for the child. For task dependencies, use Work's [cross-lake links](../work/README.md#relationships); remote task closure affects readiness, not coordinator task completion.
+
+Admission rejects a missing cwd or a non-directory parent path component with a typed `cwd` fault. No native session is relocated and no fresh worker is substituted. Automatic consumers such as Mail can report this expected admission refusal without failing lake activation; unexpected filesystem defects still propagate.
 
 Resume, resumable retry and resumed launch reject another tracked writer for the same provider/session. An external session keeps that claim while working, idle or unknown; only a recorded session end releases it. A missing end observation can therefore block resumption after an external process crashes.
 

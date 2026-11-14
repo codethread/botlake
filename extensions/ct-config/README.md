@@ -52,6 +52,8 @@ export const lake = createLake({
 });
 ```
 
+Preset 0.5.1 requires Agents, Mail–Agents and Work 0.4.1 or compatible newer patches. This shares automatic-continuation arbitration with Work Auto Bot 0.5.0 when explicitly selected; it does not opt tasks in or activate recovery by itself. Work adds reason-bearing terminal abandonment; select Workflow 0.4.1 for cooperative withdrawal of authored runs. Core and the unchanged runtime packages remain compatible at 0.4.0. See [Work Auto Bot](../work-auto-bot/README.md) for the initial-plus-three policy, pauses and one-shot Oracle diagnosis.
+
 If you use `configureAgents(...)` to replace the exported Agents binding, compose `mailAgents({ agents: yourAgents, mail, graceSecs: 300 })` from `@botlake/extension-mail-agents` instead of selecting the preset's `mailAgents` descriptor. See [Mail](../mail/README.md) and [Mail–Agents](../mail-agents/README.md) for operations and delivery semantics.
 
 Use `configureWork({ probes })` instead of the configured `work` descriptor to add [trusted lake-local probes](../work/README.md#gates) while retaining the shared references binding.

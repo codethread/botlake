@@ -18,6 +18,8 @@ export const workflowAttributes = {
   checkpointBy: "workflow/checkpoint-by",
   /** Frozen frontier awaiting atomic Work publication, or null after publication. */
   publication: "workflow/publication",
+  /** Terminal abandonment attribution, absent for running or completed runs. */
+  abandonment: "workflow/abandonment",
   /** Durable identity of this logical visit, independent of its Work node. */
   identity: "workflow/identity",
   /** Marks a published state or child actor visit. */

@@ -270,6 +270,19 @@ export interface WorkTopology {
   omittedLinks: number;
 }
 
+export interface AbandonmentResult {
+  /** Original terminal attribution, retained unchanged on retries. */
+  abandonment: Attribution & { reason: string };
+  /** Requested work item after terminal closure. */
+  item: WorkItem;
+  /** Open tasks closed without resolving their criteria. */
+  tasks: string[];
+  /** Open gates terminally dismissed. */
+  gates: string[];
+  /** Open groups closed after their descendants. */
+  groups: string[];
+}
+
 export interface WorkDetail {
   item: WorkItem;
   context: Group[];
@@ -283,6 +296,7 @@ export interface WorkDetail {
         criteria: { id: string; changes: CriterionChange[] }[];
         closures: Attribution[];
         reopenings: (Attribution & { reason: string })[];
+        abandonments: (Attribution & { reason: string })[];
       }
     | undefined;
 }
@@ -297,6 +311,7 @@ export interface WorkStore {
   tree(options?: WorkTreeOptions): WorkTopology;
   graph(options?: WorkGraphOptions): WorkTopology;
   close(id: string, by?: string): WorkItem;
+  abandon(id: string, reason: string, by?: string): AbandonmentResult;
   gates: {
     create(input: {
       title: string;

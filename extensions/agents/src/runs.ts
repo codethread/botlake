@@ -73,6 +73,7 @@ export class Agents {
   private readonly sessions: NativeSessions;
   private readonly references: References | undefined;
   private reconcileTask: Promise<void> | undefined;
+  private readonly automaticContinuationGuards = new Set<(parent: Node) => void>();
 
   constructor(
     private readonly ctx: Context,
@@ -246,17 +247,46 @@ export class Agents {
     }, this.authority);
   }
 
+  /** Domain policies run synchronously inside continuation admission, never on manual resume. */
+  guardAutomaticContinuation(guard: (parent: Node) => void): void {
+    this.automaticContinuationGuards.add(guard);
+  }
+
   resume(id: string, prompt: string, requestId?: string): Node {
+    return this.continueRun(id, prompt, requestId, "manual");
+  }
+
+  resumeAutomatically(id: string, prompt: string, requestId: string): Node {
+    return this.continueRun(id, prompt, requestId, "automatic");
+  }
+
+  /** Fresh continuation only when custody proves no native worker ever started. */
+  recoverLaunch(id: string, prompt: string, requestId: string): Node {
+    return this.continueRun(id, prompt, requestId, "recover-launch");
+  }
+
+  private continueRun(
+    id: string,
+    prompt: string,
+    requestId: string | undefined,
+    mode: "manual" | "automatic" | "recover-launch",
+  ): Node {
     return this.ctx.graph.atomic(() => {
       const parent = this.run(id);
       if (
         parent.attributes[agentAttributes.external] === true ||
         !runLifecycle(parent).hasTag("settled") ||
-        parent.attributes[agentAttributes.sessionConfirmed] !== true
+        (mode === "recover-launch"
+          ? (parent.attributes[agentAttributes.lifecycle] !== "preparationFailed" &&
+              parent.attributes[agentAttributes.lifecycle] !== "launchFailed") ||
+            parent.attributes[agentAttributes.sessionId] !== undefined
+          : parent.attributes[agentAttributes.sessionConfirmed] !== true)
       )
         throw new Fault(
           "resume",
-          "Resume requires a settled managed run with verified native session",
+          mode === "recover-launch"
+            ? "Launch recovery requires a settled preparation/launch failure without a native session"
+            : "Resume requires a settled managed run with verified native session",
         );
 
       const existing = this.ctx.graph
@@ -273,7 +303,8 @@ export class Agents {
 
         throw new Fault("resume", "Run already has an accepted continuation");
       }
-      this.requireSessionAvailable(parent);
+      if (mode !== "manual") for (const guard of this.automaticContinuationGuards) guard(parent);
+      if (mode !== "recover-launch") this.requireSessionAvailable(parent);
 
       const target = this.ctx.graph
         .edges(id, agentRelations.serves)
@@ -289,6 +320,7 @@ export class Agents {
           context: attributesSchema.parse(parent.attributes[agentAttributes.context]),
         },
         parent,
+        mode !== "recover-launch",
       );
       this.ctx.graph.connect(child.id, id, agentRelations.continues);
 
@@ -343,15 +375,15 @@ export class Agents {
 
   // -- Private helpers --
 
-  private create(raw: StartRun, parent?: Node): Node {
+  private create(raw: StartRun, parent?: Node, resumeSession = true): Node {
     const input = startSchema.parse(raw);
-    const cwd = realpathSync(input.cwd);
+    const cwd = admissionDirectory(input.cwd);
     const request = Object.fromEntries(
       Object.entries({ ...input, cwd }).filter(([, value]) => value !== undefined),
     );
 
     const hash = fingerprint({
-      operation: parent === undefined ? "start" : "resume",
+      operation: parent === undefined ? "start" : resumeSession ? "resume" : "recover-launch",
       parent: parent?.id ?? null,
       input: request,
     });
@@ -419,13 +451,13 @@ export class Agents {
         [agentAttributes.prompt]: input.prompt,
         [agentAttributes.policy]: input.policy,
         [agentAttributes.context]: input.context,
-        ...(parent === undefined
+        ...(parent === undefined || !resumeSession
           ? {}
           : {
               [agentAttributes.sessionId]: text.parse(parent.attributes[agentAttributes.sessionId]),
               [agentAttributes.identity]: text.parse(parent.attributes[agentAttributes.identity]),
             }),
-        [agentAttributes.resumes]: parent !== undefined,
+        [agentAttributes.resumes]: parent !== undefined && resumeSession,
         [agentAttributes.sessionConfirmed]: false,
         [agentAttributes.integration]: "unobserved",
         [agentAttributes.settings]: jsonSchema.parse(
@@ -573,24 +605,28 @@ export class Agents {
     );
   }
 
-  private requireSessionAvailable(candidate: Node): void {
+  /** Whether a verified session has no other tracked writer; silence never releases custody. */
+  sessionAvailable(id: string): boolean {
+    const candidate = this.run(id);
     const sessionId = text.parse(candidate.attributes[agentAttributes.sessionId]);
-    if (
-      this.runs().some((run) => {
-        if (
-          run.id === candidate.id ||
-          run.attributes[agentAttributes.provider] !==
-            candidate.attributes[agentAttributes.provider] ||
-          run.attributes[agentAttributes.sessionId] !== sessionId
-        )
-          return false;
-        const liveness = agentLiveness(run);
-        // An idle external turn still owns its session; only session-end releases it.
-        return liveness.kind === "external"
-          ? liveness.observation?.activity !== "ended"
-          : !liveness.settled;
-      })
-    )
+    return !this.runs().some((run) => {
+      if (
+        run.id === candidate.id ||
+        run.attributes[agentAttributes.provider] !==
+          candidate.attributes[agentAttributes.provider] ||
+        run.attributes[agentAttributes.sessionId] !== sessionId
+      )
+        return false;
+      const liveness = agentLiveness(run);
+      // An idle external turn still owns its session; only session-end releases it.
+      return liveness.kind === "external"
+        ? liveness.observation?.activity !== "ended"
+        : !liveness.settled;
+    });
+  }
+
+  private requireSessionAvailable(candidate: Node): void {
+    if (!this.sessionAvailable(candidate.id))
       throw new Fault("resume", "Native session already has an active writer");
   }
 
@@ -733,6 +769,23 @@ export class Agents {
 }
 
 // -- Private helpers --
+
+function admissionDirectory(cwd: string): string {
+  try {
+    return realpathSync(cwd);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      throw new Fault("cwd", `Agent working directory is unavailable: ${cwd}`, {
+        cwd,
+        code: error.code,
+      });
+    throw error;
+  }
+}
 
 function fingerprint(value: unknown): string {
   return createHash("sha256")
