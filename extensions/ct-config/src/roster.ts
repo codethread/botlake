@@ -93,7 +93,7 @@ export const roster = {
     sol: {
       doc: `GPT Sol. Complex implementation, hostile-environment debugging and delegated coordination.`,
       parent: "pi",
-      model: "openai-codex/gpt-6-sol",
+      model: "openai-codex/gpt-6.1-sol",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
