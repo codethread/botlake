@@ -78,10 +78,10 @@ async function directPhase(): Promise<void> {
     async acknowledge() {},
   };
 
-  async function open(enabled = true): Promise<Runtime> {
+  async function open(enabled = true, workspace = dir): Promise<Runtime> {
     const next = new Runtime({
       database: join(dir, "lake.sqlite"),
-      workspace: dir,
+      workspace,
       clock,
       processes,
     });
@@ -109,6 +109,7 @@ async function directPhase(): Promise<void> {
       aliases: {
         worker: {
           parent: "codex",
+          when: "smoke/worker",
           model: "fixture-model",
           systemPrompt() {
             assert.equal(
@@ -120,7 +121,7 @@ async function directPhase(): Promise<void> {
           },
         },
         unavailable: { parent: "claude" },
-        oracle: { parent: "worker" },
+        oracle: { parent: "codex", when: "smoke/oracle" },
       },
     });
     workBinding = work();
@@ -128,7 +129,11 @@ async function directPhase(): Promise<void> {
     const mailBinding = mail();
     assert.deepEqual(autoBot.requires, [workBinding.name, agentsBinding.name]);
     await next.start([
-      configureFlags([[agentFlags.codex, true]]),
+      configureFlags([
+        [agentFlags.codex, true],
+        [{ name: "smoke/oracle", description: "Fixture Oracle availability", default: true }, true],
+        [{ name: "smoke/worker", description: "Fixture worker availability", default: true }, true],
+      ]),
       identity(),
       agentsBinding,
       workBinding,
@@ -495,6 +500,11 @@ async function directPhase(): Promise<void> {
         ).status,
       "undeliverable",
     );
+    await runtime.invoke("flag", { command: "set", name: "smoke/worker", value: false });
+    await poll();
+    assert.equal(runs(admitted).length, 4, "Disabled worker seats pause even with Oracle enabled");
+    assert.equal(runtime.graph.show(admitted).attributes[attrs.exhausted], undefined);
+    await runtime.invoke("flag", { command: "set", name: "smoke/worker", value: true });
     await poll();
     assert.equal(runs(admitted).length, 5, "Initial + three worker continuations + ONE Oracle");
     assert.equal(typeof runtime.graph.show(admitted).attributes[attrs.exhausted], "string");
@@ -663,7 +673,7 @@ async function directPhase(): Promise<void> {
     await poll();
     assert.equal(runs(externalTask).length, 2);
 
-    // A missing owning worktree is a visible admission failure, never a fresh launch elsewhere.
+    // Missing worker cwd never relocates the native session; a distinct Oracle diagnoses from the owner.
     const lostDir = join(dir, "removed-worktree");
     await mkdir(lostDir);
     const lostTask = await create("Removed worktree", { ...optedIn, [attrs.cwd]: lostDir });
@@ -673,8 +683,20 @@ async function directPhase(): Promise<void> {
     await settle(lost.id);
     await rm(lostDir, { recursive: true });
     await poll();
-    assert.equal(runs(lostTask).length, 1);
-    assert.equal(typeof runtime.graph.show(lostTask).attributes[attrs.error], "string");
+    assert.equal(runs(lostTask).length, 2);
+    assert.equal(runtime.graph.show(lostTask).attributes[attrs.error], undefined);
+    assert.equal(typeof runtime.graph.show(lostTask).attributes[attrs.exhausted], "string");
+    const lostOracle = runs(lostTask).find(
+      (entry) => entry.attributes[agentAttributes.seat] === "oracle",
+    );
+    assert.ok(lostOracle !== undefined);
+    assert.equal(lostOracle.attributes[agentAttributes.cwd], realpathSync(dir));
+    assert.equal(
+      z.string().parse(lostOracle.attributes[agentAttributes.prompt]).includes(lostDir),
+      true,
+    );
+    await poll();
+    assert.equal(runs(lostTask).length, 2);
 
     // Execution without session evidence is not a pre-session failure. Escalate once, never fresh-retry it.
     for (const oracleAvailable of [true, false]) {
@@ -692,7 +714,7 @@ async function directPhase(): Promise<void> {
         /Launch recovery requires/u,
       );
       if (!oracleAvailable)
-        await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: false });
+        await runtime.invoke("flag", { command: "set", name: "smoke/oracle", value: false });
       preparationFails = true;
       await poll();
       preparationFails = false;
@@ -700,7 +722,7 @@ async function directPhase(): Promise<void> {
       assert.equal(runs(noSessionTask).length, oracleAvailable ? 2 : 1);
       if (!oracleAvailable) {
         assert.equal(typeof runtime.graph.show(noSessionTask).attributes[attrs.error], "string");
-        await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: true });
+        await runtime.invoke("flag", { command: "set", name: "smoke/oracle", value: true });
       }
       await poll();
       assert.equal(
@@ -709,6 +731,32 @@ async function directPhase(): Promise<void> {
         "Oracle failure/unavailability is terminal and visible, not a self retry loop",
       );
     }
+    assert.deepEqual(runtime.errors, []);
+    await runtime.stop();
+    runtime = await open(true, join(dir, "missing-owner"));
+    const missingOwnerTask = await create("Owner workspace unavailable", {
+      ...optedIn,
+      [attrs.cwd]: dir,
+    });
+    await poll();
+    const missingOwner = runs(missingOwnerTask)[0];
+    assert.ok(missingOwner !== undefined);
+    missingSession = true;
+    await settle(missingOwner.id);
+    missingSession = false;
+    await poll();
+    assert.equal(runs(missingOwnerTask).length, 1);
+    assert.equal(typeof runtime.graph.show(missingOwnerTask).attributes[attrs.exhausted], "string");
+    assert.equal(typeof runtime.graph.show(missingOwnerTask).attributes[attrs.error], "string");
+    const ownerItem = workBinding?.instance(runtime.context).get(missingOwnerTask);
+    assert.ok(ownerItem?.kind === "task");
+    assert.equal(ownerItem.notes?.includes("Repair the Oracle seat/owning workspace"), true);
+    await poll();
+    assert.equal(
+      runs(missingOwnerTask).length,
+      1,
+      "Missing owner workspace produces terminal manual handoff",
+    );
     assert.deepEqual(runtime.errors, []);
     await runtime.stop();
     runtime = await open(false);

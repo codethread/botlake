@@ -142,13 +142,13 @@ export function workAutoBot(bindings: WorkAutoBotBindings): Extension {
             requestId: `work-auto-bot/${task}/oracle`,
             target: task,
             seat: "oracle",
-            cwd: text.parse(parent.attributes[a.cwd]),
+            cwd: ctx.workspace,
             policy: "stop-on-complete",
-            prompt: `Automatic worker recovery for task ${task} is exhausted: ${reason}. You are the ONE automatic Oracle debugger admission, not a retry coordinator. Re-read this task, its current blockers, notes and linked Agents continuation history (latest worker ${parent.id}). Claim this exact task using your own identity and retain assignment.id. Proactively investigate and fix the underlying cause; normal worker settlement did not prove task success or interruption. Use Work gates for machine-checkable waits. Only after diagnosis, create an unplanned HITL prerequisite for remaining human-only input, link it to this task and release only your exact assignment. Record evidence and the next responsible actor in task notes before stopping. Do not reset the automatic budget, spawn replacement workers or arrange automatic self-retries. If further execution is needed, document a specific manual recovery handoff. Close the original task only if its intended outcome is actually satisfied; submit an authored workflow outcome when applicable.`,
+            prompt: `Automatic worker recovery for task ${task} is exhausted: ${reason}. You are the ONE automatic Oracle debugger admission, not a retry coordinator. Your debugger cwd is the owning lake workspace; the failed worker's retained cwd is ${text.parse(parent.attributes[a.cwd])}. Diagnose that worktree explicitly; do not silently relocate a native session. Re-read this task, its current blockers, notes and linked Agents continuation history (latest worker ${parent.id}). Claim this exact task using your own identity and retain assignment.id. Proactively investigate and fix the underlying cause; normal worker settlement did not prove task success or interruption. Use Work gates for machine-checkable waits. Only after diagnosis, create an unplanned HITL prerequisite for remaining human-only input, link it to this task and release only your exact assignment. Record evidence and the next responsible actor in task notes before stopping. Do not reset the automatic budget, spawn replacement workers or arrange automatic self-retries. If further execution is needed, document a specific manual recovery handoff. Close the original task only if its intended outcome is actually satisfied; submit an authored workflow outcome when applicable.`,
           });
           diagnostic = `One-shot Oracle debugger: ${oracle.id}. Inspect its custody/result with agent show. Oracle failure, missing session, cancellation or unfinished settlement requires explicit manual diagnosis/recovery; neither Mail nor polling will resume it automatically.`;
         } catch (error) {
-          diagnostic = `Oracle admission failed: ${String(error)}. Repair the seat/worktree and explicitly launch a debugger; no automatic reattempt.`;
+          diagnostic = `Oracle admission failed: ${String(error)}. Repair the Oracle seat/owning workspace and explicitly launch a debugger; no automatic reattempt.`;
           ctx.graph.setAttributes(task, { [workAutoBotAttributes.error]: diagnostic });
         }
         const item = work.get(task);
@@ -171,8 +171,13 @@ export function workAutoBot(bindings: WorkAutoBotBindings): Extension {
               const chain = lineage(node.id);
               const parent = chain.at(-1);
               if (chain.some((run) => cancelled(run))) return;
+              const admission = admissionSchema.parse({
+                seat: node.attributes[workAutoBotAttributes.seat],
+                cwd: node.attributes[workAutoBotAttributes.cwd],
+              });
+              if (!available(admission.seat)) return;
               if (parent !== undefined) {
-                if (parent.attributes[a.settled] !== true) return;
+                if (parent.attributes[a.settled] !== true || !continuationAvailable(parent)) return;
                 if (chain.length > 3) {
                   exhaust(
                     node.id,
@@ -197,11 +202,6 @@ export function workAutoBot(bindings: WorkAutoBotBindings): Extension {
                   return;
                 }
               }
-              const admission = admissionSchema.parse({
-                seat: node.attributes[workAutoBotAttributes.seat],
-                cwd: node.attributes[workAutoBotAttributes.cwd],
-              });
-              if (!available(admission.seat)) return;
               const prompt = workerPrompt(node.id);
               if (parent === undefined) {
                 agents.start({
@@ -212,11 +212,15 @@ export function workAutoBot(bindings: WorkAutoBotBindings): Extension {
                   policy: "close-on-complete",
                   prompt,
                 });
-              } else if (continuationAvailable(parent)) {
+              } else {
                 const requestId = `work-auto-bot/${node.id}/continue/${parent.id}`;
-                if (parent.attributes[a.sessionConfirmed] === true)
-                  agents.resumeAutomatically(parent.id, prompt, requestId);
-                else agents.recoverLaunch(parent.id, prompt, requestId);
+                try {
+                  if (parent.attributes[a.sessionConfirmed] === true)
+                    agents.resumeAutomatically(parent.id, prompt, requestId);
+                  else agents.recoverLaunch(parent.id, prompt, requestId);
+                } catch (error) {
+                  exhaust(node.id, parent, `Continuation admission failed: ${String(error)}`);
+                }
               }
             });
           } catch (error) {
