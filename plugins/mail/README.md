@@ -1,6 +1,6 @@
 # Mail notifications
 
-Opt-in Codex and Pi adapters for [identity mail](../../extensions/mail/README.md). They derive the same native-session identity as the identity plugin without requiring that plugin or either server-side Identity/Agents extension.
+Private harness entry points for the packaged Codex and Pi adapters owned by [`@botlake/extension-ct-config`](../../extensions/ct-config/README.md). They derive the same native-session identity as the identity plugin without requiring that plugin or either server-side Identity/Agents extension.
 
 The Codex manifest registers `SessionStart` and `PostToolUse`. Pi adds startup guidance and appends text through `tool_result`. Startup supplies the mail identity and a pointer to `bl prime mail`; that operation owns the read/acknowledge/reply policy. Notifications contain only a count, up to three sender/subject summaries (urgent first), urgency markers, and the inbox command. They do not repeat the primer or include message bodies.
 
@@ -12,7 +12,7 @@ Configure the child process environment explicitly:
 - `BL_BIN`: optional CLI executable; defaults to `bl`.
 - `BL_MAIL_TRACE`: optional JSONL observation file for experiments; its parent must exist.
 
-Pi loads `pi.ts` through an explicit `-e` flag. Codex loads the included plugin manifest; the live runner uses equivalent invocation-local hook declarations. The repository-local plugin marketplace lists `botlake-mail` as available, not enabled. Neither installation nor this repository activates mail globally. This harness integration is private and is not published to npm.
+Pi loads `pi.ts` through an explicit `-e` flag. Codex loads the included plugin manifest; the live runner uses equivalent invocation-local hook declarations. These private files delegate to the public package rather than maintaining another adapter implementation. The repository-local plugin marketplace lists `botlake-mail` as available, not enabled. Neither installation nor this repository activates mail globally.
 
 Each poll fetches up to 100 summaries with status `sent`, so urgency beyond that batch waits for another boundary. The plugin reports delivery for the announced batch, including messages covered by its count but omitted from the three displayed subjects. Codex records the receipt after writing its response; Pi records it while preparing to return the augmented tool result. Both are plugin-reported handoff evidence, not a host-confirmed read receipt. A failed report leaves messages eligible for retry.
 

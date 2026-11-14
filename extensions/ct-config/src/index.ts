@@ -1,4 +1,6 @@
 // oxlint-disable import/max-dependencies -- The shared preset intentionally composes its public extension descriptors.
+import { fileURLToPath } from "node:url";
+
 import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
@@ -22,6 +24,10 @@ import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 
 import { agentPrimer, roster, rosterFlags } from "./roster.ts";
 
+const mailHook = fileURLToPath(new URL("./mail/hook.ts", import.meta.url));
+const mailPiExtension = fileURLToPath(new URL("./mail/pi.ts", import.meta.url));
+const codexMailHook = `[ { hooks = [ { type = "command", command = ${JSON.stringify(`bun ${shellQuote(mailHook)}`)}, timeout = 5, additionalContextLimit = 4096 } ] } ]`;
+
 export { agentPrimer, roster, rosterFlags } from "./roster.ts";
 
 export const flags = configureFlags([
@@ -36,9 +42,9 @@ export const references = createReferences({
   projections: [...workReferenceProjections, ...agentReferenceProjections],
 });
 
-export const agents = configureAgents();
-
 export const mail = createMail();
+
+export const agents = configureAgents();
 
 export const mailIdentity = createMailIdentity();
 
@@ -69,14 +75,35 @@ export function configureWork(
 export function configureAgents(
   aliases: Record<string, Alias> = {},
 ): ReturnType<typeof createAgents> {
-  return createAgents({
+  const configured = createAgents({
     providers: [
-      builtinProviders.codex({ bin: "co", flag: agentFlags.codex }),
-      builtinProviders.pi({ bin: "piw", flag: agentFlags.pi }),
+      builtinProviders.codex({
+        command: [
+          "co",
+          "--dangerously-bypass-hook-trust",
+          "--config",
+          "features.hooks=true",
+          "--config",
+          `hooks.SessionStart=${codexMailHook}`,
+          "--config",
+          `hooks.PostToolUse=${codexMailHook}`,
+        ],
+        flag: agentFlags.codex,
+      }),
+      builtinProviders.pi({
+        command: ["piw", "-e", mailPiExtension],
+        flag: agentFlags.pi,
+      }),
       builtinProviders.claude({ bin: "cl", flag: agentFlags.claude }),
     ],
     ...roster,
     references,
     aliases: { ...roster.aliases, ...aliases },
   });
+  configured.requires = [...(configured.requires ?? []), mail.name];
+  return configured;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

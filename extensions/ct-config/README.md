@@ -33,7 +33,7 @@ import { workAutoBot } from "@botlake/extension-work-auto-bot";
 export default workAutoBot({ agents, work });
 ```
 
-Mail is opt-in, including within this preset. Select `mail` for direct messages; add `mailIdentity` alongside Identity for registered identity links. Select `mailAgents` alongside the exact exported `agents`, `flags`, `references` and Identity descriptors for automatic live-agent delivery and a five-minute post-stop resumption window. Selecting Mail alone does not install notification hooks or enable resumption. No per-turn arming is needed.
+The configured Codex and Pi providers load the packaged Mail notification adapters for every invocation, so lakes selecting this preset's `agents` descriptor must also select its `mail` descriptor. Add `mailIdentity` alongside Identity for registered identity links. Select `mailAgents` alongside the exact exported `agents`, `flags`, `references` and Identity descriptors for automatic live-agent delivery and a five-minute post-stop resumption window. Selecting Mail alone does not enable resumption. No per-turn arming is needed.
 
 ```ts
 import { createLake } from "@botlake/core";
@@ -74,4 +74,4 @@ export default configureAgents({
 
 Overrides merge by alias name without modifying the shared roster. Spreading an alias preserves its prompt; prompts do not inherit through `parent`. Each lake retains its own flags, database and runtime state.
 
-Built-in executables resolve through `PATH`: Codex `co`, Claude `cl`, Pi `piw`. Select `flags` alongside `agents`; each provider keeps its corresponding `agentFlags` gate.
+Built-in executables resolve through `PATH`: Codex `co`, Claude `cl`, Pi `piw`. Codex receives invocation-local `SessionStart` and `PostToolUse` hooks; Pi receives the packaged extension through `-e`. Select `flags` alongside `agents`; each provider keeps its corresponding `agentFlags` gate.
