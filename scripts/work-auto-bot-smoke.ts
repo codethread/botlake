@@ -574,6 +574,45 @@ async function directPhase(): Promise<void> {
       assert.equal(child.attributes[agentAttributes.resumes], false);
       assert.equal(child.attributes[agentAttributes.identity], undefined);
     }
+    // Terminal Work abandonment prevents scanner and Mail continuation without rewriting run history.
+    const withdrawnTask = await create("Withdraw opted-in task");
+    await poll();
+    const withdrawn = runs(withdrawnTask)[0];
+    assert.ok(withdrawn !== undefined);
+    await settle(withdrawn.id);
+    const withdrawnIdentity = z
+      .string()
+      .parse(runtime.graph.show(withdrawn.id).attributes[agentAttributes.identity]);
+    await runtime.invoke("work", {
+      command: "abandon",
+      id: withdrawnTask,
+      reason: "Scope withdrawn",
+      by: "smoke",
+    });
+    await poll();
+    assert.equal(runs(withdrawnTask).length, 1);
+    assert.equal(
+      z
+        .object({ status: z.string() })
+        .parse(
+          await runtime.invoke(
+            "mail",
+            { command: "send", to: withdrawnIdentity, subject: "Withdrawn", body: "Do not resume" },
+            { identity: "smoke" },
+          ),
+        ).status,
+      "undeliverable",
+    );
+    await assert.rejects(
+      runtime.invoke("work", {
+        command: "reopen",
+        id: withdrawnTask,
+        reason: "No automatic resurrection",
+        by: "smoke",
+      }),
+      /Abandoned work is terminal/u,
+    );
+
     // Stopped-but-unsettled custody never permits recovery, regardless of elapsed time.
     const uncertainTask = await create("Uncertain custody");
     await poll();

@@ -1,7 +1,7 @@
 {
   "name": "@botlake/extension-work-auto-bot",
-  "version": "0.4.0",
-  "description": "Once-per-task admission of opted-in ready Work tasks to managed Agents.",
+  "version": "0.5.0",
+  "description": "Opted-in Work admission, bounded continuation recovery and one-shot Oracle diagnosis.",
   "license": "MIT",
   "files": [
     "src",
