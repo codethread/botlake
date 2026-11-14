@@ -14,7 +14,7 @@
     "@botlake/extension-agents": "0.4.0",
     "@botlake/extension-batteries": "0.4.0",
     "@botlake/extension-cron": "0.4.0",
-    "@botlake/extension-ct-config": "0.4.0",
+    "@botlake/extension-ct-config": "https://registry.npmjs.org/@botlake/extension-ct-config/-/extension-ct-config-0.5.0.tgz",
     "@botlake/extension-diary": "0.4.0",
     "@botlake/extension-flags": "0.4.0",
     "@botlake/extension-identity": "0.4.0",
