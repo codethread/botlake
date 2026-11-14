@@ -59,27 +59,7 @@ export const roster = {
       when: rosterFlags.deepseek.name,
       systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
-    luna: {
-      doc: `GPT Luna. Implementation details, scouting and tightly scoped delegated tasks. Give explicit success criteria.`,
-      parent: "pi",
-      model: "openai-codex/gpt-6-luna",
-      effort: "xhigh",
-      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
-    },
-    "luna-codex": {
-      doc: "GPT Luna through the native Codex harness.",
-      parent: "codex",
-      model: "gpt-6-luna",
-      effort: "xhigh",
-      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
-    },
-    opus: {
-      doc: `Claude Opus. Greenfield features, API design and critical seams.`,
-      parent: "claude",
-      model: "opus",
-      effort: "low",
-      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
-    },
+
     fable: {
       doc: `Claude Fable. Extreme diagnosis, top-level coordination and user-facing prose where writing is the product.`,
       parent: "claude",
@@ -88,58 +68,109 @@ export const roster = {
       when: rosterFlags.fable.name,
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
+    opus: {
+      doc: `Claude Opus. Greenfield features, API design and critical seams.`,
+      parent: "claude",
+      model: "opus",
+      effort: "high",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+    },
+    sonnet: {
+      doc: `Claude Sonnet, fast worker, effective but less thorough`,
+      parent: "claude",
+      model: "sonnet",
+      effort: "high",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+    },
+
     astra: {
-      doc: `GPT-6 Astra. Extreme diagnosis, top-level coordination, architecture and
-        high-stakes user-facing prose.`,
+      doc: `GPT Astra. Extreme diagnosis, top-level coordination, architecture and high-stakes user-facing prose.`,
       parent: "pi",
       model: "openai-codex/gpt-6-astra",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     sol: {
-      doc: `GPT-5.6 Sol. Complex implementation, hostile-environment debugging and
-        delegated coordination.`,
+      doc: `GPT Sol. Complex implementation, hostile-environment debugging and delegated coordination.`,
       parent: "pi",
-      model: "openai-codex/gpt-5.6-sol",
-      effort: "low",
-      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
-    },
-    terra: {
-      doc: `GPT-5.6 Terra. Well-defined, single-concern review and validation on
-        clean checkouts.`,
-      parent: "pi",
-      model: "openai-codex/gpt-5.6-terra",
+      model: "openai-codex/gpt-6-sol",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
+    terra: {
+      doc: `GPT Terra. Well-defined, single-concern review and validation on clean checkouts.`,
+      parent: "pi",
+      model: "openai-codex/gpt-6.1-terra",
+      effort: "high",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+    },
+    luna: {
+      doc: `GPT Luna. Small model, slow, cheap. Clear mechanical grunt work, like a smart bash script where it will handle more edge cases or filter details.
+Good for handling larger data sets to that might otherwise consume working agents' context`,
+      parent: "pi",
+      model: "openai-codex/gpt-6-luna",
+      effort: "xhigh",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
+    },
+
     oracle: {
       doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
       parent: "astra",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
+    researcher: {
+      doc: `Online researcher agent, has access to powerful search tools.
+Cheap enough to spawn multiple for split stream research instead of a single deep research task`,
+      parent: "codex",
+      model: "gpt-6.1-terra",
+      effort: "high",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
+    },
     reviewer: [
       {
-        doc: `Default targeted review seat: prefer Sol.`,
+        doc: `Strong code review agent, very thorough, can be over sensitive, take steer but do not see all feedback as required, find pragmatic balance`,
         parent: "sol",
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
       {
-        doc: `Targeted review fallback: Opus when Sol is unavailable.`,
+        doc: `Strong code review agent, very thorough, take steer but do not see all feedback as required, find pragmatic balance`,
         parent: "opus",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+    ],
+    prose: [
+      {
+        doc: `Dedicated prose writer/editor/reviewer. Do not allow other agents to make large prose based changes`,
+        parent: "opus",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+      {
+        doc: `Dedicated prose writer/editor/reviewer. Do not allow other agents to make large prose based changes`,
+        parent: "astra",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+    ],
+    worker: [
+      {
+        doc: `Primary worker agent to recieve bounded work as delegate`,
+        parent: "sonnet",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+      {
+        doc: `Primary worker agent to recieve bounded work as delegate`,
+        parent: "sol",
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
     grunt: [
       {
-        doc: `Mechanical implementation, exploration and context-heavy file/log
-          searching. Prefer DeepSeek.`,
+        doc: `Mechanical implementation, exploration and context-heavy file/log searching`,
         parent: "deepseek",
-        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+        systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
       },
       {
-        doc: `Mechanical implementation, exploration and context-heavy file/log
-          searching. Fall back to Luna.`,
+        doc: `Mechanical implementation, exploration and context-heavy file/log searching`,
         parent: "luna",
         systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
       },
