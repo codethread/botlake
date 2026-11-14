@@ -1,5 +1,5 @@
-import { defineOp, jsonSchema, q, type Extension } from "@botlake/core";
-import { gateProbes, workGateChanged } from "@botlake/extension-work";
+import { defineOp, jsonSchema, q, requireValue, type Extension } from "@botlake/core";
+import { gateProbes, workAbandonment, workGateChanged } from "@botlake/extension-work";
 import { z } from "zod";
 
 import { workflowAbout } from "./about.ts";
@@ -52,6 +52,7 @@ const input = z.compile(
       choice: text,
       data: jsonSchema.default({}),
     }),
+    z.strictObject({ command: z.literal("abandon"), id: text, reason: text }),
   ]),
 );
 
@@ -69,6 +70,7 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
     activate(ctx) {
       const service = workflowService(ctx, catalogue);
       gateProbes(ctx).provide(async (key) => catalogue.probe(key));
+      workAbandonment(ctx).provide((request) => service.abandon(request));
       ctx.on(workGateChanged, ({ id, to }) => service.reactToGate(id, to));
       ctx.registerQuery("workflow-runs", {
         where: q.eq(q.attr(workflowAttributes.root), true),
@@ -85,8 +87,17 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
           output: jsonSchema,
           jsonSchema: { input, output: jsonSchema },
           about: workflowAbout,
-          primer:
-            "Start an authored definition to create a context Work group and its ready visits. Task gates are ordinary prerequisites and block readiness while open. Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure. Gate status explains evaluation but never affects readiness directly. Use work claim for assignment. Generic work close records closure only; workflow complete explicitly submits an outcome and checkpoints a frozen frontier, then publishes the next Work atomically. Pending publication resumes on activation, show or a completion retry. Inspect a task before completion for instructions and outcome schemas.",
+          primer: [
+            "Start an authored definition to create a context Work group and its ready visits.",
+            "Task gates are ordinary prerequisites and block readiness while open.",
+            "Gate visits advance once when a mapped status arrives; re-entry reuses an open gate, retries it when exhausted, and creates a new gate only after closure.",
+            "Gate status explains evaluation but never affects readiness directly.",
+            "Use work claim for assignment.",
+            "Generic work close records closure only; workflow complete explicitly submits an outcome and checkpoints a frozen frontier, then publishes the next Work atomically.",
+            "Pending publication resumes on activation, show or a completion retry.",
+            "Inspect a task before completion for instructions and outcome schemas.",
+            "Use work abandon ID --reason TEXT (or workflow abandon) for terminal withdrawal without submitting an authored outcome.",
+          ].join(" "),
           cli: {
             description: "Discover, start, inspect and explicitly advance authored workflows",
             examples: [
@@ -94,6 +105,7 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
               "bl workflow start NAME --input '{}'",
               "bl workflow show RUN_ID",
               "bl workflow complete TASK_ID CHOICE --data '{}'",
+              'bl workflow abandon RUN_ID --reason "No longer appropriate"',
             ],
             commands: {
               catalog: {
@@ -199,6 +211,26 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
                   },
                 },
               },
+              abandon: {
+                description:
+                  "Alias for work abandon that terminalizes the run, clears pending publication and closes only outstanding authored Work",
+                examples: ['bl workflow abandon RUN_ID --reason "No longer appropriate"'],
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Workflow run or authored visit ID",
+                  },
+                ],
+                flags: {
+                  reason: {
+                    type: "string",
+                    required: true,
+                    description: "Required nonempty reason retained with actor attribution",
+                  },
+                },
+              },
             },
           },
           handler(value, _ctx, invocation) {
@@ -215,6 +247,15 @@ export function workflows(configuration: WorkflowOptions = {}): Extension {
                 });
               case "complete":
                 return service.complete(value.id, value.choice, value.data, invocation.identity);
+              case "abandon":
+                return workAbandonment(ctx).abandon({
+                  id: value.id,
+                  reason: value.reason,
+                  by: requireValue(
+                    invocation.identity,
+                    "Supply caller identity to abandon a workflow",
+                  ),
+                });
             }
           },
         }),

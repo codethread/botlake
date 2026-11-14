@@ -1,8 +1,16 @@
 /* oxlint-disable import/max-dependencies -- Work composes its domain modules into one extension. */
-import { defineOp, jsonSchema, q, runtimeExtension, type RuntimeExtension } from "@botlake/core";
+import {
+  defineOp,
+  jsonSchema,
+  q,
+  requireValue,
+  runtimeExtension,
+  type RuntimeExtension,
+} from "@botlake/core";
 import type { ReferenceLibrary } from "@botlake/extension-references";
 import { z } from "zod";
 
+import { workAbandonment } from "./abandonment.ts";
 import { diagnoseWork, diagnosticLimitsSchema, workDependencies } from "./diagnostics.ts";
 import { registerWorkEvents } from "./events.ts";
 import { workLinks } from "./links.ts";
@@ -13,6 +21,12 @@ import { createInput, listInput, updateInput, workStore } from "./store.ts";
 import { treeInput } from "./topology.ts";
 import type { WorkStore } from "./types.ts";
 
+export {
+  workAbandonment,
+  type AbandonmentCooperation,
+  type AbandonmentProvider,
+  type AbandonmentRequest,
+} from "./abandonment.ts";
 export { workAssignmentEstablished, workChanged, workGateChanged } from "./events.ts";
 export {
   assignmentSchema,
@@ -45,6 +59,7 @@ export type {
 } from "./diagnostics.ts";
 export { workReferenceProjections } from "./references.ts";
 export type {
+  AbandonmentResult,
   Assignment,
   Attribution,
   CreateItem,
@@ -111,6 +126,7 @@ const input = z.compile(
       offset: z.number().int().nonnegative().default(0),
     }),
     z.strictObject({ command: z.literal("close"), ...item, ...attribution }),
+    z.strictObject({ command: z.literal("abandon"), ...item, reason: text, ...attribution }),
     z.strictObject({ command: z.literal("reopen"), ...item, reason: text, ...attribution }),
     z.strictObject({
       command: z.literal("claim"),
@@ -212,6 +228,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
             "Dependencies can target tasks, groups or gates and do not assert success.",
             "New scope is new work.",
             "Reopen only for recovery; prior resolutions stay intact until explicitly corrected/reopened.",
+            "Use work abandon ID --reason TEXT for terminal withdrawal, not success; it preserves completed history and cooperates with Workflow to stop pending actions.",
             "Release requires the current assignment token so stale observations cannot clear a newer owner.",
             "List defaults to open work; search includes closed work.",
             "The Notes field is for recording a concise outcome before closing a task.",
@@ -463,6 +480,30 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
                   },
                 },
               },
+              abandon: {
+                description:
+                  "Terminally stop Work or a cooperating workflow, retaining completed history while closing only outstanding contained work",
+                examples: ['bl work abandon ID --reason "No longer appropriate"'],
+                positionals: [
+                  {
+                    name: "id",
+                    type: "string",
+                    required: true,
+                    description: "Task, group, gate, workflow run or authored workflow visit",
+                  },
+                ],
+                flags: {
+                  reason: {
+                    type: "string",
+                    required: true,
+                    description: "Required nonempty reason retained with actor attribution",
+                  },
+                  by: {
+                    type: "string",
+                    description: "Attribution; defaults to the invocation caller",
+                  },
+                },
+              },
               reopen: {
                 description:
                   "Reopen for recovery, retaining criterion resolutions and closure history; returns id and open state",
@@ -680,6 +721,15 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
                   closedAt: result.closedAt,
                 };
               }
+              case "abandon":
+                return workAbandonment(ctx).abandon({
+                  id: value.id,
+                  reason: value.reason,
+                  by: requireValue(
+                    value.by ?? invocation.identity,
+                    "Supply --by or caller identity",
+                  ),
+                });
               case "reopen": {
                 const result = store.reopen(
                   value.id,

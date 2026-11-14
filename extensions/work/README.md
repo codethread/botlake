@@ -13,9 +13,12 @@ bl work show TASK
 bl work claim TASK
 bl work update TASK --notes "Findings and supporting references"
 bl work close TASK
+bl work abandon GROUP --reason "Scope is no longer appropriate"
 ```
 
 Tasks are actionable leaves. Groups supply shared context and may contain groups/tasks, with one contextual parent per item. Group closure requires every contained task, including nested tasks, to be closed. Only tasks can be assigned. Groups can remain open after their tasks close; closure is explicit.
+
+`work abandon ID --reason TEXT` is terminal withdrawal, not successful completion. It retains completed descendants unchanged, closes only outstanding contained tasks/groups, dismisses contained open gates, releases current assignments and records the actor and reason in history. It does not follow prerequisite or reference links. Workflow cooperates through Work's public abandonment seam, so the same command accepts a workflow run or authored visit and prevents pending publication before closing outstanding authored Work. Repeating abandonment with the original reason is idempotent and retains its original attribution; conflicting reasons fail. Abandoned work cannot reopen: create follow-on work instead. `workflow abandon` is an alias for workflow-oriented discovery.
 
 ## Gates
 
@@ -66,7 +69,7 @@ bl work diagnose TASK
 | `cleared`   | closed     | The probe passed or an actor confirmed the condition.           |
 | `dismissed` | closed     | An actor declared the condition no longer required.             |
 
-Gate status describes evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. `retry` starts a fresh attempt round for any open gate. `clear` closes an open gate as satisfied by the caller; `clear --dismiss` closes it as no longer required. Closed gates are terminal. Gates do not appear in task queues and ordinary Work mutation commands reject them.
+Gate status describes evaluation progress but never determines readiness: readiness depends only on the gate's open or closed Work state. `retry` starts a fresh attempt round for any open gate. `clear` closes an open gate as satisfied by the caller; `clear --dismiss` closes it as no longer required. Closed gates are terminal. Gates do not appear in task queues. Use gate commands for their lifecycle, or `work abandon` to withdraw a gate or its containing scope; other Work mutation commands reject gates.
 
 TypeScript consumers use `gateService(ctx).create(...)` for ordinary creation. To compose atomic graph publication, `await gateService(ctx).prepare(input)` resolves the trusted probe and validates parameters without writing; its returned synchronous creator accepts `{ parent?, dependents? }` and joins a surrounding `graph.atomic`. Evaluation scheduling follows that transaction's commit.
 
@@ -116,7 +119,7 @@ Criteria are optional. `criterion add TASK CONDITION` appends an immutable condi
 
 Claim defaults its assignee to the normalized invocation caller; explicit `--assignee` and `--by` remain independent. `release TASK --assignment-id TOKEN --reason TEXT` changes only the matching current assignment. Stale releases return `released: false`. Closure releases its assignment and preserves history. Optional [Work Agents](../work-agents/README.md) binds assignment tokens to managed agent liveness.
 
-`show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion, closure and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes. With `--view all` it includes closed work unless `--state` narrows it; queue views remain open-only. Lists omit briefs and findings.
+`show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion, closure, abandonment and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes. With `--view all` it includes closed work unless `--state` narrows it; queue views remain open-only. Lists omit briefs and findings.
 
 ## Tree and graph
 

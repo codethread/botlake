@@ -32,6 +32,8 @@ export const workAttributes = {
   closures: "work/closures",
   /** Attributed recoveries in chronological order. */
   reopenings: "work/reopenings",
+  /** Attributed terminal abandonments in chronological order. */
+  abandonments: "work/abandonments",
 } as const;
 
 /** Work relationship labels. */
@@ -73,6 +75,7 @@ const commonData = {
   description: z.string(),
   closures: z.array(z.object(byAt)),
   reopenings: z.array(z.object({ ...byAt, reason: text })),
+  abandonments: z.array(z.object({ ...byAt, reason: text })).default([]),
 };
 export const jsonObjectSchema = z.record(z.string(), z.json());
 export const gatePolicySchema = z.object({

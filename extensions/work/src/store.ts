@@ -166,7 +166,12 @@ export function workStore(ctx: Context): WorkStore {
   function create(raw: CreateItem): WorkItem {
     const input = createInput.parse(raw);
     return graph.atomic(() => {
-      const base = { description: input.description, closures: [], reopenings: [] };
+      const base = {
+        description: input.description,
+        closures: [],
+        reopenings: [],
+        abandonments: [],
+      };
       const data: WorkData =
         input.kind === "group"
           ? { kind: "group", ...base }
@@ -315,6 +320,7 @@ export function workStore(ctx: Context): WorkStore {
                   : [],
               closures: data.closures,
               reopenings: data.reopenings,
+              abandonments: data.abandonments,
             },
           }
         : {}),
@@ -543,6 +549,81 @@ export function workStore(ctx: Context): WorkStore {
     }, authority);
   }
 
+  function abandon(id: string, reason: string, by?: string) {
+    const parsedReason = text.parse(reason);
+    const actor = text.parse(requireValue(by, "Supply --by or caller identity"));
+    return graph.atomic(() => {
+      get(id);
+      const tasks: string[] = [];
+      const gates: string[] = [];
+      const groups: string[] = [];
+
+      const abandonItem = (itemId: string, requested: boolean): void => {
+        const item = get(itemId);
+        if (item.kind === "group")
+          for (const child of outgoing(itemId, workRelations.parentOf)) abandonItem(child, false);
+
+        const node = graph.show(itemId);
+        const data = read(node);
+        if (node.state === "closed") {
+          if (requested) {
+            const previous = data.abandonments.at(-1);
+            if (previous !== undefined && previous.reason !== parsedReason)
+              throw new Fault(
+                "work-abandonment",
+                "Abandonment retry must use the original reason",
+                {
+                  id: itemId,
+                },
+              );
+            if (previous === undefined) {
+              data.abandonments.push({
+                by: actor,
+                at: new Date(ctx.clock.now()).toISOString(),
+                reason: parsedReason,
+              });
+              graph.setAttributes(itemId, attributesFor(data));
+            }
+          }
+          return;
+        }
+
+        const abandoned = {
+          by: actor,
+          at: new Date(ctx.clock.now()).toISOString(),
+          reason: parsedReason,
+        };
+        data.abandonments.push(abandoned);
+        data.closures.push({ by: actor, at: abandoned.at });
+        if (data.kind === "task") {
+          releaseCurrent(data, parsedReason, actor);
+          tasks.push(itemId);
+        } else if (data.kind === "gate") {
+          const from = data.status;
+          data.status = { status: "dismissed", ...abandoned };
+          gates.push(itemId);
+          ctx.emit(workGateChanged, { id: itemId, from, to: data.status });
+          graph.afterCommit(() => gateLifecycles.get(ctx)?.(itemId));
+        } else {
+          groups.push(itemId);
+        }
+        graph.update(itemId, { state: "closed", attributes: attributesFor(data) });
+      };
+
+      abandonItem(id, true);
+      return {
+        item: get(id),
+        tasks,
+        gates,
+        groups,
+        abandonment: requireValue(
+          read(graph.show(id)).abandonments.at(-1),
+          "Missing abandonment attribution",
+        ),
+      };
+    }, authority);
+  }
+
   function createGate(input: {
     title: string;
     description?: string;
@@ -571,6 +652,7 @@ export function workStore(ctx: Context): WorkStore {
         description: parsed.description,
         closures: [],
         reopenings: [],
+        abandonments: [],
         probe: parsed.probe,
         params: parsed.params,
         policy: parsed.policy,
@@ -625,6 +707,8 @@ export function workStore(ctx: Context): WorkStore {
       const item = get(id);
       if (item.state !== "closed") throw new Fault("work", "Only closed work can reopen");
       const data = read(graph.show(id));
+      if (data.abandonments.length > 0)
+        throw new Fault("work-abandonment", "Abandoned work is terminal; create follow-on work");
       if (data.kind === "gate")
         throw new Fault("work-gate", "Gates are updated only by gate record");
       data.reopenings.push({ ...attribution(by), reason });
@@ -857,6 +941,7 @@ export function workStore(ctx: Context): WorkStore {
     tree,
     graph: topologyGraph,
     close,
+    abandon,
     gates: { create: createGate, apply: applyGate, get: getGate },
     reopen,
     addCriterion,
@@ -889,6 +974,7 @@ function read(node: Node): WorkData {
     description: attributes[workAttributes.description],
     closures: attributes[workAttributes.closures],
     reopenings: attributes[workAttributes.reopenings],
+    abandonments: attributes[workAttributes.abandonments],
     notes: attributes[workAttributes.notes] ?? null,
     audience: attributes[workAttributes.audience],
     origin: attributes[workAttributes.origin],
@@ -913,6 +999,7 @@ function attributesFor(data: WorkData): Attributes {
     [workAttributes.description]: data.description,
     [workAttributes.closures]: data.closures,
     [workAttributes.reopenings]: data.reopenings,
+    [workAttributes.abandonments]: data.abandonments,
   };
   if (data.kind === "group") return common;
   if (data.kind === "gate")
