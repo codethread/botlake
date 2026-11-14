@@ -4,7 +4,7 @@
 
 Requires mise. Trust the repository's `mise.toml` if prompted, then run `mise run` (or `mise run bootstrap`) from the checkout root. This prepares pinned Bun and Go toolchains, agent skills, the root Bun workspace and both Go CLIs in `out/`, without starting services or installing global commands. The explicit `mise run install` additionally installs the CLIs into `GOBIN` or `~/.local/bin`, preserving the dots host-bootstrap handoff. Use a temporary `GOBIN` to verify installation without replacing the host's commands.
 
-The root workspace and `bun.lock` include the private [dogfood manifest](../../.botlake/package.json). That manifest continues to own exact dependencies on the published packages: install from the repository root to refresh the shared lockfile. Tarball URLs bind the dogfood imports to npm archives when matching source workspace versions exist. The dogfood lake pins published packages independently of the source workspaces: Core and unchanged extensions remain at 0.4.0; Agents, Mail Agents, Work and Workflow use 0.4.1, Work Auto Bot uses 0.5.0, and `@botlake/extension-ct-config` uses 0.5.1. The preset supplies its compatible UI transitively. No package is separately installed. Explicit `workspace:` imports remain local.
+The root workspace and `bun.lock` include the private [dogfood manifest](../../.botlake/package.json). Its `workspace:*` dependencies use Core and extensions directly from this checkout. Install from the repository root to refresh the shared lockfile.
 
 `skillbox sync` restores the bundles selected in `skillbox/config.json`, verifying contents against `skillbox/lock.json`; commit both files together. Botlake-owned sources live in `skillbox/botlake/`. Edit those sources, not the ignored `.agents/skills/` installation or its `.claude/skills` link. Sync rejects source hash drift rather than updating the lock.
 
@@ -12,7 +12,7 @@ If no supervisor is running, start it in a separate terminal with the host's exi
 
 ## Development lake
 
-The private `.botlake` workspace is an independent consumer. Its direct published Core and extension dependencies remain in its [package manifest](../../.botlake/package.json); install from the repository root so the root lockfile records them separately from local source workspaces. The shared preset owns the published UI dependency and the lake selects its exported UI descriptor rather than declaring UI directly. Source configuration lives in its [lake definition](../../.botlake/lake.ts), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
+The private `.botlake` workspace dogfoods local Core and extension packages through its [package manifest](../../.botlake/package.json). The shared preset owns the published UI dependency and the lake selects its exported UI descriptor rather than declaring UI directly. Source configuration lives in its [lake definition](../../.botlake/lake.ts), [shared configuration](../../extensions/ct-config/README.md) and [lake wrappers](../../.botlake/src/). Use `bl agent catalog` for effective seat selection rather than relying on a duplicated list of model aliases.
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
@@ -26,8 +26,7 @@ Install the repository-local [native identity adapter](../../plugins/identity/RE
 
 - Go changes: rebuild local binaries with `mise run bootstrap`; explicitly install them with `mise run install` when deploying. Restart the supervisor through its process manager, or stop/start it manually, only with authorization. Supervisor replacement ends process custody and clears published lake routes; start the required lakes again.
 - Lake-local configuration changes: `botlake lake restart`.
-- Shared configuration changes: release `@botlake/extension-ct-config`, update consumer lockfiles and restart affected lakes.
-- Public runtime changes: release and update the installed package before restarting; source edits do not change the running npm package.
+- Local Core, extension or shared configuration changes: `botlake lake restart` loads the updated workspace source. Published consumers still need a release and dependency update before restarting.
 
 Core stays extension-independent. Cross-package imports use declared dependencies and public exports, never relative source paths; Oxlint enforces the seam. Package prerequisites must be selected explicitly. See [contribution rules](../../AGENTS.md).
 
