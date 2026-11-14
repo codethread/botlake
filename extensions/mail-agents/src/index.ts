@@ -60,7 +60,11 @@ export function mailAgents(bindings: {
           return { kind: "undeliverable", reason: "recipient_inactive", detail: null };
 
         try {
-          const continuation = agents.resume(latest.id, prompt, `mail-agents/${latest.id}`);
+          const continuation = agents.resumeAutomatically(
+            latest.id,
+            prompt,
+            `mail-agents/${latest.id}`,
+          );
           return { kind: "resuming", run: continuation.id };
         } catch (error) {
           if (!isFault(error)) throw error;

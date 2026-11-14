@@ -22,6 +22,8 @@ import {
 } from "@botlake/extension-agents";
 import { configureFlags } from "@botlake/extension-flags";
 import { identity } from "@botlake/extension-identity";
+import { mail } from "@botlake/extension-mail";
+import { mailAgents } from "@botlake/extension-mail-agents";
 import { work } from "@botlake/extension-work";
 import { workAgents } from "@botlake/extension-work-agents";
 import { workAutoBot, workAutoBotAttributes as attrs } from "@botlake/extension-work-auto-bot";
@@ -39,6 +41,7 @@ async function directPhase(): Promise<void> {
   let launches = 0;
   let preparationFails = false;
   let launchFails = false;
+  let missingSession = false;
   let runtime: Runtime | undefined;
   let agentsBinding: ReturnType<typeof agents> | undefined;
   let workBinding: ReturnType<typeof work> | undefined;
@@ -91,11 +94,15 @@ async function directPhase(): Promise<void> {
             if (preparationFails) throw new Error("fixture preparation failure");
             return { command: ["fixture-agent"], stdin: "", env: {} };
           },
-          finish: () => ({
-            success: false,
-            result: null,
-            error: "fixture failure",
-            sessionId: "smoke-native",
+          finish: (definition) => ({
+            success: true,
+            result: "fixture completed, not task success",
+            error: null,
+            sessionId: missingSession
+              ? null
+              : definition.resumes
+                ? definition.sessionId
+                : `smoke-${definition.prompt.match(/Work assigned task (\S+)\./u)?.[1] ?? definition.prompt}`,
           }),
         },
       ],
@@ -113,10 +120,12 @@ async function directPhase(): Promise<void> {
           },
         },
         unavailable: { parent: "claude" },
+        oracle: { parent: "worker" },
       },
     });
     workBinding = work();
     const autoBot = workAutoBot({ agents: agentsBinding, work: workBinding });
+    const mailBinding = mail();
     assert.deepEqual(autoBot.requires, [workBinding.name, agentsBinding.name]);
     await next.start([
       configureFlags([[agentFlags.codex, true]]),
@@ -124,6 +133,8 @@ async function directPhase(): Promise<void> {
       agentsBinding,
       workBinding,
       workAgents({ checkIntervalMs: 1000 }),
+      mailBinding,
+      mailAgents({ agents: agentsBinding, mail: mailBinding }),
       ...(enabled ? [autoBot] : []),
     ]);
     return next;
@@ -326,7 +337,7 @@ async function directPhase(): Promise<void> {
       await runtime.invoke("agent", {
         command: "native",
         provider: "codex",
-        nativeSessionId: "smoke-native",
+        nativeSessionId: `smoke-${admitted}`,
         cwd: dir,
         event: "agent-start",
         runId: run.id,
@@ -354,8 +365,59 @@ async function directPhase(): Promise<void> {
       runtime.invoke("agent", { command: "retry", id: run.id }),
       /request binding/u,
     );
+    // Graph blockers and intentional opt-out prevent both scanner and Mail recovery.
+    const recoveryBlocker = await create("Recovery blocker", {});
+    await runtime.invoke("work", {
+      command: "link",
+      from: admitted,
+      to: recoveryBlocker,
+      relation: "depends-on",
+    });
     await poll();
     assert.equal(runs(admitted).length, 1);
+    const blockedMail = await runtime.invoke(
+      "mail",
+      {
+        command: "send",
+        to: native.identity,
+        subject: "blocked",
+        body: "Do not resume blocked work",
+      },
+      { identity: "smoke" },
+    );
+    assert.equal(z.object({ status: z.string() }).parse(blockedMail).status, "undeliverable");
+    await runtime.invoke("work", { command: "close", id: recoveryBlocker, by: "smoke" });
+    runtime.graph.update(admitted, { attributes: { [attrs.autoRun]: false } });
+    await poll();
+    assert.equal(runs(admitted).length, 1);
+    assert.equal(
+      z.object({ status: z.string() }).parse(
+        await runtime.invoke(
+          "mail",
+          {
+            command: "send",
+            to: native.identity,
+            subject: "paused",
+            body: "Do not resume paused work",
+          },
+          { identity: "smoke" },
+        ),
+      ).status,
+      "undeliverable",
+    );
+    runtime.graph.update(admitted, { attributes: { [attrs.autoRun]: true } });
+    // Mail wins the first continuation; scanner must follow it, not fork the parent.
+    await runtime.invoke(
+      "mail",
+      { command: "send", to: native.identity, subject: "continue", body: "Resume now" },
+      { identity: "smoke" },
+    );
+    await poll();
+    assert.equal(runs(admitted).length, 2);
+    const mailChild = runs(admitted).find((entry) => entry.id !== run.id);
+    assert.ok(mailChild !== undefined);
+    assert.equal(mailChild.attributes[agentAttributes.requestId], `mail-agents/${run.id}`);
+    assert.equal(mailChild.attributes[agentAttributes.identity], native.identity);
     await runtime.invoke("work", { command: "close", id: admitted, by: "smoke" });
     await runtime.invoke("work", {
       command: "reopen",
@@ -367,13 +429,115 @@ async function directPhase(): Promise<void> {
     await runtime.stop();
     runtime = await open();
     await poll();
-    assert.equal(runs(admitted).length, 1, "Restart/reopening must retain once-per-task history");
-    const resumed = identifier.parse(
-      await runtime.invoke("agent", { command: "resume", id: run.id, prompt: "Explicit recovery" }),
+    assert.equal(runs(admitted).length, 2, "Restart/reopening must retain continuation history");
+    await assert.rejects(
+      runtime.invoke("agent", { command: "resume", id: run.id, prompt: "Stale parent" }),
+      /accepted continuation/u,
     );
-    assert.notEqual(resumed.id, run.id);
+    async function settle(id: string) {
+      assert.ok(runtime !== undefined);
+      const current = runtime.graph.show(id);
+      const currentFact = facts.get(z.string().parse(current.attributes[agentAttributes.handle]));
+      assert.ok(currentFact !== undefined);
+      facts.set(currentFact.handle, {
+        ...currentFact,
+        phase: "terminal",
+        exit: { code: 0, signal: null },
+      });
+      await runtime.invoke("agent", { command: "reconcile" });
+      await runtime.drain();
+    }
+    // The resumed identity must claim again, binding the current invocation rather than its released parent.
+    const childInvocation = z
+      .string()
+      .parse(runtime.graph.show(mailChild.id).attributes[agentAttributes.invocation]);
+    await runtime.invoke("agent", {
+      command: "native",
+      provider: "codex",
+      nativeSessionId: `smoke-${admitted}`,
+      cwd: dir,
+      event: "agent-start",
+      runId: mailChild.id,
+      invocation: childInvocation,
+    });
+    await runtime.invoke(
+      "work",
+      { command: "claim", id: admitted, assignee: native.identity, by: native.identity },
+      { env: { BL_RUN_REFERENCE: `${mailChild.id}:${childInvocation}` } },
+    );
+    // Two more automatic continuations use the same native identity and original owning worktree.
+    let tip = mailChild.id;
+    for (let count = 3; count <= 4; count++) {
+      await settle(tip);
+      await poll();
+      assert.equal(runs(admitted).length, count);
+      const parentId = tip;
+      const graph: Runtime["graph"] = runtime.graph;
+      const child = runs(admitted).find(
+        (entry) => graph.edge(entry.id, parentId, agentRelations.continues) !== null,
+      );
+      assert.ok(child !== undefined);
+      assert.equal(child.attributes[agentAttributes.cwd], realpathSync(dir));
+      assert.equal(child.attributes[agentAttributes.identity], native.identity);
+      tip = child.id;
+    }
+    await settle(tip);
+    // Mail cannot take a fourth automatic continuation, even before the scanner records exhaustion.
+    assert.equal(
+      z
+        .object({ status: z.string() })
+        .parse(
+          await runtime.invoke(
+            "mail",
+            { command: "send", to: native.identity, subject: "over budget", body: "Do not resume" },
+            { identity: "smoke" },
+          ),
+        ).status,
+      "undeliverable",
+    );
     await poll();
-    assert.equal(runs(admitted).length, 2, "Only explicit continuation may launch again");
+    assert.equal(runs(admitted).length, 5, "Initial + three worker continuations + ONE Oracle");
+    assert.equal(typeof runtime.graph.show(admitted).attributes[attrs.exhausted], "string");
+    const oracle = runs(admitted).find(
+      (entry) => entry.attributes[agentAttributes.seat] === "oracle",
+    );
+    assert.ok(oracle !== undefined);
+    await settle(oracle.id);
+    await poll();
+    await runtime.stop();
+    runtime = await open();
+    await poll();
+    assert.equal(
+      runs(admitted).length,
+      5,
+      "Oracle settlement and restarts cannot replenish the budget",
+    );
+    assert.equal(workBinding?.instance(runtime.context).get(admitted).state, "open");
+    const oracleIdentity = z
+      .string()
+      .parse(runtime.graph.show(oracle.id).attributes[agentAttributes.identity]);
+    assert.equal(
+      z.object({ status: z.string() }).parse(
+        await runtime.invoke(
+          "mail",
+          {
+            command: "send",
+            to: oracleIdentity,
+            subject: "Oracle must stop",
+            body: "No self retry",
+          },
+          { identity: "smoke" },
+        ),
+      ).status,
+      "undeliverable",
+    );
+    // Exhaustion preserves explicit manual recovery and prior history.
+    const resumed = identifier.parse(
+      await runtime.invoke("agent", { command: "resume", id: tip, prompt: "Explicit recovery" }),
+    );
+    assert.notEqual(resumed.id, tip);
+    await poll();
+    assert.equal(runs(admitted).length, 6);
 
     for (const failure of ["preparation", "launch"]) {
       preparationFails = failure === "preparation";
@@ -388,8 +552,162 @@ async function directPhase(): Promise<void> {
       preparationFails = false;
       launchFails = false;
       await poll();
-      assert.equal(runs(failedTask).length, 1);
-      assert.equal(launches, before, "Settlement must not start an automatic worker retry loop");
+      assert.equal(runs(failedTask).length, 2);
+      assert.equal(
+        launches,
+        before + 1,
+        "Pre-session failure gets a fresh continuation in the same budget",
+      );
+      const child = runs(failedTask).find((entry) => entry.id !== failed.id);
+      assert.ok(child !== undefined);
+      assert.notEqual(runtime.graph.edge(child.id, failed.id, agentRelations.continues), null);
+      assert.equal(child.attributes[agentAttributes.resumes], false);
+      assert.equal(child.attributes[agentAttributes.identity], undefined);
+    }
+    // Stopped-but-unsettled custody never permits recovery, regardless of elapsed time.
+    const uncertainTask = await create("Uncertain custody");
+    await poll();
+    const uncertain = runs(uncertainTask)[0];
+    assert.ok(uncertain !== undefined);
+    const uncertainFact = facts.get(z.string().parse(uncertain.attributes[agentAttributes.handle]));
+    assert.ok(uncertainFact !== undefined);
+    facts.set(uncertainFact.handle, {
+      ...uncertainFact,
+      phase: "terminal",
+      cancellation: { reason: "cancel", stop: "uncertain" },
+    });
+    await runtime.invoke("agent", { command: "reconcile" });
+    await poll();
+    await poll();
+    assert.equal(runs(uncertainTask).length, 1);
+    assert.equal(runtime.graph.show(uncertain.id).attributes[agentAttributes.settled], false);
+    // A confirmed explicit cancellation remains a pause, not a failed-worker retry.
+    facts.set(uncertainFact.handle, {
+      ...uncertainFact,
+      phase: "terminal",
+      exit: { code: 1, signal: null },
+      cancellation: { reason: "cancel", stop: "observed" },
+    });
+    await runtime.invoke("agent", { command: "reconcile" });
+    await poll();
+    assert.equal(runs(uncertainTask).length, 1);
+    assert.equal(
+      runtime.graph.show(uncertain.id).attributes[agentAttributes.lifecycle],
+      "cancelled",
+    );
+    const abandonedTask = await create("Pending cancellation");
+    assert.ok(agentsBinding !== undefined);
+    const abandoned = agentsBinding.instance(runtime.context).start({
+      target: abandonedTask,
+      requestId: `work-auto-bot/${abandonedTask}`,
+      seat: "worker",
+      cwd: dir,
+      prompt: "Pending work",
+    });
+    await agentsBinding.instance(runtime.context).cancel(abandoned.id);
+    await poll();
+    assert.equal(runs(abandonedTask).length, 1);
+
+    // Another current assignee and disabled seats protect settled tasks from all automatic admission.
+    const reservedTask = await create("Different assignee after settlement");
+    await poll();
+    const reserved = runs(reservedTask)[0];
+    assert.ok(reserved !== undefined);
+    await settle(reserved.id);
+    const reservation = z.object({ assignment: identifier }).parse(
+      await runtime.invoke("work", {
+        command: "claim",
+        id: reservedTask,
+        assignee: "other",
+        by: "smoke",
+      }),
+    );
+    await poll();
+    assert.equal(runs(reservedTask).length, 1);
+    await runtime.invoke("work", {
+      command: "release",
+      id: reservedTask,
+      assignmentId: reservation.assignment.id,
+      reason: "done",
+      by: "other",
+    });
+    await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: false });
+    await poll();
+    assert.equal(runs(reservedTask).length, 1);
+    await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: true });
+    await poll();
+    assert.equal(runs(reservedTask).length, 2);
+
+    // An idle external writer still owns a session until its explicit end observation.
+    const externalTask = await create("External session owns the native writer");
+    await poll();
+    const externalParent = runs(externalTask)[0];
+    assert.ok(externalParent !== undefined);
+    await settle(externalParent.id);
+    await runtime.invoke("agent", {
+      command: "native",
+      provider: "codex",
+      nativeSessionId: `smoke-${externalTask}`,
+      cwd: dir,
+      event: "agent-start",
+    });
+    await poll();
+    assert.equal(runs(externalTask).length, 1);
+    await runtime.invoke("agent", {
+      command: "native",
+      provider: "codex",
+      nativeSessionId: `smoke-${externalTask}`,
+      cwd: dir,
+      event: "session-end",
+    });
+    await poll();
+    assert.equal(runs(externalTask).length, 2);
+
+    // A missing owning worktree is a visible admission failure, never a fresh launch elsewhere.
+    const lostDir = join(dir, "removed-worktree");
+    await mkdir(lostDir);
+    const lostTask = await create("Removed worktree", { ...optedIn, [attrs.cwd]: lostDir });
+    await poll();
+    const lost = runs(lostTask)[0];
+    assert.ok(lost !== undefined);
+    await settle(lost.id);
+    await rm(lostDir, { recursive: true });
+    await poll();
+    assert.equal(runs(lostTask).length, 1);
+    assert.equal(typeof runtime.graph.show(lostTask).attributes[attrs.error], "string");
+
+    // Execution without session evidence is not a pre-session failure. Escalate once, never fresh-retry it.
+    for (const oracleAvailable of [true, false]) {
+      const noSessionTask = await create(`Missing session, Oracle available=${oracleAvailable}`);
+      await poll();
+      const noSession = runs(noSessionTask)[0];
+      assert.ok(noSession !== undefined);
+      missingSession = true;
+      await settle(noSession.id);
+      missingSession = false;
+      const service = agentsBinding.instance(runtime.context);
+      assert.throws(
+        () =>
+          service.recoverLaunch(noSession.id, "Unsafe fresh recovery", `unsafe/${noSession.id}`),
+        /Launch recovery requires/u,
+      );
+      if (!oracleAvailable)
+        await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: false });
+      preparationFails = true;
+      await poll();
+      preparationFails = false;
+      assert.equal(typeof runtime.graph.show(noSessionTask).attributes[attrs.exhausted], "string");
+      assert.equal(runs(noSessionTask).length, oracleAvailable ? 2 : 1);
+      if (!oracleAvailable) {
+        assert.equal(typeof runtime.graph.show(noSessionTask).attributes[attrs.error], "string");
+        await runtime.invoke("flag", { command: "set", name: agentFlags.codex.name, value: true });
+      }
+      await poll();
+      assert.equal(
+        runs(noSessionTask).length,
+        oracleAvailable ? 2 : 1,
+        "Oracle failure/unavailability is terminal and visible, not a self retry loop",
+      );
     }
     assert.deepEqual(runtime.errors, []);
     await runtime.stop();
@@ -427,7 +745,7 @@ export default configureFlags([[agentFlags.codex, true]]);\n`,
       join(workspace, "agents.ts"),
       `import { agents, builtinProviders, agentFlags } from "@botlake/extension-agents";
 const codex = builtinProviders.codex({flag:agentFlags.codex});
-export default agents({ providers: [{ ...codex, prepare() { throw new Error("packaged preparation fixture"); } }], aliases: { worker: { parent: "codex", model: "packaged-fixture" } } });\n`,
+export default agents({ providers: [{ ...codex, prepare() { throw new Error("packaged preparation fixture"); } }], aliases: { worker: { parent: "codex", model: "packaged-fixture" }, oracle: { parent: "worker" } } });\n`,
     );
     await Bun.write(
       join(workspace, "work.ts"),
@@ -452,20 +770,66 @@ export default workAutoBot({ agents, work });\n`,
     await host.bl(workspace, "node", { command: "update", id: task, attributes: optedIn });
     const result = z.object({ reason: z.literal("satisfied") }).parse(
       await host.bl(workspace, "await", {
-        query: "agent-run-failed",
+        query: "work-auto-bot-exhausted",
         minCount: 1,
-        timeoutSecs: 10,
+        timeoutSecs: 15,
       }),
     );
     assert.equal(result.reason, "satisfied");
     const listed = z
-      .object({ runs: z.array(identifier), total: z.literal(1) })
+      .object({ runs: z.array(identifier), total: z.literal(5) })
       .parse(await host.bl(workspace, "agent", { command: "list" }));
-    const accepted = z
-      .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await host.bl(workspace, "agent", { command: "show", id: listed.runs[0]?.id }));
-    assert.equal(accepted.attributes[agentAttributes.requestId], `work-auto-bot/${task}`);
+    const records = await Promise.all(
+      listed.runs.map(async ({ id }) =>
+        z
+          .object({ id: z.string(), attributes: z.record(z.string(), z.json()) })
+          .parse(await host.bl(workspace, "agent", { command: "show", id })),
+      ),
+    );
+    const accepted = records.find(
+      (run) => run.attributes[agentAttributes.requestId] === `work-auto-bot/${task}`,
+    );
+    assert.ok(accepted !== undefined);
     assert.equal(accepted.attributes[agentAttributes.cwd], realpathSync(workspace));
+    const oracle = records.find(
+      (run) => run.attributes[agentAttributes.requestId] === `work-auto-bot/${task}/oracle`,
+    );
+    assert.ok(oracle !== undefined);
+    assert.equal(
+      z.object({ reason: z.string() }).parse(
+        await host.bl(workspace, "await", {
+          query: "agent-run-settled",
+          params: { runId: oracle.id },
+          minCount: 1,
+          timeoutSecs: 10,
+        }),
+      ).reason,
+      "satisfied",
+    );
+    const original = z
+      .object({ item: z.object({ state: z.string(), notes: z.string() }) })
+      .parse(await host.bl(workspace, "work", { command: "show", id: task }));
+    assert.equal(original.item.state, "open");
+    assert.ok(original.item.notes.includes("exhausted"));
+    assert.ok(original.item.notes.includes(oracle.id));
+    await host.botlake(["lake", "restart", "--workspace", workspace]);
+    await host.bl(workspace, "work", { command: "close", id: task, by: "smoke" });
+    await host.bl(workspace, "work", {
+      command: "reopen",
+      id: task,
+      reason: "manual recovery",
+      by: "smoke",
+    });
+    assert.equal(
+      z.object({ total: z.number() }).parse(await host.bl(workspace, "agent", { command: "list" }))
+        .total,
+      5,
+    );
+    assert.ok(
+      String(
+        await host.bl(workspace, "agent", { command: "retry", id: accepted.id }, false),
+      ).includes("request binding"),
+    );
     const info = z
       .object({
         extensions: z.array(z.object({ name: z.string(), readme: z.string().nullable() })),
@@ -484,5 +848,5 @@ export default workAutoBot({ agents, work });\n`,
 await directPhase();
 await packagedPhase();
 console.log(
-  "work-auto-bot smoke verified: exact typed bindings and derived requirements; eligibility; atomic admission; visible latched rejection; writer protection; cwd; restart/reopen deduplication; exact assignment settlement; explicit resume; no worker retries; packed selection",
+  "work-auto-bot smoke verified: exact typed bindings and derived requirements; eligibility; atomic admission; visible latched rejection; writer protection; cwd; restart/reopen deduplication; exact assignment settlement; Mail arbitration; readiness/pause; bounded recovery and Oracle; explicit manual resume; pre-session launch recovery; packed selection",
 );

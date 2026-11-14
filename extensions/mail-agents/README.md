@@ -36,6 +36,8 @@ Undeliverable; sender must decide whether to resend
 
 Mail reconciles unannounced messages at startup and every second, covering mail arriving before or after settlement. Pending messages coalesce into one continuation. Each message can cause at most one wake; previously announced or acknowledged messages do not wake agents. New arrivals can cause a later continuation without enrollment. Admission and the message's `mail/wake-run` marker commit together; Agents owns session custody and continuation exclusion. Resume admission is not notification delivery or execution success.
 
+Mail uses Agents' automatic-continuation admission seam. When Work Auto Bot owns the target lineage, its atomic readiness/assignment/pause checks and shared continuation budget also apply to Mail. Exhausted workers and the one-shot Oracle debugger cannot self-resume through mail. Other lineages retain this grace policy; explicit manual Agents resume is unchanged.
+
 Inactive recipients produce `status: "undeliverable", reason: "recipient_inactive"` in send/reply results. Admission refusals produce `reason: "resume_rejected"` and diagnostic `detail`. Undeliverable messages leave the live inbox and are never retried automatically; a terminal record remains available to the sender through ordinary Mail reads/lists. Mail accepted while running can become undeliverable later, so use `mail read ID` or `mail-undeliverable` to observe that outcome. No expiry wake, fallback session or retry queue is created.
 
 Bodies never enter the resume prompt. The resumed agent retrieves and acknowledges mail through the ordinary Mail operations. Use Batteries await to remain in the current turn; it does not control automatic wake permission.
