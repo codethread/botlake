@@ -97,29 +97,19 @@ try {
   } finally {
     database.close();
   }
-  const manifest = z
-    .looseObject({ botlake: z.looseObject({ extensions: z.array(z.string()) }) })
-    .parse(await Bun.file(join(clone, ".botlake/package.json")).json());
-  await Bun.write(
-    join(clone, ".botlake/package.json"),
-    JSON.stringify({
-      ...manifest,
-      botlake: {
-        ...manifest.botlake,
-        name: "cli-clone",
-        extensions: manifest.botlake.extensions.map((extension) =>
-          extension === "./.botlake/src/workflow.ts" ? "./workflow-extension.ts" : extension,
-        ),
-      },
-    }),
-  );
   await writeWorkflowExtension(clone, ["@botlake/extension-workflow/examples/parallel"]);
-  await host.botlake(["lake", "start", "--workspace", clone]);
-  await audit("cli-clone");
-  const cloned = nodePage.parse(await call("cli-clone", "node", { command: "list", limit: 3 }));
+  await Bun.write(
+    join(clone, ".botlake/src/workflow.ts"),
+    'export { default } from "../../workflow-extension.ts";\n',
+  );
+  const clonedLake = z
+    .object({ name: z.string() })
+    .parse(await host.botlake(["lake", "start", "--workspace", clone])).name;
+  await audit(clonedLake, [...expected, "mail"].toSorted());
+  const cloned = nodePage.parse(await call(clonedLake, "node", { command: "list", limit: 3 }));
   assert.ok(cloned.total > 0, "The cloned lake must retain real data");
   measurements["cloneNodes"] = cloned.total;
-  await exercise("cli-clone", clone);
+  await exercise(clonedLake, clone);
   console.log(JSON.stringify({ ok: true, measurements }));
 } finally {
   await host.close();
@@ -171,10 +161,10 @@ async function call(workspace: string, op: string, input: unknown): Promise<unkn
   return host.bl(workspace, op, input);
 }
 
-async function audit(workspace: string): Promise<void> {
+async function audit(workspace: string, expectedOperations = expected): Promise<void> {
   const root = await host.cli(["--workspace", workspace, "help"]);
   const operations = helpSchema.parse(root);
-  assert.deepEqual(operations.map(({ name }) => name).toSorted(), expected);
+  assert.deepEqual(operations.map(({ name }) => name).toSorted(), expectedOperations);
   let leaves = 0;
   let helpBytes = 0;
   let schemaBytes = 0;
