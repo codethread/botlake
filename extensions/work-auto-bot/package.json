@@ -1,6 +1,6 @@
 {
   "name": "@botlake/extension-work-auto-bot",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "description": "Opted-in Work admission, bounded continuation recovery and one-shot Oracle diagnosis.",
   "license": "MIT",
   "files": [
