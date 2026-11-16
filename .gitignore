@@ -4,6 +4,8 @@ node_modules
 # generated skill installations (skillbox sync)
 /.agents/skills/
 /.claude/skills
+/skillbox/.prepare/
+/skillbox/.local/
 
 # output
 out

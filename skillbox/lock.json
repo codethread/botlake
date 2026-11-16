@@ -272,7 +272,7 @@
     "bench": {
       "bundle": "development",
       "directory": "bench",
-      "hash": "68ffe49d65d85e7f06cc9bd18afdddd8fae5f190e2c30926a43f6793a12f71ed"
+      "hash": "5f6bcafea7c5a4a00fc22c91683e5299aeea7f16217cb40cb937a175c23da8db"
     },
     "codebase-design": {
       "bundle": "development",
@@ -317,7 +317,7 @@
     "purge": {
       "bundle": "development",
       "directory": "purge",
-      "hash": "037e7003c56b8fa7defee75e7ea0f40777ce1321706e3c2e402a1c135d881244"
+      "hash": "e2a572166f7efdff2af0e0f2f0075e6ce8518904e0fe96026dee2b41eb0f263b"
     },
     "rich-response": {
       "bundle": "development",
