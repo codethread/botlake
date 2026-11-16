@@ -1,12 +1,40 @@
 {
   "sources": [
     {
-      "source": ".",
-      "bundles": ["botlake"]
+      "type": "skills",
+      "id": "development",
+      "source": "https://github.com/codethread/agents",
+      "ref": "1b768451b78cfe42cdca1632f2542676851424f7",
+      "path": "skillbox/coding"
     },
     {
+      "type": "skills",
+      "id": "development",
       "source": "https://github.com/codethread/agents",
-      "bundles": ["coding", "dev", "harness", "projects", "writing"]
+      "ref": "1b768451b78cfe42cdca1632f2542676851424f7",
+      "path": "skillbox/dev"
+    },
+    {
+      "type": "skills",
+      "id": "development",
+      "source": "https://github.com/codethread/agents",
+      "ref": "1b768451b78cfe42cdca1632f2542676851424f7",
+      "path": "skillbox/harness"
+    },
+    {
+      "type": "skills",
+      "id": "development",
+      "source": "https://github.com/codethread/agents",
+      "ref": "1b768451b78cfe42cdca1632f2542676851424f7",
+      "path": "skillbox/projects"
+    },
+    {
+      "type": "skills",
+      "id": "development",
+      "source": "https://github.com/codethread/agents",
+      "ref": "1b768451b78cfe42cdca1632f2542676851424f7",
+      "path": "skillbox/writing"
     }
-  ]
+  ],
+  "install": ["botlake", "development"]
 }
