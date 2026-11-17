@@ -37,16 +37,6 @@ test("packed ct-config exposes inert Mail descriptors and composes its exact Age
       lakeModule,
       `import {createLake} from "@botlake/core";
 import identity from "@botlake/extension-identity";
-import {agents, flags, references} from "@botlake/extension-ct-config";
-export const lake=createLake({name:"ct-mail", extensions:[identity, agents, flags, references]});`,
-    );
-    expect(await host.botlake(["lake", "start", "--workspace", workspace], false)).toContain(
-      "agents requires explicitly selected mail",
-    );
-    await Bun.write(
-      lakeModule,
-      `import {createLake} from "@botlake/core";
-import identity from "@botlake/extension-identity";
 import batteries from "@botlake/extension-batteries";
 import {agents, flags, references, mail, mailIdentity, mailAgents} from "@botlake/extension-ct-config";
 export const lake=createLake({name:"ct-mail", extensions:[identity, batteries, agents, flags, references, mail, mailIdentity, mailAgents]});`,

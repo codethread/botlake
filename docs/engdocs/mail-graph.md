@@ -18,10 +18,11 @@ qlock exec --lock /tmp/agent-cpu.lock -w 60 -- bun scripts/mail-graph/benchmark.
 
 `smoke.ts` exercises real CLI operations: arrival during await, timeout, ack observation, direct/late/idempotent delivery state, atomic recipient receipts, replies, context links, late identity registration, derived-edge ownership, restart, lean paging and no mail-specific tables. `lifecycle-smoke.ts` uses real SQLite and the existing ManualClock/injected-custody pattern to check stop timestamps, configurable grace windows, automatic resumption, settlement, restart/coalescing, prevention of repeated wakes, terminal undeliverable outcomes, cancellation/failure, completed targets, manual continuations and external session custody. Both deterministic scripts also run through `bun run test`; they are retained blackbox verification rather than temporary implementation unit tests.
 
-Native tests require authenticated Codex and Pi with Luna available. Set `BL_MAIL_PI_BIN` to the native Pi executable when a shell wrapper does not support headless flags; otherwise it defaults to `pi`. Each invocation explicitly loads its required adapters. No global configuration is changed.
+Native tests require authenticated Codex and Pi with Luna available; `claude-smoke.ts` requires authenticated Claude Code and loads the plugin with a session-only `--plugin-dir`. Set `BL_MAIL_PI_BIN` to the native Pi executable when a shell wrapper does not support headless flags; otherwise it defaults to `pi`. Each invocation explicitly loads its required adapters. No global configuration is changed.
 
 ```sh
 bun scripts/mail-graph/live.ts
+bun scripts/mail-graph/claude-smoke.ts [true|false]
 bun scripts/mail-graph/lifecycle-live.ts
 bun scripts/mail-graph/stress.ts all
 bun scripts/mail-graph/stress.ts orchestrator deadline

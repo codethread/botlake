@@ -1,4 +1,7 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
@@ -204,4 +207,29 @@ export function observedActivity(event: NativeEvent, previous: Activity): Activi
     case "metadata":
       return previous;
   }
+}
+
+/**
+ * The lake a native session reports to: explicit `BL_WORKSPACE`, otherwise the Git common root
+ * holding `.botlake/package.json`. Null outside any lake.
+ */
+export async function nativeWorkspace(
+  cwd: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<string | null> {
+  const explicit = env["BL_WORKSPACE"];
+  if (explicit !== undefined) return realpathSync(explicit);
+  const common = await new Promise<string | null>((resolve) => {
+    execFile(
+      "git",
+      ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { timeout: 5000 },
+      (error, stdout) => {
+        resolve(error === null ? stdout.trim() : null);
+      },
+    );
+  });
+  if (common === null || basename(common) !== ".git") return null;
+  const root = dirname(common);
+  return existsSync(join(root, ".botlake/package.json")) ? realpathSync(root) : null;
 }

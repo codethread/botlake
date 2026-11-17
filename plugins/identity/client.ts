@@ -1,22 +1,4 @@
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-
-export async function nativeProject(cwd: string): Promise<string | null> {
-  let common: string;
-  try {
-    common = (
-      await execute("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"])
-    ).trim();
-  } catch {
-    return null;
-  }
-
-  if (basename(common) !== ".git") return null;
-
-  const root = dirname(common);
-  return existsSync(join(root, ".botlake/package.json")) ? realpathSync(root) : null;
-}
 
 export async function bl(
   workspace: string,
