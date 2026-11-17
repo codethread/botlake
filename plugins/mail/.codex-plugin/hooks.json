@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"${PLUGIN_ROOT}/hook.ts\"",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\" codex",
             "timeout": 5,
             "additionalContextLimit": 4096
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"${PLUGIN_ROOT}/hook.ts\"",
+            "command": "bun \"${PLUGIN_ROOT}/hook.ts\" codex",
             "timeout": 5,
             "additionalContextLimit": 4096
           }

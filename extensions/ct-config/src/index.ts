@@ -1,6 +1,4 @@
 // oxlint-disable import/max-dependencies -- The shared preset intentionally composes its public extension descriptors.
-import { fileURLToPath } from "node:url";
-
 import { priming as createPriming } from "@botlake/core";
 import {
   agentFlags,
@@ -23,10 +21,6 @@ import {
 import { workAgents as createWorkAgents } from "@botlake/extension-work-agents";
 
 import { agentPrimer, roster, rosterFlags } from "./roster.ts";
-
-const mailHook = fileURLToPath(new URL("./mail/hook.ts", import.meta.url));
-const mailPiExtension = fileURLToPath(new URL("./mail/pi.ts", import.meta.url));
-const codexMailHook = `[ { hooks = [ { type = "command", command = ${JSON.stringify(`bun ${shellQuote(mailHook)}`)}, timeout = 5, additionalContextLimit = 4096 } ] } ]`;
 
 export { agentPrimer, roster, rosterFlags } from "./roster.ts";
 
@@ -75,35 +69,18 @@ export function configureWork(
 export function configureAgents(
   aliases: Record<string, Alias> = {},
 ): ReturnType<typeof createAgents> {
-  const configured = createAgents({
+  return createAgents({
     providers: [
+      // Unattended runs cannot review hook trust for globally installed plugins.
       builtinProviders.codex({
-        command: [
-          "co",
-          "--dangerously-bypass-hook-trust",
-          "--config",
-          "features.hooks=true",
-          "--config",
-          `hooks.SessionStart=${codexMailHook}`,
-          "--config",
-          `hooks.PostToolUse=${codexMailHook}`,
-        ],
+        command: ["co", "--dangerously-bypass-hook-trust"],
         flag: agentFlags.codex,
       }),
-      builtinProviders.pi({
-        command: ["piw", "-e", mailPiExtension],
-        flag: agentFlags.pi,
-      }),
+      builtinProviders.pi({ bin: "piw", flag: agentFlags.pi }),
       builtinProviders.claude({ bin: "cl", flag: agentFlags.claude }),
     ],
     ...roster,
     references,
     aliases: { ...roster.aliases, ...aliases },
   });
-  configured.requires = [...(configured.requires ?? []), mail.name];
-  return configured;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }

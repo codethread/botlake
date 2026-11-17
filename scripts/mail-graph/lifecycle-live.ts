@@ -25,7 +25,7 @@ try {
     "./mail-agents.ts",
   ]);
   const identityHook = `bun '${join(root, "plugins/identity/hook.ts")}' codex`;
-  const mailHook = `bun '${join(root, "plugins/mail/hook.ts")}'`;
+  const mailHook = `bun '${join(root, "plugins/mail/hook.ts")}' codex`;
   const hooks = (commands: string[]) =>
     `[{ hooks = [${commands.map((command) => `{type="command",command=${JSON.stringify(command)},timeout=10,additionalContextLimit=4096}`).join(",")}] }]`;
   const codexArgs = [

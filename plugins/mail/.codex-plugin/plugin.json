@@ -1,6 +1,6 @@
 {
   "name": "botlake-mail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Non-steering identity-addressed Botlake mail notifications",
   "hooks": "./.codex-plugin/hooks.json"
 }

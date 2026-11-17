@@ -16,7 +16,7 @@ The private `.botlake` workspace dogfoods local Core and extension packages thro
 
 Git discovery shares the main checkout's configuration and ignored `.botlake/world.db` across subdirectories and linked worktrees. Installing dependencies does not build UI or launch agents; Cron has no jobs until configured. Work Agents remains an explicit optional configuration.
 
-Install the repository-local [native identity adapter](../../plugins/identity/README.md) through the supported harness tooling before launching native sessions. It is private harness integration, not an npm runtime package. Managed runs are headless. For configured seats and delegation, use the [Agents guide](../../extensions/agents/README.md#catalog-and-routing); flags and database overrides are described by [Flags](../../extensions/flags/README.md).
+Install the [native identity](../../plugins/identity/README.md) and [mail](../../plugins/mail/README.md) plugins from `mise run plugins` before launching native sessions. It is private harness integration, not an npm runtime package. Managed runs are headless. For configured seats and delegation, use the [Agents guide](../../extensions/agents/README.md#catalog-and-routing); flags and database overrides are described by [Flags](../../extensions/flags/README.md).
 
 ## CLI changelog
 

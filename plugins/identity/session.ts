@@ -1,16 +1,15 @@
-import { realpathSync } from "node:fs";
-
 import {
   agentMetadata,
   bindingSchema,
   identityInstruction,
+  nativeWorkspace,
   sessionIdentity,
   sessionAudience,
   type NativeBinding,
   type NativeObservation,
 } from "@botlake/native-session";
 
-import { bl, nativeProject } from "./client.ts";
+import { bl } from "./client.ts";
 
 export interface SessionReport {
   /** Deterministic attribution for the native provider/session pair. */
@@ -37,9 +36,7 @@ export async function reportNative(
   const local = { identity, instruction: identityInstruction(identity), systemPrompt: "" };
 
   try {
-    const explicit = env["BL_WORKSPACE"];
-    const workspace =
-      explicit === undefined ? await nativeProject(observation.cwd) : realpathSync(explicit);
+    const workspace = await nativeWorkspace(observation.cwd, env);
     if (workspace === null) return { ...local, tracking: "outside-workspace" };
     const reference = unmanaged ? undefined : env["BL_RUN_REFERENCE"];
     const parts = reference?.split(":");
