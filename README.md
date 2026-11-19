@@ -3,6 +3,7 @@
 A programmable lake of connected nodes. `botlake` manages lakes and processes; `bl` invokes structured operations supplied by explicitly selected extensions.
 
 - [User docs](docs/index.md) — workspace configuration and extension authoring.
+- [Runtime changelog](CHANGELOG.md) — breaking changes and migration steps for lake packages.
 - [CLI changelog](cli/CHANGELOG.md) — release history for `botlake` and `bl`.
 - [Engineering docs](docs/engdocs/index.md) — checkout setup, development and verification.
 
