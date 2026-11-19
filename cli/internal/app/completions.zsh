@@ -147,6 +147,7 @@ _botlake() {
       start\:"Run the foreground supervisor"
       status\:"Inspect supervisor status"
       stop\:"Stop the supervisor"
+      env\:"Edit the running supervisor environment"
       restart-host\:"Restart the host"
       host-status\:"Inspect host status"
       lake\:"Manage workspace lakes"
@@ -167,12 +168,23 @@ _botlake() {
       _arguments -S "${help[@]}"
       ;;
     help)
-      _arguments -C '1:command:(init start status stop restart-host host-status lake bin completions)' '*::arguments:->topic'
+      _arguments -C '1:command:(init start status stop env restart-host host-status lake bin completions)' '*::arguments:->topic'
       [[ $state == topic ]] || return
       case ${(Q)words[1]} in
+        env) _arguments '1:command:(add remove)' ;;
         lake) _arguments '1:command:(start restart stop status info list eval)' ;;
         bin) _arguments '1:command:(list build run)' ;;
         completions) _arguments '1:shell:(zsh)' ;;
+      esac
+      ;;
+    env)
+      _arguments -C -A '-*' "${help[@]}" \
+        '1:command:(add remove help)' '*::arguments:->env'
+      [[ $state == env ]] || return
+      case ${(Q)words[1]} in
+        add) _arguments -S "${help[@]}" '1:assignment:_message NAME=VALUE' ;;
+        remove) _arguments -S "${help[@]}" '1:name:_message NAME' ;;
+        help) _arguments '1:command:(add remove)' ;;
       esac
       ;;
     completions)

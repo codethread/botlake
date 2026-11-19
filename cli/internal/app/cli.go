@@ -21,6 +21,7 @@ Commands:
   start              Run the foreground supervisor
   status             Show supervisor and active-lake status
   stop               Stop the supervisor and its lakes
+  env <command>      Add or remove supervisor environment variables
   restart-host       Restart the Bun host and restore active lakes
   host-status        Inspect the Bun host
   lake <command>     Manage a workspace lake or evaluate code
@@ -92,6 +93,8 @@ func helpCLI(path []string) int {
 				return writeHelp(lakeCommandHelp(path[1]))
 			}
 		}
+	case "env":
+		return envHelp(path[1:])
 	case "bin":
 		return binHelp(path[1:])
 	case "completions":
@@ -332,6 +335,8 @@ func Botlake(args []string) int {
 			operation = lakeInstallStart
 		}
 		return Relay(request(operation, *target, payload))
+	case "env":
+		return envCLI(args[1:])
 	case "bin":
 		return binCLI(args[1:])
 	case "status", "stop", "restart-host", "host-status":

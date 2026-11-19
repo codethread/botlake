@@ -107,6 +107,15 @@ If the replacement fails to start, the lake stays stopped. Restore the definitio
 - `ctx.env.bl` contains each invocation caller's environment and is empty during activation. It remains separate from the lake environment.
 - `BL_ACTOR` supplies the default caller identity; see `bl -h` for invocation overrides.
 
+To change the running supervisor's environment without restarting it:
+
+```sh
+botlake env add 'MY_SETTING=new value'
+botlake env remove MY_SETTING
+```
+
+`add` replaces an existing value. These changes last until the supervisor exits and apply to new processes that inherit its environment, including new managed processes launched by an already-running lake. They do not affect running processes, `ctx.env.lake`, or `ctx.env.bl`. Avoid passing secrets as command arguments: they may be visible in shell history or process listings.
+
 ## Zsh completion
 
 Generate the script after installing or upgrading the CLI:

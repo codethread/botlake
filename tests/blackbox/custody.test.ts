@@ -115,3 +115,66 @@ export default {name:"custody",activate(ctx){ctx.register(defineOp({name:"proces
     await host.close();
   }
 }, 60000);
+
+test("supervisor environment changes reach new managed processes without restarting the lake", async () => {
+  const host = await system();
+  try {
+    const workspace = await host.workspace("live-env", ["./probe.ts"]);
+    await Bun.write(
+      join(workspace, "probe.ts"),
+      `import { defineOp } from "@botlake/core";
+import { z } from "zod";
+
+export default {
+  name: "probe",
+  activate(ctx) {
+    ctx.register(defineOp({
+      name: "probe",
+      input: z.compile(z.object({ key: z.string(), handle: z.string().optional(), command: z.array(z.string()) })),
+      output: z.compile(z.json()),
+      cli: { description: "Check the managed process environment" },
+      handler(input) {
+        return input.handle === undefined
+          ? ctx.processes.launch({ owner: "probe", key: input.key, command: input.command })
+          : ctx.processes.get(input.handle);
+      },
+    }));
+  },
+};`,
+    );
+    await host.botlake(["lake", "start", "--workspace", workspace]);
+    const status = ["lake", "status", "--workspace", workspace];
+    const initialLake = await host.botlake(status);
+    const initialSupervisor = await host.botlake(["status"]);
+    const name = "BOTLAKE_TEST_LIVE_ENV";
+    const add = ["env", "add"];
+    const remove = ["env", "remove"];
+    const command = ["sh", "-c", 'printf "[%s]" "${BOTLAKE_TEST_LIVE_ENV-unset}"'];
+    const probe = async (key: string): Promise<string> => {
+      let row = fact.parse(await host.bl("live-env", "probe", { key, command }));
+      for (let attempt = 0; attempt < 100 && row.phase !== "terminal"; attempt++) {
+        row = fact.parse(await host.bl("live-env", "probe", { key, command, handle: row.handle }));
+      }
+      expect(row.exit?.code).toBe(0);
+      return Bun.file(row.output.stdout_ref).text();
+    };
+
+    expect(await host.botlake([...add, "=invalid"], false)).toContain("name must be nonempty");
+    expect(await host.botlake([...remove, `${name}=invalid`], false)).toContain("variable name");
+    expect(await host.botlake([...add, `${name}=value with spaces=and equals`])).toEqual({
+      action: "add",
+      name,
+    });
+    expect(await probe("added")).toBe("[value with spaces=and equals]");
+    expect(await host.botlake([...add, `${name}=`])).toEqual({ action: "add", name });
+    expect(await probe("empty")).toBe("[]");
+    expect(await host.botlake([...remove, name])).toEqual({ action: "remove", name });
+    expect(await probe("removed")).toBe("[unset]");
+    expect(await host.botlake([...remove, name])).toEqual({ action: "remove", name });
+    expect(await host.botlake(status)).toEqual(initialLake);
+    const pid = z.object({ pid: z.number() });
+    expect(pid.parse(await host.botlake(["status"]))).toEqual(pid.parse(initialSupervisor));
+  } finally {
+    await host.close();
+  }
+}, 60000);
