@@ -1,8 +1,8 @@
 class Botlake < Formula
   desc "Programmable lakes of connected nodes with structured CLI operations"
   homepage "https://github.com/codethread/botlake"
-  url "https://github.com/codethread/botlake/archive/refs/tags/v0.3.2.tar.gz"
-  sha256 "8540845c4cfedd3901c8b7ab72d0013df2402ee481dc87b36ad81363de21293f"
+  url "https://github.com/codethread/botlake/archive/refs/tags/v0.3.3.tar.gz"
+  sha256 "07a1d0104cdc3008739bfda31172f0aca481353b5ec1f3df846fa50e8389b351"
   license "MIT"
 
   depends_on "go" => :build
