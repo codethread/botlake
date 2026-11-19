@@ -97,7 +97,18 @@ try {
   const create = async (title: string, fields: Record<string, unknown> = {}) =>
     identifier.parse(await call({ command: "create", title, by: "smoke", ...fields })).id;
   const show = async (id: string, history = false) =>
-    detail.parse(await call({ command: "show", id, history }));
+    detail.parse(
+      await cli([
+        "work",
+        "show",
+        id,
+        "--show-description",
+        "--show-notes",
+        "--show-criteria",
+        "--show-context",
+        ...(history ? ["--show-history"] : []),
+      ]),
+    );
   const list = async (fields: Record<string, unknown> = {}) =>
     page.parse(await call({ command: "list", ...fields }));
   const close = (id: string) => call({ command: "close", id, by: "smoke" });
@@ -355,12 +366,30 @@ try {
 
   const humanQueue = ids(await list({ view: "human", assignee: "human" }));
   assert.ok(humanQueue.indexOf(planned) < humanQueue.indexOf(interruption));
-  const longNotes = "Durable findings and supporting evidence. ".repeat(4000);
+  const longNotes = Array.from({ length: 576 }, () =>
+    "Durable findings and supporting evidence. ".repeat(3),
+  ).join("\n");
   await call({ command: "update", id: planned, notes: longNotes });
   const compact = await call({ command: "list", limit: 1 });
   const first = page.parse(compact);
   assert.ok(first.nextOffset !== null);
   assert.ok(JSON.stringify(compact).length < longNotes.length / 10);
+  const leanDetail = await cli(["work", "show", planned]);
+  const compactDetail = z
+    .object({
+      item: z.object({
+        id: z.string(),
+        description: z.never().optional(),
+        notes: z.never().optional(),
+        acceptanceCriteria: z.never().optional(),
+      }),
+      counts: z.object({ noteLines: z.literal(576) }),
+      context: z.never().optional(),
+      history: z.never().optional(),
+    })
+    .parse(leanDetail);
+  assert.equal(compactDetail.item.id, planned);
+  assert.ok(Buffer.byteLength(JSON.stringify(leanDetail)) < 1024);
   assert.equal(task.parse((await show(planned)).item).notes, longNotes);
   const collected: string[] = [];
   let offset: number | null = 0;

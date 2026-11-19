@@ -347,8 +347,8 @@ export class Agents {
     return this.setAttributes(id, { [agentAttributes.acknowledged]: true });
   }
 
-  catalog(name?: string, all = false): unknown {
-    if (name !== undefined) return this.seats.show(name);
+  catalog(name?: string, all = false, showSystemPrompt = false): unknown {
+    if (name !== undefined) return this.seats.show(name, showSystemPrompt);
 
     const aliases = this.seats.list(all);
     return {

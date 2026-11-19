@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import { agentAttributes } from "@botlake/extension-agents";
@@ -121,14 +121,14 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       await host.bl("agents", "node", { command: "update", id: first.id, state: "closed" }, false),
     ).toContain("Agents API");
     // Public reconciliation is the synchronization boundary; it observes Botlake's terminal fact.
-    let settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
+    let settled = row.parse(await host.bl("agents", "node", { command: "show", id: first.id }));
     for (
       let attempts = 0;
       attempts < 100 && settled.attributes[agentAttributes.settled] !== true;
       attempts++
     ) {
       await host.bl("agents", "agent", { command: "reconcile" });
-      settled = row.parse(await host.bl("agents", "agent", { command: "show", id: first.id }));
+      settled = row.parse(await host.bl("agents", "node", { command: "show", id: first.id }));
     }
     expect(settled.attributes[agentAttributes.substatus]).toBe("completed");
     expect(
@@ -143,7 +143,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       }),
     );
     const resumedRun = row.parse(
-      await host.bl("agents", "agent", { command: "show", id: resumed.id }),
+      await host.bl("agents", "node", { command: "show", id: resumed.id }),
     );
     expect(resumedRun.attributes[agentAttributes.identity]).toBe(
       settled.attributes[agentAttributes.identity],
@@ -177,14 +177,14 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       }),
     );
     async function settle(id: string): Promise<z.infer<typeof row>> {
-      let run = row.parse(await host.bl("agents", "agent", { command: "show", id }));
+      let run = row.parse(await host.bl("agents", "node", { command: "show", id }));
       for (
         let attempts = 0;
         attempts < 100 && run.attributes[agentAttributes.settled] !== true;
         attempts++
       ) {
         await host.bl("agents", "agent", { command: "reconcile" });
-        run = row.parse(await host.bl("agents", "agent", { command: "show", id }));
+        run = row.parse(await host.bl("agents", "node", { command: "show", id }));
       }
       return run;
     }
@@ -249,7 +249,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
       ),
     ).toContain("different input");
     expect(
-      row.parse(await host.bl("agents", "agent", { command: "show", id: childA.id })).attributes[
+      row.parse(await host.bl("agents", "node", { command: "show", id: childA.id })).attributes[
         agentAttributes.identity
       ],
     ).toBe(parentA.attributes[agentAttributes.identity]);
@@ -273,11 +273,11 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         ).edges.length > 0;
     expect(bound).toBe(true);
     const beforeRestart = row.parse(
-      await host.bl("agents", "agent", { command: "show", id: cancellable.id }),
+      await host.bl("agents", "node", { command: "show", id: cancellable.id }),
     );
     await host.botlake(["restart-host"]);
     expect(
-      row.parse(await host.bl("agents", "agent", { command: "show", id: cancellable.id }))
+      row.parse(await host.bl("agents", "node", { command: "show", id: cancellable.id }))
         .attributes[agentAttributes.handle],
     ).toBe(beforeRestart.attributes[agentAttributes.handle]);
     const cancelled = status.parse(
@@ -292,6 +292,19 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
         cwd: workspace,
         nativeSessionId: "external",
       }),
+    );
+    expect(await host.bl("agents", "agent", { command: "show", id: external.runId })).toMatchObject(
+      {
+        id: external.runId,
+        state: "external",
+        substatus: null,
+        settled: null,
+        provider: "pi",
+        location: await realpath(workspace),
+        attempt: null,
+        resultAvailable: false,
+        errorAvailable: false,
+      },
     );
     expect(
       await host.bl("agents", "agent", { command: "cancel", id: external.runId }, false),
@@ -321,7 +334,7 @@ if(prompt==="cancel"){setInterval(()=>{},1000);}else{console.log(JSON.stringify(
     expect(queued.state).toBe("ready");
     await host.botlake(["restart-host"]);
     expect(
-      row.parse(await host.bl("agents", "agent", { command: "show", id: queued.id })).attributes[
+      row.parse(await host.bl("agents", "node", { command: "show", id: queued.id })).attributes[
         agentAttributes.handle
       ],
     ).toBeUndefined();

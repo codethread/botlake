@@ -1,4 +1,4 @@
-import { jsonSchema, defineOp, q, type Context, type Node } from "@botlake/core";
+import { Fault, jsonSchema, defineOp, q, type Context, type Node } from "@botlake/core";
 import { registrationSchema } from "@botlake/native-session";
 import { match } from "ts-pattern";
 import { z } from "zod";
@@ -16,6 +16,15 @@ const listSchema = z.compile(
     offset: z.number().int().min(0).default(0),
   }),
 );
+const showSchema = z.strictObject({
+  command: z.literal("show"),
+  id: text,
+  showResult: z.boolean().default(false),
+  showPrompt: z.boolean().default(false),
+  showLaunch: z.boolean().default(false),
+  showSettings: z.boolean().default(false),
+  showError: z.boolean().default(false),
+});
 const [listActivity, searchActivity, peekActivity] = activityReadSchema.options;
 const activityCommand = { command: z.literal("activity") };
 
@@ -24,18 +33,24 @@ export function registerAgent(ctx: Context, service: Agents): void {
     z.discriminatedUnion("command", [
       startSchema.extend({ command: z.literal("start") }),
       listSchema,
-      z.strictObject({ command: z.literal("show"), id: text }),
+      showSchema,
       z.strictObject({ command: z.literal("follow"), id: text, fromWorkspace: text }),
       z.discriminatedUnion("operation", [
         listActivity.extend(activityCommand),
         searchActivity.extend(activityCommand),
         peekActivity.extend(activityCommand),
       ]),
-      z.strictObject({
-        command: z.literal("catalog"),
-        name: text.optional(),
-        all: z.boolean().optional(),
-      }),
+      z
+        .strictObject({
+          command: z.literal("catalog"),
+          name: text.optional(),
+          all: z.boolean().optional(),
+          showSystemPrompt: z.boolean().default(false),
+        })
+        .refine(
+          (value) => !value.showSystemPrompt || value.name !== undefined,
+          "--show-system-prompt requires a seat name",
+        ),
       z.strictObject({ command: z.literal("reconcile") }),
       z.strictObject({ command: z.literal("cancel"), id: text }),
       z.strictObject({ command: z.literal("retry"), id: text }),
@@ -53,12 +68,19 @@ export function registerAgent(ctx: Context, service: Agents): void {
   ctx.register(
     defineOp({
       name: "agent",
-      about:
-        "Managed runs own process custody and an invocation-fenced lifecycle; settlement is independent of task completion. Native sessions and activity/output records are observations, not custody or proof of liveness. Follow retains a source-owned run summary; full execution state and commands remain at its owner. Retries and resumes retain accepted provider settings.",
+      about: [
+        "Managed runs own process custody. Settlement is independent of task completion.",
+        "Native sessions and activity are observations, not custody or proof of liveness. Follow retains a summary; execution state and commands remain at the owner.",
+        "Retries and resumes retain accepted provider settings.",
+      ].join(" "),
       primer: [
-        'Choose a seat with bl agent catalog [SEAT], start it with bl agent start --seat SEAT --cwd DIR --prompt TEXT, and keep the returned id. With Batteries selected, run bl await --query agent-run-settled --params \'{"runId":"RUN_ID"}\' --min-count 1; check reason=satisfied before bl agent show RUN_ID. Use activity peek for recent events or search for retained excerpts; the native transcript remains the full record. A wait timeout does not stop the run, and settlement itself does not close a served task.',
-        "Across repos, global --workspace selects the run's owner and its seats/config; agent start --cwd only sets the execution directory. Managed children inherit BL_WORKSPACE, keeping plain bl commands and native activity at that owner after cd. To record in another lake, start with bl --workspace DEST agent start. A --target must be owned by the run's lake; imported references are read-only. agent follow RUN_ID --from-workspace OWNER retains a local summary, not execution authority or activity. Wait, inspect activity and control the run at OWNER using its original ID. See bl help agent start for cross-repo examples.",
-      ].join("\n\n"),
+        "Choose a seat with bl agent catalog [SEAT], then use bl agent start --seat SEAT --cwd DIR --prompt TEXT and keep the returned id.",
+        `With Batteries, use bl await --query agent-run-settled --params '{"runId":"RUN_ID"}' --min-count 1. Check reason=satisfied before bl agent show RUN_ID.`,
+        "A wait timeout does not stop the run. Settlement does not close a served task. Use activity peek for recent observations; the native transcript is the full record.",
+        "Global --workspace selects the owner and its seats. Start's --cwd sets only the execution directory. Managed children inherit the owner's BL_WORKSPACE after cd.",
+        "Use bl --workspace DEST agent start to record at DEST. Targets must be owned by the run's lake; imported references are read-only.",
+        "agent follow RUN_ID --from-workspace OWNER retains a summary. Wait, inspect activity and control the run at OWNER using its original ID. See bl help agent start.",
+      ].join(" "),
       input,
       output: jsonSchema,
       jsonSchema: { input, output: jsonSchema },
@@ -75,7 +97,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
         commands: {
           list: {
             description:
-              "Return { runs, total, nextOffset } summaries; use show RUN_ID for the full record",
+              "Return { runs, total, nextOffset } summaries; use show RUN_ID to inspect one run",
             examples: ["bl agent list", "bl agent list --state failed --limit 10"],
             flags: {
               state: {
@@ -92,13 +114,19 @@ export function registerAgent(ctx: Context, service: Agents): void {
           },
           catalog: {
             description:
-              "List available seats; pass NAME to inspect candidates, settings and reasons",
+              "List available seats; NAME shows routing, candidates and settings without prompt text",
             examples: ["bl agent catalog", "bl agent catalog reviewer", "bl agent catalog --all"],
             positionals: [{ name: "name", type: "string", description: "Optional seat to expand" }],
             flags: {
               all: {
                 type: "boolean",
                 description: "For a list, include unavailable seats and reasons",
+              },
+              "show-system-prompt": {
+                key: "showSystemPrompt",
+                type: "boolean",
+                description:
+                  "For NAME, include explicit candidate prompts; callbacks are marked dynamic, never evaluated",
               },
             },
           },
@@ -109,9 +137,37 @@ export function registerAgent(ctx: Context, service: Agents): void {
           },
           show: {
             description:
-              "Show an owned run's full record, or a followed run's core summary and provenance",
-            examples: ["bl agent show RUN_ID"],
+              "Show lifecycle, session and result/error availability; followed runs retain source provenance. Text and launch configuration are opt-in",
+            examples: ["bl agent show RUN_ID", "bl agent show RUN_ID --show-result"],
             positionals: [{ name: "id", type: "string", required: true }],
+            flags: {
+              "show-launch": {
+                key: "showLaunch",
+                type: "boolean",
+                description:
+                  "Include the frozen process specification, including stdin and environment",
+              },
+              "show-settings": {
+                key: "showSettings",
+                type: "boolean",
+                description: "Include resolved provider settings and system prompt",
+              },
+              "show-result": {
+                key: "showResult",
+                type: "boolean",
+                description: "Include the exact provider result when available",
+              },
+              "show-prompt": {
+                key: "showPrompt",
+                type: "boolean",
+                description: "Include the exact accepted prompt when available",
+              },
+              "show-error": {
+                key: "showError",
+                type: "boolean",
+                description: "Include the exact execution error when available",
+              },
+            },
           },
           follow: {
             description:
@@ -179,7 +235,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
               },
               peek: {
                 description:
-                  "Show a bounded observational snapshot of recent events, outstanding tools and usage; not an exhaustive tool set or liveness proof",
+                  "Preview recent events (160-character excerpts), outstanding tools and observed usage. Use activity list HANDLE to page all retained events; not liveness proof",
                 examples: ["bl agent activity peek RUN_ID", "bl agent activity peek IDENTITY"],
                 positionals: [
                   {
@@ -191,10 +247,21 @@ export function registerAgent(ctx: Context, service: Agents): void {
                   },
                 ],
                 flags: {
+                  "show-events": {
+                    key: "showEvents",
+                    type: "boolean",
+                    description:
+                      "Include full retained event rows with IDs, timestamps and summaries",
+                  },
+                  "show-stream": {
+                    key: "showStream",
+                    type: "boolean",
+                    description: "Include the native session, capabilities and retention metadata",
+                  },
                   limit: {
                     type: "number",
                     description:
-                      "Each of recent events and outstanding tool starts (default 20; 1–100)",
+                      "Maximum recent events and outstanding tool starts per collection (default 5; 1–100)",
                   },
                 },
               },
@@ -383,7 +450,7 @@ export function registerAgent(ctx: Context, service: Agents): void {
             return runStatus(ctx.graph.show(run.id));
           })
           .with({ command: "list" }, (request) => listRuns(ctx, request))
-          .with({ command: "show" }, ({ id }) => ctx.graph.show(id))
+          .with({ command: "show" }, (request) => showRun(ctx, request))
           .with({ command: "follow" }, async ({ id, fromWorkspace }) => {
             const node = await service.follow(
               { workspace: fromWorkspace, nodeId: id },
@@ -392,7 +459,9 @@ export function registerAgent(ctx: Context, service: Agents): void {
             return { id: node.id, title: node.title, state: node.state, reference: node.reference };
           })
           .with({ command: "activity" }, (request) => service.readActivity(request))
-          .with({ command: "catalog" }, ({ name, all }) => service.catalog(name, all))
+          .with({ command: "catalog" }, ({ name, all, showSystemPrompt }) =>
+            service.catalog(name, all, showSystemPrompt),
+          )
           .with({ command: "reconcile" }, async () => {
             await service.reconcile();
 
@@ -431,12 +500,50 @@ export function registerAgent(ctx: Context, service: Agents): void {
 
 // -- Private helpers --
 
+function showRun(
+  ctx: Context,
+  { id, showResult, showError, showPrompt, showSettings, showLaunch }: z.infer<typeof showSchema>,
+) {
+  const run = ctx.graph.show(id);
+  const followed = run.reference !== null;
+  if (!followed && run.attributes[agentAttributes.run] !== true)
+    throw new Fault("run", "Expected tracked run");
+  if (
+    run.reference !== null &&
+    (showResult || showError || showPrompt || showSettings || showLaunch)
+  )
+    throw new Fault("reference", "Read run detail from the owning lake", {
+      workspace: run.reference.workspace,
+      nodeId: run.reference.nodeId,
+    });
+
+  const result = run.attributes[agentAttributes.result];
+  const error = run.attributes[agentAttributes.error];
+  return {
+    ...runStatus(run),
+    seat: run.attributes[agentAttributes.seat] ?? null,
+    provider: run.attributes[agentAttributes.provider] ?? null,
+    identity: run.attributes[agentAttributes.identity] ?? null,
+    sessionId: run.attributes[agentAttributes.sessionId] ?? null,
+    location: run.attributes[agentAttributes.cwd] ?? null,
+    attempt: run.attributes[agentAttributes.attempt] ?? null,
+    resultAvailable: followed ? null : typeof result === "string",
+    errorAvailable: followed ? null : typeof error === "string" && error.length > 0,
+    ...(followed ? { title: run.title, observedState: run.state, reference: run.reference } : {}),
+    ...(showLaunch ? { launch: run.attributes[agentAttributes.launch] ?? null } : {}),
+    ...(showSettings ? { settings: run.attributes[agentAttributes.settings] ?? null } : {}),
+    ...(showResult && typeof result === "string" ? { result } : {}),
+    ...(showPrompt ? { prompt: run.attributes[agentAttributes.prompt] ?? null } : {}),
+    ...(showError && typeof error === "string" && error.length > 0 ? { error } : {}),
+  };
+}
+
 function runStatus(run: Node) {
   return {
     id: run.id,
-    state: run.attributes[agentAttributes.state],
+    state: run.attributes[agentAttributes.state] ?? null,
     substatus: run.attributes[agentAttributes.substatus] ?? null,
-    // External sessions have no custody settlement observation.
+    // External sessions and followed references have no custody settlement observation.
     settled: run.attributes[agentAttributes.settled] ?? null,
   };
 }

@@ -134,7 +134,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       }),
     );
     check(waited.reason === "satisfied", `Native run timed out: ${id}`);
-    return runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
+    return runSchema.parse(await host.bl("native-smoke", "node", { command: "show", id }));
   }
   function lifecycle(run: z.infer<typeof runSchema>): void {
     const observed = observationSchema.parse(run.attributes[agentAttributes.observation]);
@@ -163,6 +163,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
       await host.bl("native-smoke", "agent", {
         command: "activity",
         operation: "peek",
+        showStream: true,
         id: run.id,
         limit: 100,
       }),
@@ -338,7 +339,7 @@ export default agents({providers:Object.entries(settings).map(([name,setting])=>
 } finally {
   try {
     for (const id of owned) {
-      const run = runSchema.parse(await host.bl("native-smoke", "agent", { command: "show", id }));
+      const run = runSchema.parse(await host.bl("native-smoke", "node", { command: "show", id }));
       if (run.attributes[agentAttributes.settled] !== true)
         await host.bl("native-smoke", "agent", { command: "cancel", id });
     }

@@ -60,7 +60,7 @@ Stopped-but-unsettled runs, quiet activity and external sessions without an end 
 
 ## Exhaustion and errors
 
-Exhaustion persists `work-auto-bot/exhausted` and appends an actionable note visible in `bl work show TASK`. The `work-auto-bot-exhausted` query also finds exhausted tasks. Like an exhausted gate, it is terminal for automation, not success or automatic task closure.
+Exhaustion persists `work-auto-bot/exhausted` and appends an actionable note visible in `bl work show TASK --show-notes`. The `work-auto-bot-exhausted` query also finds exhausted tasks. Like an exhausted gate, it is terminal for automation, not success or automatic task closure.
 
 One Oracle debugger request, `work-auto-bot/TASK/oracle`, serves the original task from the **owning lake workspace**. This distinct fresh debugger receives the failed worker's retained cwd/run in its prompt so it can diagnose even a deleted worker worktree; the worker's native session is never relocated. Its prompt requires proactive investigation/fixes, gates for machine waits, evidence and an explicit next actor before stopping. HITL prerequisites are only for remaining human-only input after diagnosis. It must not reset the budget or arrange replacement workers/self-retries.
 
@@ -70,7 +70,7 @@ Malformed settings and initial admission failures persist `work-auto-bot/error`;
 
 ```sh
 bl node show TASK
-bl agent show RUN
+bl agent show RUN --show-result --show-error
 bl node update TASK --attributes '{"work-auto-bot/error":null}'
 bl agent resume RUN 'Re-read the task and blockers; claim the exact task and continue'
 ```

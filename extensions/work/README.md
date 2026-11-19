@@ -9,7 +9,7 @@ bl prime work
 bl work create "Delivery context" --kind group --description "Shared purpose and constraints"
 bl work create "Investigate alternatives" --parent GROUP --description "Answer with supporting evidence"
 bl work list --view available
-bl work show TASK
+bl work show TASK --show-description --show-context --show-criteria
 bl work claim TASK
 bl work update TASK --notes "Findings and supporting references"
 bl work close TASK
@@ -119,7 +119,9 @@ Criteria are optional. `criterion add TASK CONDITION` appends an immutable condi
 
 Claim defaults its assignee to the normalized invocation caller; explicit `--assignee` and `--by` remain independent. `release TASK --assignment-id TOKEN --reason TEXT` changes only the matching current assignment. Stale releases return `released: false`. Closure releases its assignment and preserves history. Optional [Work Agents](../work-agents/README.md) binds assignment tokens to managed agent liveness.
 
-`show` includes the local brief, ancestor context, criteria, notes, prerequisites and references. `--history` expands assignment, criterion, closure, abandonment and recovery history. Group members and lists default to 20 summaries, maximum 100; continue at `nextOffset`. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes. With `--view all` it includes closed work unless `--state` narrows it; queue views remain open-only. Lists omit briefs and findings.
+`show` returns lifecycle, assignment and readiness with counts for note lines, criteria, ancestors and relationships. Use `--show-notes` for the exact stored text, `--show-criteria` for current assessments, and `--show-history` for assignment, criterion, closure, abandonment and recovery history. `--show-description` includes the local brief; combine it with `--show-context` to include ancestor briefs. `--show-gate-config` includes gate parameters and retry policy.
+
+`prerequisites`, `references` and `members.items` share `--offset` and `--limit` (20 per collection by default, maximum 100). Continue at the top-level `nextOffset` until null, even if one collection is already empty. `members.nextOffset` refers only to members. Pages are not snapshots. `list --search TEXT` searches titles, descriptions and notes. With `--view all` it includes closed work unless `--state` narrows it; queue views remain open-only. Lists omit briefs and findings.
 
 ## Tree and graph
 

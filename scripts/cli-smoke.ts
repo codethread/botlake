@@ -389,9 +389,9 @@ async function exercise(workspace: string, cwd: string): Promise<void> {
   const work = await call(workspace, "work", { command: "list", limit: 3 });
   assert.ok(!JSON.stringify(work).includes(JSON.stringify(long).slice(1, -1)));
   assert.ok(
-    JSON.stringify(await call(workspace, "work", { command: "show", id: task.id })).includes(
-      JSON.stringify(long).slice(1, -1),
-    ),
+    JSON.stringify(
+      await call(workspace, "work", { command: "show", id: task.id, showDescription: true }),
+    ).includes(JSON.stringify(long).slice(1, -1)),
   );
   const assignment = z.object({ assignment: z.object({ id: z.string() }) }).parse(
     await call(workspace, "work", {

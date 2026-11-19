@@ -183,7 +183,15 @@ export const workflow = defineWorkflow({
     await fixture.botlake(["lake", "start", "--workspace", "abandonment"]);
     const bl = (operation: string, input: unknown, ok?: boolean) =>
       fixture.bl("abandonment", operation, input, ok);
-    const showWork = (id: string) => bl("work", { command: "show", id, history: true });
+    const showWork = (id: string) =>
+      bl("work", {
+        command: "show",
+        id,
+        showDescription: true,
+        showNotes: true,
+        showCriteria: true,
+        showHistory: true,
+      });
     const showRun = (id: string) => bl("workflow", { command: "show", id });
     const create = (input: Record<string, unknown>) => bl("work", { command: "create", ...input });
     const start = (name: string, input: Record<string, unknown> = {}, parent?: string) =>

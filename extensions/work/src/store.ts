@@ -296,17 +296,14 @@ export function workStore(ctx: Context): WorkStore {
       context.unshift(group);
       ancestor = parentOf(group.id);
     }
+    const memberIds = page(outgoing(id, workRelations.parentOf), input.limit, input.offset);
     return {
       item,
       context,
       ready: ready(id),
       prerequisites: outgoing(id, workRelations.dependsOn).map((target) => summary(target)),
       references: outgoing(id, workRelations.references).map((target) => summary(target)),
-      members: page(
-        outgoing(id, workRelations.parentOf).map((target) => summary(target)),
-        input.limit,
-        input.offset,
-      ),
+      members: { ...memberIds, items: memberIds.items.map((target) => summary(target)) },
       ...(input.history
         ? {
             history: {

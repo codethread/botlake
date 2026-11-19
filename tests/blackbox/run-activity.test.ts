@@ -182,10 +182,25 @@ test("run activity pages and searches SQL events, preserves live streams, and ex
     await native("metadata", [
       { kind: "tool-ended", callId: "b", tool: "read", summary: "", outcome: "completed" },
     ]);
+    const compact = await runtime.invoke("agent", {
+      command: "activity",
+      operation: "peek",
+      id: registered.identity,
+    });
+    expect(compact).toMatchObject({
+      moreRecent: true,
+      moreOutstandingTools: false,
+      outstandingTools: [{ kind: "tool-started", tool: "shell", summary: "bun test" }],
+    });
+    expect(compact).toHaveProperty("recent.length", 5);
+    expect(compact).not.toHaveProperty("outstandingTools.0.callId");
+    expect(compact).not.toHaveProperty("stream.sessionPath");
     const inspecting = peek.parse(
       await runtime.invoke("agent", {
         command: "activity",
         operation: "peek",
+        showEvents: true,
+        showStream: true,
         id: registered.identity,
       }),
     );
@@ -380,6 +395,18 @@ test("packed native plugins report tools, visible message excerpts and harness-r
         expect(await Bun.file(envFile).text()).toContain(`export BL_ACTOR='${id}'`);
       }
       await send("UserPromptSubmit", { prompt: `Investigate VPN access ${"x".repeat(3000)}` });
+      const preview = await host.cli(["--workspace", "activity", "agent", "activity", "peek", id]);
+      const message = z
+        .object({
+          recent: z.array(
+            z.object({ kind: z.string(), summary: z.string(), truncated: z.boolean() }),
+          ),
+        })
+        .parse(preview)
+        .recent.find((event) => event.kind === "message");
+      expect(message?.summary).toHaveLength(160);
+      expect(message?.truncated).toBe(true);
+      expect(Buffer.byteLength(JSON.stringify(preview))).toBeLessThan(1000);
       await send("PreToolUse", {
         tool_use_id: "a",
         tool_name: "Bash",
@@ -396,7 +423,13 @@ test("packed native plugins report tools, visible message excerpts and harness-r
         tool_input: { file_path: "README.md" },
       });
       const live = peek.parse(
-        await host.bl("activity", "agent", { command: "activity", operation: "peek", id }),
+        await host.bl("activity", "agent", {
+          command: "activity",
+          operation: "peek",
+          showEvents: true,
+          showStream: true,
+          id,
+        }),
       );
       expect(live.outstandingTools.map((event) => event.callId)).toEqual(["a"]);
       await send(provider === "claude" ? "PostToolUseFailure" : "PostToolUse", {
@@ -483,7 +516,18 @@ await emit("agent_end");await emit("session_shutdown");`,
     const id = sessionIdentity({ provider: "pi", nativeSessionId: "pi-activity" });
     expect(piOutput).toEqual({ actor: id, model: "fixture/model", effort: "high" });
     const pi = peek.parse(
-      await host.cli(["--workspace", "activity", "agent", "activity", "peek", id]),
+      await host.cli([
+        "--workspace",
+        "activity",
+        "agent",
+        "activity",
+        "peek",
+        id,
+        "--show-stream",
+        "--show-events",
+        "--limit",
+        "20",
+      ]),
     );
     expect(pi.outstandingTools).toEqual([]);
     expect(

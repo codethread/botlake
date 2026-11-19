@@ -223,29 +223,24 @@ export class Catalog {
     );
   }
 
-  show(name: string): unknown {
+  show(name: string, showSystemPrompt: boolean): unknown {
     const resolved = this.availability(name);
-
-    const describe = (source: SystemPrompt | undefined) =>
-      typeof source === "function" ? { dynamic: true } : source;
-
-    return {
-      name,
-      ...resolved,
-      ...(resolved.available
-        ? {
-            settings: {
-              ...resolved.settings,
-              systemPrompt: describe(resolved.settings.systemPrompt),
-            },
-          }
-        : {}),
-      candidates: (this.aliases.get(name) ?? []).map((candidate) =>
-        typeof candidate === "string" || candidate.systemPrompt === undefined
-          ? candidate
-          : { ...candidate, systemPrompt: describe(candidate.systemPrompt) },
-      ),
-    };
+    const candidates = (this.aliases.get(name) ?? []).map((candidate) => {
+      if (typeof candidate === "string") return candidate;
+      const { systemPrompt, ...overrides } = candidate;
+      if (!showSystemPrompt || systemPrompt === undefined) return overrides;
+      return {
+        ...overrides,
+        systemPrompt: typeof systemPrompt === "function" ? { dynamic: true } : systemPrompt,
+      };
+    });
+    if (!resolved.available) return { name, ...resolved, candidates };
+    // A prompt belongs only to its explicit candidate; it never inherits.
+    const {
+      settings: { systemPrompt: _, ...overrides },
+      ...selection
+    } = resolved;
+    return { name, ...selection, settings: overrides, candidates };
   }
 
   // -- Private helpers --

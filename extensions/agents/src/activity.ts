@@ -32,8 +32,8 @@ const eventColumns = sql`
 `;
 
 const text = z.string().min(1);
-const limit = z.number().int().min(1).max(100).default(20);
-const pagination = { after: z.number().int().nonnegative().default(0), limit };
+const limit = z.number().int().min(1).max(100);
+const pagination = { after: z.number().int().nonnegative().default(0), limit: limit.default(20) };
 
 /** Distinct reads keep paging, phrase search and targeted inspection independent. */
 export const activityReadSchema = z.compile(
@@ -45,7 +45,13 @@ export const activityReadSchema = z.compile(
       query: text,
       ...pagination,
     }),
-    z.strictObject({ operation: z.literal("peek"), id: text, limit }),
+    z.strictObject({
+      operation: z.literal("peek"),
+      id: text,
+      limit: limit.default(5),
+      showEvents: z.boolean().optional(),
+      showStream: z.boolean().optional(),
+    }),
   ]),
 );
 
@@ -217,7 +223,7 @@ export class RunActivity {
   }
 
   read(input: ActivityRead) {
-    if (input.operation === "peek") return this.peek(this.resolve(input.id), input.limit);
+    if (input.operation === "peek") return this.peek(this.resolve(input.id), input);
     const stream = input.id === undefined ? null : this.resolve(input.id);
     const search =
       input.operation === "search"
@@ -279,7 +285,10 @@ export class RunActivity {
     return runActivityStreamSchema.parse(row);
   }
 
-  private peek(stream: z.infer<typeof runActivityStreamSchema>, pageLimit: number) {
+  private peek(
+    stream: z.infer<typeof runActivityStreamSchema>,
+    { limit: pageLimit, showEvents, showStream }: Extract<ActivityRead, { operation: "peek" }>,
+  ) {
     const recent = events
       .parse(
         this.ctx.graph.db
@@ -304,7 +313,7 @@ export class RunActivity {
               AND boundary.sequence > started.sequence)
         ORDER BY sequence DESC LIMIT ?
       `)
-        .all(stream.id, pageLimit),
+        .all(stream.id, pageLimit + 1),
     );
     const latestUsage =
       events.parse(
@@ -315,13 +324,27 @@ export class RunActivity {
       `)
           .all(stream.id),
       )[0]?.usage ?? null;
+    const preview = (event: z.infer<typeof runActivityEventSchema>) => ({
+      kind: event.kind,
+      tool: event.tool,
+      summary: event.summary.slice(0, 160),
+      outcome: event.outcome,
+      truncated: event.truncated || event.summary.length > 160,
+    });
+    const outstandingTools = tools.slice(0, pageLimit);
     return {
-      stream,
+      stream:
+        showStream === true
+          ? stream
+          : { id: stream.id, eventCount: stream.eventCount, expiredAt: stream.expiredAt },
       latestUsage,
+      moreRecent: stream.expiredAt === null && stream.eventCount > recent.length,
+      moreOutstandingTools: tools.length > pageLimit,
       observedAgoMs:
         stream.lastObservedAt === null ? null : this.ctx.clock.now() - stream.lastObservedAt,
-      outstandingTools: tools,
-      recent,
+      outstandingTools:
+        showEvents === true ? outstandingTools : outstandingTools.map((event) => preview(event)),
+      recent: showEvents === true ? recent : recent.map((event) => preview(event)),
     };
   }
 
