@@ -826,6 +826,13 @@ func (d *Daemon) handle(conn net.Conn) {
 		}
 		d.mu.Unlock()
 		encode(conn, Frame{OK: true, Result: map[string]any{"coreVersion": coreVersion, "members": len(d.lakes)}})
+	case "env-add", "env-remove":
+		result, err := changeSupervisorEnv(req, os.Setenv, os.Unsetenv)
+		if err != nil {
+			encode(conn, errFrame(err))
+		} else {
+			encode(conn, Frame{OK: true, Result: result})
+		}
 	case "stop":
 		encode(conn, Frame{OK: true, Result: map[string]bool{"stopping": true}})
 		go d.shutdown()
