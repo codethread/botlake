@@ -14,6 +14,9 @@ let receipt: Promise<void> = Promise.resolve();
 // If recording delivery failed, retry the receipt without starting another paid turn.
 let handedOff: string[] = [];
 let warned = false;
+// A first poll that fails (no Bun, a broken install) stops the watcher instead of retrying
+// forever; later failures, such as a restarting lake, keep retrying.
+let polled = false;
 
 export const register: Register = (on) => {
   on("turn.start", (_, e, next) => {
@@ -40,11 +43,15 @@ export const register: Register = (on) => {
 
 async function tick($: EngineInterface): Promise<void> {
   try {
-    if (!turnRunning && (await check($)) === "stop") return;
+    if (!turnRunning) {
+      if ((await check($)) === "stop") return;
+      polled = true;
+    }
     warned = false;
   } catch (error) {
     if (!warned) $.ui.log(`Mail unavailable: ${String(error)}`);
     warned = true;
+    if (!polled) return;
   }
   $.clock.after(IDLE_POLL_MS, () => void tick($));
 }
