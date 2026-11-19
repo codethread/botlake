@@ -8,6 +8,7 @@ import {
   type RuntimeExtension,
 } from "@botlake/core";
 import type { ReferenceLibrary } from "@botlake/extension-references";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
 import { workAbandonment } from "./abandonment.ts";
@@ -19,7 +20,7 @@ import { registerGateEvaluation, type ProbeDefinition } from "./probes.ts";
 import { renderWorkTopology } from "./render.ts";
 import { createInput, listInput, updateInput, workStore } from "./store.ts";
 import { treeInput } from "./topology.ts";
-import type { WorkStore } from "./types.ts";
+import type { WorkDetail, WorkStore } from "./types.ts";
 
 export {
   workAbandonment,
@@ -97,6 +98,18 @@ const item = { id: text };
 const relation = z.enum([workRelations.dependsOn, workRelations.references]);
 const topologyInput = treeInput.extend({ format: z.enum(["json", "text"]).optional() });
 const linkInput = { from: text, to: text, relation, toWorkspace: text.optional() };
+const showInput = z.strictObject({
+  command: z.literal("show"),
+  ...item,
+  showDescription: z.boolean().default(false),
+  showNotes: z.boolean().default(false),
+  showCriteria: z.boolean().default(false),
+  showContext: z.boolean().default(false),
+  showHistory: z.boolean().default(false),
+  showGateConfig: z.boolean().default(false),
+  limit: z.number().int().min(1).max(100).default(20),
+  offset: z.number().int().nonnegative().default(0),
+});
 const input = z.compile(
   z.discriminatedUnion("command", [
     z.discriminatedUnion("kind", [
@@ -118,13 +131,7 @@ const input = z.compile(
         (value) => value.direction === undefined || value.id !== undefined,
         "Direction requires an id",
       ),
-    z.strictObject({
-      command: z.literal("show"),
-      ...item,
-      history: z.boolean().default(false),
-      limit: z.number().int().min(1).max(100).default(20),
-      offset: z.number().int().nonnegative().default(0),
-    }),
+    showInput,
     z.strictObject({ command: z.literal("close"), ...item, ...attribution }),
     z.strictObject({ command: z.literal("abandon"), ...item, reason: text, ...attribution }),
     z.strictObject({ command: z.literal("reopen"), ...item, reason: text, ...attribution }),
@@ -222,6 +229,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
             "List --view available for ready unassigned AFK tasks, or --view human --assignee IDENTITY for ready HITL work.",
             "Use `bl gate create … --dependent TASK` for machine-checkable blockers; open gates block work, and either closed outcome satisfies readiness.",
             "Gates never enter queues.",
+            "Read the brief before acting: bl work show ID --show-description --show-context --show-criteria.",
             "Claim reserves responsibility, not proof of execution; defaults to the invocation caller.",
             "Groups stay open until explicitly closed; closing requires all descendant tasks to be closed.",
             "Only groups can be parents.",
@@ -240,7 +248,7 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
               'bl work create "Delivery context" --kind group',
               "bl work list --view available",
               "bl work list --view human --assignee IDENTITY",
-              "bl work show ID --history",
+              "bl work show ID --show-description --show-context",
               "bl work tree --lean",
               "bl work graph ID --show-description --show-criteria",
             ],
@@ -296,23 +304,54 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
               },
               show: {
                 description:
-                  "Owned work returns brief, context, links and paged members; reference IDs return the observed summary and owner. History is opt-in",
-                examples: ["bl work show TASK", "bl work show GROUP --limit 50 --history"],
+                  "Return metadata, counts and paged relationships. Prose, criteria and history are opt-in. References return an observed summary and owner",
+                examples: [
+                  "bl work show TASK --show-description --show-notes --show-criteria",
+                  "bl work show GROUP --show-context --limit 50",
+                ],
                 positionals: [{ name: "id", type: "string", required: true }],
                 flags: {
-                  history: {
+                  "show-description": {
+                    key: "showDescription",
+                    type: "boolean",
+                    description: "Include the item's local brief (default false)",
+                  },
+                  "show-notes": {
+                    key: "showNotes",
+                    type: "boolean",
+                    description: "Include task findings and references (default false)",
+                  },
+                  "show-criteria": {
+                    key: "showCriteria",
+                    type: "boolean",
+                    description: "Include task conditions and current assessments (default false)",
+                  },
+                  "show-context": {
+                    key: "showContext",
+                    type: "boolean",
+                    description:
+                      "Include ancestor context summaries; combine with --show-description for their briefs",
+                  },
+                  "show-history": {
+                    key: "showHistory",
                     type: "boolean",
                     description:
                       "Include assignment, criterion, closure and recovery history (default false)",
                   },
+                  "show-gate-config": {
+                    key: "showGateConfig",
+                    type: "boolean",
+                    description: "Include gate parameters and retry policy (default false)",
+                  },
                   limit: {
                     type: "number",
-                    description: "Member page size: integer, default 20, min 1, max 100",
+                    description:
+                      "Maximum rows per relationship collection: default 20, min 1, max 100",
                   },
                   offset: {
                     type: "number",
                     description:
-                      "Zero-based nonnegative integer (default 0); continue at members.nextOffset, null when exhausted",
+                      "Zero-based index in each collection (default 0); continue at nextOffset until all three are exhausted. Pages are not snapshots",
                   },
                 },
               },
@@ -693,13 +732,12 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
               case "show": {
                 const summary = store.summary(value.id);
                 if (summary.kind === "reference") return jsonSchema.parse(summary);
-                return jsonSchema.parse(
-                  store.inspect(value.id, {
-                    history: value.history,
-                    limit: value.limit,
-                    offset: value.offset,
-                  }),
-                );
+                const detail = store.inspect(value.id, {
+                  history: value.showHistory,
+                  limit: value.limit,
+                  offset: value.offset,
+                });
+                return jsonSchema.parse(projectWorkDetail(detail, value));
               }
               case "list": {
                 const { command: _, ...request } = value;
@@ -810,6 +848,53 @@ export function work(configuration: WorkOptions = {}): RuntimeExtension<WorkStor
 export default work();
 
 // -- CLI fragments --
+
+function projectWorkDetail(detail: WorkDetail, options: z.infer<typeof showInput>) {
+  const { description, ...workItem } = detail.item;
+  const projected = match(workItem)
+    .with({ kind: "task" }, ({ notes, acceptanceCriteria, ...task }) => ({
+      ...task,
+      ...(options.showNotes ? { notes } : {}),
+      ...(options.showCriteria ? { acceptanceCriteria } : {}),
+    }))
+    .with({ kind: "gate" }, ({ params, policy, ...gate }) => ({
+      ...gate,
+      ...(options.showGateConfig ? { params, policy } : {}),
+    }))
+    .with({ kind: "group" }, (group) => group)
+    .exhaustive();
+  const { offset, limit } = options;
+  const end = offset + limit;
+  const { context, prerequisites, references, members } = detail;
+  const parent = context.at(-1)?.id ?? null;
+  return {
+    item: { ...projected, parent, ...(options.showDescription ? { description } : {}) },
+    ready: detail.ready,
+    counts: {
+      noteLines:
+        workItem.kind === "task" && workItem.notes !== null && workItem.notes.length > 0
+          ? workItem.notes.split(/\r\n|\r|\n/u).length
+          : 0,
+      criteria: workItem.kind === "task" ? workItem.acceptanceCriteria.length : 0,
+      ancestors: context.length,
+      prerequisites: prerequisites.length,
+      references: references.length,
+      members: members.total,
+    },
+    prerequisites: prerequisites.slice(offset, end),
+    references: references.slice(offset, end),
+    members,
+    nextOffset: end < Math.max(members.total, prerequisites.length, references.length) ? end : null,
+    ...(options.showContext
+      ? {
+          context: context.map(({ description: ancestorBrief, ...group }) =>
+            options.showDescription ? { ...group, description: ancestorBrief } : group,
+          ),
+        }
+      : {}),
+    ...(options.showHistory ? { history: detail.history } : {}),
+  };
+}
 
 function topologyFlags() {
   return {

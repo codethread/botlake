@@ -59,7 +59,8 @@ export default agents({
 ```sh
 bl agent catalog                  # Available seats, docs and settings.
 bl agent catalog --all            # Also show unavailability reasons.
-bl agent catalog reviewer        # Expand all candidates.
+bl agent catalog reviewer         # Inspect routing and candidates without prompts.
+bl agent catalog reviewer --show-system-prompt  # Include each candidate’s explicit prompt.
 bl flag set agent/claude true
 bl flag set model/openai false    # New reviewer runs now select opus.
 ```
@@ -76,17 +77,17 @@ bl await --query agent-run-settled --params '{"runId":"042-apple-cloud"}' --min-
 bl agent show 042-apple-cloud
 ```
 
-Waiting requires explicitly selected [Batteries](../batteries/README.md). Check `reason: "satisfied"`, then inspect the run; timeout/interruption stops only the wait. Example `agent show` **attribute excerpts**:
+Waiting requires explicitly selected [Batteries](../batteries/README.md). Check `reason: "satisfied"`, then inspect the run; timeout/interruption stops only the wait. Example `agent show` status fields:
 
 ```json
-{ "agent/state": "stopped", "agent/substatus": "completed", "agent/settled": true }
+{ "state": "stopped", "substatus": "completed", "settled": true }
 ```
 
 ```json
-{ "agent/state": "stopped", "agent/substatus": "requested", "agent/settled": false }
+{ "state": "stopped", "substatus": "requested", "settled": false }
 ```
 
-**Settled custody is not execution success or task completion.** Settlement includes failure/cancellation; `completed` indicates successful execution. Read `agent/result` and `agent/error`. Closed/stopped alone proves neither settlement nor success. Uncertain custody blocks retry and assignment release; inactivity is not exit evidence.
+**Settled custody is not execution success or task completion.** Settlement includes failure/cancellation; `completed` indicates successful execution. Check `resultAvailable` and `errorAvailable`, then request `--show-result` or `--show-error` for exact text. `--show-prompt`, `--show-settings` and `--show-launch` expand the accepted instructions, frozen settings and launch specification independently. Closed/stopped alone proves neither settlement nor success. Uncertain custody blocks retry and assignment release; inactivity is not exit evidence.
 
 ```sh
 bl agent list --state failed --limit 10
@@ -231,7 +232,7 @@ bl --input '{"command":"activity","operation":"search","query":"VPN access","aft
 # {"stream":null,"events":[],"nextCursor":null}
 ```
 
-A run selects its current invocation, an identity its latest stream, and a handle that exact stream. Omit the list/search target for all retained events. `nextCursor` is a received sequence, not time/offset. Peek bounds recent events, outstanding tool starts and scoped usage; observations prove neither progress nor liveness.
+A run selects its current invocation, an identity its latest stream, and a handle that exact stream. Omit the list/search target for all retained events. `nextCursor` is a received sequence, not time/offset. Peek returns up to five recent events and five outstanding starts, with 160-character previews (`truncated` marks clipping), the stream handle, retained-stream expiry and latest scoped usage. `moreRecent` and `moreOutstandingTools` indicate omitted retained rows. Use `--show-events` for the full retained rows and `--show-stream` for session/retention metadata; set `--limit` up to 100 or page `activity list` for older events. These are snapshots; observations prove neither progress nor liveness.
 
 Optional native reporting supplies turn/tool events and visible excerpts capped at 2,048 characters (`truncated` marks clipping). Tool output/reasoning stay in the native transcript, referenced by `sessionId`/`sessionPath` when available. Stdout results are not an activity feed. Native subagents appear only as caller tool events. Pi reports harness-supplied usage/cost; Claude/Codex currently do not. Unknown values stay null; peek does not sum cumulative and incremental usage.
 

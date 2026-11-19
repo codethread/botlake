@@ -29,9 +29,9 @@ const taskDetail = z.object({
   item: z.object({
     kind: z.literal("task"),
     state: z.literal("open"),
-    description: z.string(),
-    notes: z.string().nullable(),
-    acceptanceCriteria: z.array(z.object({ condition: z.string() })),
+    description: z.string().optional(),
+    notes: z.string().nullable().optional(),
+    acceptanceCriteria: z.array(z.object({ condition: z.string() })).optional(),
     assignment: assignment.nullable(),
   }),
   prerequisites: z.array(z.object({ id: z.string() })),
@@ -336,7 +336,7 @@ async function directPhase(): Promise<string[]> {
     try {
       assert.ok(refreshed.heartbeatAt > beforeObservation.heartbeatAt);
       const observedDetail = taskDetail.parse(
-        await runtime.invoke("work", { command: "show", id: observed, history: true }),
+        await runtime.invoke("work", { command: "show", id: observed, showHistory: true }),
       );
       assert.equal(
         observedDetail.item.assignment?.id,
@@ -429,12 +429,19 @@ async function directPhase(): Promise<string[]> {
       await runtime.drain();
     }
     const released = taskDetail.parse(
-      await runtime.invoke("work", { command: "show", id: expiring, history: true }),
+      await runtime.invoke("work", {
+        command: "show",
+        id: expiring,
+        showDescription: true,
+        showNotes: true,
+        showCriteria: true,
+        showHistory: true,
+      }),
     );
     assert.equal(released.item.assignment, null);
     assert.equal(released.item.description, "retained description");
     assert.equal(released.item.notes, "retained notes");
-    assert.equal(released.item.acceptanceCriteria[0]?.condition, "retained criterion");
+    assert.equal(released.item.acceptanceCriteria?.[0]?.condition, "retained criterion");
     assert.deepEqual(
       released.prerequisites.map(({ id }) => id),
       [prerequisite],
@@ -608,7 +615,7 @@ async function managedPhase(): Promise<string[]> {
       );
       const row = z
         .object({ attributes: z.record(z.string(), z.json()) })
-        .parse(await runtime.invoke("agent", { command: "show", id: started.id }));
+        .parse(runtime.graph.show(started.id));
       const invocation = z.string().parse(row.attributes[agentAttributes.invocation]);
       const registered = native.parse(
         await runtime.invoke("agent", {
@@ -757,7 +764,7 @@ async function managedPhase(): Promise<string[]> {
     // The retried invocation can acquire a fresh token; the previous binding cannot strand it.
     const retriedRow = z
       .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await runtime.invoke("agent", { command: "show", id: retrying.runId }));
+      .parse(runtime.graph.show(retrying.runId));
     assert.notEqual(retriedRow.attributes[agentAttributes.invocation], retrying.invocation);
     await runtime.invoke("agent", {
       command: "native",
@@ -898,7 +905,7 @@ async function managedPhase(): Promise<string[]> {
     );
     const uncertainResult = z
       .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await runtime.invoke("agent", { command: "show", id: uncertain.runId }));
+      .parse(runtime.graph.show(uncertain.runId));
     assert.equal(uncertainResult.attributes[agentAttributes.sessionConfirmed], true);
     assert.equal(uncertainResult.attributes[agentAttributes.error], undefined);
 
@@ -1138,7 +1145,7 @@ export default workAgents({ checkIntervalMs: 60000 });\n`,
     );
     const run = z
       .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await call("agent", { command: "show", id: started.id }));
+      .parse(await call("node", { command: "show", id: started.id }));
     const invocation = z.string().parse(run.attributes[agentAttributes.invocation]);
     const registered = native.parse(
       await call("agent", {
@@ -1191,10 +1198,17 @@ export default workAgents({ checkIntervalMs: 60000 });\n`,
     assert.equal(awaited.reason, "satisfied");
 
     const released = taskDetail.parse(
-      await call("work", { command: "show", id: target, history: true }),
+      await call("work", {
+        command: "show",
+        id: target,
+        showDescription: true,
+        showNotes: true,
+        showCriteria: true,
+        showHistory: true,
+      }),
     );
     assert.equal(released.item.assignment, null);
-    assert.equal(released.item.acceptanceCriteria[0]?.condition, "Preserve criterion");
+    assert.equal(released.item.acceptanceCriteria?.[0]?.condition, "Preserve criterion");
     assert.deepEqual(
       released.prerequisites.map(({ id }) => id),
       [prerequisite],

@@ -100,7 +100,7 @@ else if (provider === "codex") {
           timeoutSecs: 10,
         }),
       ).toMatchObject({ reason: "satisfied" });
-      const run = runSchema.parse(await host.bl(workspace, "agent", { command: "show", id }));
+      const run = runSchema.parse(await host.bl(workspace, "node", { command: "show", id }));
       expect(run.attributes[agentAttributes.substatus]).toBe("completed");
       expect(run.attributes[agentAttributes.provider]).toBe(provider);
       expect(run.attributes[agentAttributes.result]).toBe(`configured-${bin}`);

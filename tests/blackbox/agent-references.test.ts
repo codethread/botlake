@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 
-import { agentAttributes } from "@botlake/extension-agents";
 import { z } from "zod";
 
 import { system } from "./fixtures/system.ts";
@@ -45,11 +44,20 @@ test("Agents follows source-verified remote runs through its injected library wi
         prompt: privatePrompt,
       }),
     );
+    const compact = await host.cli(["--workspace", owner, "agent", "show", sourceRun.id]);
+    expect(Buffer.byteLength(JSON.stringify(compact))).toBeLessThan(600);
+    expect(compact).toMatchObject({ state: "failed", settled: true, errorAvailable: true });
     const source = z
-      .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await host.bl(owner, "agent", { command: "show", id: sourceRun.id }));
-    expect(source.attributes[agentAttributes.prompt]).toBe(privatePrompt);
-    expect(source.attributes[agentAttributes.settled]).toBe(true);
+      .object({ prompt: z.string(), settled: z.boolean(), resultAvailable: z.boolean() })
+      .parse(
+        await host.bl(owner, "agent", {
+          command: "show",
+          id: sourceRun.id,
+          showPrompt: true,
+        }),
+      );
+    expect(source.prompt).toBe(privatePrompt);
+    expect(source.settled).toBe(true);
 
     const imported = followedRun.parse(
       await host.cli([
@@ -79,9 +87,15 @@ test("Agents follows source-verified remote runs through its injected library wi
       ).id,
     ).toBe(imported.id);
     const detail = z
-      .object({ attributes: z.record(z.string(), z.json()), reference: z.json() })
+      .object({
+        state: z.null(),
+        substatus: z.null(),
+        settled: z.null(),
+        resultAvailable: z.null(),
+        errorAvailable: z.null(),
+        reference: z.json(),
+      })
       .parse(await host.bl(consumer, "agent", { command: "show", id: imported.id }));
-    expect(detail.attributes).toEqual({});
     expect(detail.reference).toMatchObject({
       lakeId: imported.reference.lakeId,
       workspace: owner,
@@ -90,6 +104,13 @@ test("Agents follows source-verified remote runs through its injected library wi
       kind: "agent/run",
     });
     expect(JSON.stringify(detail)).not.toContain(privatePrompt);
+    expect(
+      await failure(host, consumer, {
+        command: "show",
+        id: imported.id,
+        showPrompt: true,
+      }),
+    ).toMatchObject({ code: "reference" });
     expect(await host.bl(consumer, "agent", { command: "list" })).toEqual({
       runs: [],
       total: 0,
@@ -125,11 +146,13 @@ test("Agents follows source-verified remote runs through its injected library wi
       code: "run",
     });
     expect(
-      z
-        .object({ attributes: z.record(z.string(), z.json()) })
-        .parse(await host.bl(owner, "agent", { command: "show", id: sourceRun.id })).attributes[
-        agentAttributes.prompt
-      ],
+      z.object({ prompt: z.string() }).parse(
+        await host.bl(owner, "agent", {
+          command: "show",
+          id: sourceRun.id,
+          showPrompt: true,
+        }),
+      ).prompt,
     ).toBe(privatePrompt);
   } finally {
     await host.close();

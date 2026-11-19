@@ -870,7 +870,7 @@ export default workAutoBot({ agents, work });\n`,
       listed.runs.map(async ({ id }) =>
         z
           .object({ id: z.string(), attributes: z.record(z.string(), z.json()) })
-          .parse(await host.bl(workspace, "agent", { command: "show", id })),
+          .parse(await host.bl(workspace, "node", { command: "show", id })),
       ),
     );
     const accepted = records.find(
@@ -895,7 +895,7 @@ export default workAutoBot({ agents, work });\n`,
     );
     const original = z
       .object({ item: z.object({ state: z.string(), notes: z.string() }) })
-      .parse(await host.bl(workspace, "work", { command: "show", id: task }));
+      .parse(await host.bl(workspace, "work", { command: "show", id: task, showNotes: true }));
     assert.equal(original.item.state, "open");
     assert.ok(original.item.notes.includes("exhausted"));
     assert.ok(original.item.notes.includes(oracle.id));

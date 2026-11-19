@@ -61,9 +61,26 @@ if(name==="claude") {
       join(workspace, "providers.ts"),
       `import {agents,builtinProviders} from "@botlake/extension-agents";
 const names=["codex","pi","claude"];
-export default agents({providers:names.map(name=>builtinProviders[name]({command:[${JSON.stringify(executable)},"--fixture-provider",name]})),aliases:Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",extraArgs:["--fixture-extra"],systemPrompt:"policy"}]))});`,
+export default agents({providers:names.map(name=>builtinProviders[name]({command:[${JSON.stringify(executable)},"--fixture-provider",name]})),aliases:{...Object.fromEntries(names.map(name=>[name+"-seat",{provider:name,model:"fixture",effort:"medium",extraArgs:["--fixture-extra"],systemPrompt:"policy"}])),review:[{parent:"pi",systemPrompt:"rule".repeat(2000)},{parent:"claude",systemPrompt:()=>{throw new Error("Do not evaluate during inspection");}}]}});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
+    const catalog = ["--workspace", workspace, "agent", "catalog"];
+    const summary = await host.cli([...catalog, "review"]);
+    expect(summary).toMatchObject({
+      available: true,
+      selectedCandidate: 0,
+      settings: { provider: "pi" },
+    });
+    expect(JSON.stringify(summary)).not.toContain("systemPrompt");
+    expect(Buffer.byteLength(JSON.stringify(summary))).toBeLessThan(400);
+    const expanded = await host.cli([...catalog, "review", "--show-system-prompt"]);
+    expect(expanded).toMatchObject({
+      candidates: [{ systemPrompt: "rule".repeat(2000) }, { systemPrompt: { dynamic: true } }],
+    });
+    expect(expanded).not.toHaveProperty("settings.systemPrompt");
+    expect(await host.cli([...catalog, "--show-system-prompt"], false)).toContain(
+      "requires a seat name",
+    );
     async function settled(id: string): Promise<z.infer<typeof runSchema>> {
       const observation = await host.bl("providers", "await", {
         query: "agent-run-settled",
@@ -71,7 +88,7 @@ export default agents({providers:names.map(name=>builtinProviders[name]({command
         minCount: 1,
         timeoutSecs: 10,
       });
-      const run = runSchema.parse(await host.bl("providers", "agent", { command: "show", id }));
+      const run = runSchema.parse(await host.bl("providers", "node", { command: "show", id }));
       expect(observation, `Provider did not settle: ${JSON.stringify(run)}`).toMatchObject({
         reason: "satisfied",
       });
@@ -116,6 +133,29 @@ export default agents({providers:names.map(name=>builtinProviders[name]({command
           }),
         );
         const run = await settled(started.id);
+        const details = await host.cli([
+          "--workspace",
+          workspace,
+          "agent",
+          "show",
+          started.id,
+          "--show-prompt",
+          "--show-result",
+          "--show-error",
+          "--show-settings",
+          "--show-launch",
+        ]);
+        expect(details).toMatchObject({
+          prompt: scenario,
+          settings: run.attributes[agentAttributes.settings],
+          launch: run.attributes[agentAttributes.launch],
+        });
+        const result = run.attributes[agentAttributes.result];
+        const error = run.attributes[agentAttributes.error];
+        if (typeof result === "string")
+          expect(details).toMatchObject({ resultAvailable: true, result });
+        if (typeof error === "string")
+          expect(details).toMatchObject({ errorAvailable: true, error });
         const freshLaunch = z
           .object({ command: z.array(z.string()) })
           .parse(run.attributes[agentAttributes.launch]);

@@ -153,7 +153,7 @@ export default agents({providers:[{name:"codex",doc:"Cwd admission fixture",prep
             "agent/lifecycle": z.literal("completed"),
           }),
         })
-        .parse(await host.bl(workspace, "agent", { command: "show", id: run.id }));
+        .parse(await host.bl(workspace, "node", { command: "show", id: run.id }));
       const recipient = observed.attributes["agent/identity"];
       // Mail alone stores unannounced mail; enabling routing must classify it during resource startup.
       const message = z.object({ id: z.string(), status: z.literal("sent") }).parse(
@@ -252,7 +252,7 @@ export default agents({providers:[{name:"codex",doc:"Legacy run fixture",prepare
     ).toMatchObject({ reason: "satisfied" });
     const recipient = z
       .object({ attributes: z.object({ "agent/identity": z.string() }) })
-      .parse(await host.bl(workspace, "agent", { command: "show", id: run.id })).attributes[
+      .parse(await host.bl(workspace, "node", { command: "show", id: run.id })).attributes[
       "agent/identity"
     ];
     const message = z.object({ id: z.string(), status: z.literal("sent") }).parse(

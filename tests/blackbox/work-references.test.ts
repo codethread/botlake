@@ -401,6 +401,28 @@ test("packaged Work prerequisite frontiers page a large fan-out without copying 
         prerequisites,
       }),
     );
+    const detail = z.object({
+      prerequisites: z.array(identifier),
+      nextOffset: z.number().nullable(),
+      counts: z.object({ prerequisites: z.number() }),
+    });
+    const firstDetail = detail.parse(
+      await host.cli(["--workspace", workspace, "work", "show", root.id]),
+    );
+    expect(firstDetail.counts.prerequisites).toBe(105);
+    expect(firstDetail.nextOffset).toBe(20);
+    const lastDetail = detail.parse(
+      await host.bl(workspace, "work", {
+        command: "show",
+        id: root.id,
+        limit: 100,
+        offset: firstDetail.nextOffset,
+      }),
+    );
+    expect(lastDetail.nextOffset).toBeNull();
+    expect(
+      new Set([...firstDetail.prerequisites, ...lastDetail.prerequisites].map(({ id }) => id)),
+    ).toEqual(new Set(prerequisites));
     const raw = await host.bl(workspace, "work", { command: "dependencies", id: root.id });
     const first = dependencyPage.parse(raw);
     expect(first).toMatchObject({
@@ -617,7 +639,7 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
     await host.bl(consumer, "agent", { command: "reconcile" });
     const pending = z
       .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await host.bl(consumer, "agent", { command: "show", id: run.id }));
+      .parse(await host.bl(consumer, "node", { command: "show", id: run.id }));
     expect(pending.attributes[agentAttributes.lifecycle]).toBe("pending");
     expect(pending.attributes[agentAttributes.attempt]).toBe(0);
     expect(await Bun.file(marker).exists()).toBe(false);
@@ -647,7 +669,7 @@ export default agents({providers:[{...base,prepare(){return {command:["bun",${JS
     ).toMatchObject({ reason: "satisfied" });
     const completed = z
       .object({ attributes: z.record(z.string(), z.json()) })
-      .parse(await host.bl(consumer, "agent", { command: "show", id: run.id }));
+      .parse(await host.bl(consumer, "node", { command: "show", id: run.id }));
     expect(completed.attributes[agentAttributes.lifecycle]).toBe("completed");
     expect(completed.attributes[agentAttributes.attempt]).toBe(1);
     expect(await Bun.file(marker).text()).toBe("admitted");

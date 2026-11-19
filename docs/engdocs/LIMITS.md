@@ -11,7 +11,7 @@
 
 Catalog aliases support documented seats, inheritance, flag expressions and ordered fallbacks. Accepted runs freeze their resolved settings. Caller-sensitive allow/deny visibility, live alias registration and arbitrary overlays are not implemented.
 
-`agent catalog` inspects seats; `agent list` returns paged run summaries, and `agent show ID` expands full records. All managed seats, including `tui`, remain headless. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
+`agent catalog` inspects seats; `agent list` returns paged run summaries, and `agent show ID` summarizes one run with explicit expansions for text, settings and launch details. All managed seats, including `tui`, remain headless. Provider defaults do not bypass approval prompts. Install native identity adapters explicitly; native identity is distinct from process custody and task completion.
 
 Provider tests use deterministic subprocess fixtures, not live model accounts. Configured model names do not establish installed CLI/model availability. Optional native events remain unknown when unavailable; GUI coverage requires a host that actually runs the adapters.
 

@@ -92,7 +92,7 @@ export default agents({providers: [myCustomHarness()], aliases: {worker: {provid
           timeoutSecs: 10,
         }),
       ).toMatchObject({ reason: "satisfied" });
-      const run = runSchema.parse(await host.bl(workspace, "agent", { command: "show", id }));
+      const run = runSchema.parse(await host.bl(workspace, "node", { command: "show", id }));
       expect(run.attributes[agentAttributes.substatus]).toBe("completed");
       expect(run.attributes[agentAttributes.provider]).toBe("acme-harness");
       expect(run.attributes[agentAttributes.sessionConfirmed]).toBe(true);
@@ -114,7 +114,12 @@ export default agents({providers: [myCustomHarness()], aliases: {worker: {provid
         recent: z.array(z.object({ summary: z.string().nullable() })),
       })
       .parse(
-        await host.bl(workspace, "agent", { command: "activity", operation: "peek", id: first.id }),
+        await host.bl(workspace, "agent", {
+          command: "activity",
+          operation: "peek",
+          showStream: true,
+          id: first.id,
+        }),
       );
     expect(activity.stream).toMatchObject({
       provider: "acme-harness",
@@ -162,7 +167,7 @@ export default agents({providers: [myCustomHarness()], aliases: {worker: {provid
     );
     expect(external.external).toBe(true);
     const externalRun = runSchema.parse(
-      await host.bl(workspace, "agent", { command: "show", id: external.runId }),
+      await host.bl(workspace, "node", { command: "show", id: external.runId }),
     );
     expect(externalRun.attributes[agentAttributes.provider]).toBe("another-harness");
     expect(externalRun.attributes[agentAttributes.identity]).not.toBe(

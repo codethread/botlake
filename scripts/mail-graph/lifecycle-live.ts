@@ -84,7 +84,7 @@ export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(r
       );
       await settled(first.id);
       const original = node.parse(
-        await call(fixture, workspace, "test", "agent", { command: "show", id: first.id }),
+        await call(fixture, workspace, "test", "node", { command: "show", id: first.id }),
       );
       await Bun.write(join(output, `${provider}-original.json`), JSON.stringify(original, null, 2));
       assert.equal(original.attributes["agent/lifecycle"], "completed");
@@ -107,7 +107,7 @@ export default agents({providers:[{...codex,prepare(run){const p=codex.prepare(r
       const continuationId = z.string().parse(resumed.attributes["mail/wake-run"]);
       await settled(continuationId);
       const continuation = node.parse(
-        await call(fixture, workspace, "test", "agent", {
+        await call(fixture, workspace, "test", "node", {
           command: "show",
           id: continuationId,
         }),

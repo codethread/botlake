@@ -42,7 +42,7 @@ const workDetail = z.object({
       .array(z.object({ id: z.string(), condition: z.string(), state: z.string() }))
       .optional(),
   }),
-  context: z.array(z.object({ id: z.string(), kind: z.literal("group") })),
+  context: z.array(z.object({ id: z.string(), kind: z.literal("group") })).optional(),
   prerequisites: z.array(z.object({ id: z.string(), state: z.enum(["open", "closed"]) })),
   ready: z.boolean(),
 });
@@ -163,7 +163,9 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
     ]),
   );
   const initialAttributed = task(attributed, "Initial attributed");
-  const initialWork = workDetail.parse(await cli(["work", "show", initialAttributed]));
+  const initialWork = workDetail.parse(
+    await cli(["work", "show", initialAttributed, "--show-criteria"]),
+  );
   assert.deepEqual(initialWork.item.assignment, {
     id: initialWork.item.assignment?.id,
     assignee: "initial-subject",
@@ -176,7 +178,9 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
     await cli(["workflow", "complete", initialAttributed, "next", "--data", "{}"]),
   );
   const laterAttributed = task(advanced, "Later attributed");
-  const laterWork = workDetail.parse(await cli(["work", "show", laterAttributed]));
+  const laterWork = workDetail.parse(
+    await cli(["work", "show", laterAttributed, "--show-criteria"]),
+  );
   assert.deepEqual(laterWork.item.assignment, {
     id: laterWork.item.assignment?.id,
     assignee: "later-subject",
@@ -186,9 +190,9 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
 
   const started = runView.parse(await cli(["workflow", "start", "parallel"]));
   const prepare = task(started, "Prepare change");
-  const prepareWork = workDetail.parse(await cli(["work", "show", prepare]));
+  const prepareWork = workDetail.parse(await cli(["work", "show", prepare, "--show-context"]));
   assert.equal(prepareWork.item.kind, "task");
-  assert.equal(prepareWork.context[0]?.id, started.run.context);
+  assert.equal(prepareWork.context?.[0]?.id, started.run.context);
 
   const prerequisite = idResult.parse(
     await cli(["work", "create", "Independent prerequisite", "--parent", started.run.context]),
@@ -257,7 +261,7 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
   assert.notEqual(secondReview, firstReview);
   const oldReview = z
     .object({ item: z.object({ state: z.literal("closed"), notes: z.string() }) })
-    .parse(await cli(["work", "show", firstReview]));
+    .parse(await cli(["work", "show", firstReview, "--show-notes"]));
   assert.match(oldReview.item.notes, /Changes requested/iu);
   const docsDone = await complete(secondReview, "approved");
   assert.equal(
@@ -314,8 +318,8 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
   const nestedInterface = task(nested, "Implement interface");
   assert.ok(
     workDetail
-      .parse(await cli(["work", "show", nestedApi]))
-      .context.every(({ kind }) => kind === "group"),
+      .parse(await cli(["work", "show", nestedApi, "--show-context"]))
+      .context?.every(({ kind }) => kind === "group") === true,
   );
   nested = await complete(nestedApi);
   await host.botlake(["lake", "restart", "--workspace", workspace]);
@@ -419,10 +423,10 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
   );
   const proofCriterion = z
     .object({ item: z.object({ acceptanceCriteria: z.array(z.object({ id: z.string() })) }) })
-    .parse(await cli(["work", "show", proof])).item.acceptanceCriteria[0];
+    .parse(await cli(["work", "show", proof, "--show-criteria"])).item.acceptanceCriteria[0];
   if (proofCriterion === undefined) throw new Error("Missing authored criterion");
   await cli(["work", "criterion", "resolve", proof, proofCriterion.id, "Met: findings recorded"]);
-  const before = await cli(["work", "show", proof, "--history"]);
+  const before = await cli(["work", "show", proof, "--show-history"]);
   assert.match(
     z
       .string()
@@ -431,7 +435,7 @@ export const workflow = defineWorkflow({ name: "native-values", version: "1.0.0"
       ),
     /publication rejected/iu,
   );
-  assert.deepEqual(await cli(["work", "show", proof, "--history"]), before);
+  assert.deepEqual(await cli(["work", "show", proof, "--show-history"]), before);
   assert.deepEqual(await showRun(rollback.run.id), rollback);
 
   console.log(
