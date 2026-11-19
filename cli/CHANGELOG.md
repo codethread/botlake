@@ -2,6 +2,16 @@
 
 All notable changes to Botlake CLI are documented in this file.
 
+## 0.3.3 - 2026-11-19
+
+### Added
+
+- Edit the running supervisor's environment (5776de0)
+
+  Use botlake env add NAME=VALUE to add or replace a variable, and botlake env remove NAME to unset it. New processes that inherit the supervisor environment see those changes; running processes and caller-supplied environments stay unchanged. Edits last until the supervisor exits.
+
+  - **Adoption (optional):** Upgrade both CLIs through Homebrew. The commands become available after a one-time, explicit restart into this release. Installing the release does not restart the supervisor.
+
 ## 0.3.2 - 2026-11-13
 
 ### Fixed

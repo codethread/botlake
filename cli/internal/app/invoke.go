@@ -15,7 +15,7 @@ import (
 	"golang.org/x/term"
 )
 
-var Version = "0.3.2"
+var Version = "0.3.3"
 
 const protocolVersion = 1
 
