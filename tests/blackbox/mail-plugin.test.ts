@@ -135,7 +135,7 @@ const handlers: Record<string, Function> = {};
 adapter({on(event: string, handler: Function) { handlers[event] = handler; }} as never);
 const results: Record<string, unknown> = {};
 for (const cwd of ${JSON.stringify([plain, subdir])}) {
-  const ctx = {cwd, sessionManager: {getSessionId: () => ${JSON.stringify(piSession)}}};
+  const ctx = {mode: "rpc", cwd, sessionManager: {getSessionId: () => ${JSON.stringify(piSession)}}};
   await handlers.session_start({}, ctx);
   const sections: Record<string, string> = {botlake: "identity"};
   await handlers.before_agent_start({systemPrompt: "base", systemPromptOptions: {sections}}, ctx);
@@ -158,6 +158,44 @@ console.log(JSON.stringify(results));`,
     expect(pi[subdir]?.tool?.content[0]?.text).toBe("ok");
     expect(pi[subdir]?.tool?.content[1]?.text).toContain("For Pi");
     expect(await status(piMail)).toBe("delivered");
+
+    // The TUI receives one native turn trigger without any tool call. A tool result fired
+    // by that turn must wait for the idle handoff receipt, not announce the same batch.
+    const waiting = await send(piIdentity, "Wake the terminal");
+    await Bun.write(
+      runner,
+      `import adapter from ${JSON.stringify(piAdapter)};
+const handlers = {};
+const ctx = {mode: "tui", cwd: ${JSON.stringify(subdir)}, isIdle: () => true,
+  sessionManager: {getSessionId: () => ${JSON.stringify(piSession)}}};
+const received = Promise.withResolvers();
+const timeout = setTimeout(() => received.reject(new Error("No idle mail turn")), 15000);
+adapter({on(event, handler) { handlers[event] = handler; }, sendMessage(message, options) {
+  const tool = handlers.tool_result({content: []}, ctx);
+  received.resolve(Promise.resolve(tool).then(result => ({message, options, tool: result})));
+}});
+try {
+  await handlers.session_start({}, ctx);
+  console.log(JSON.stringify(await received.promise));
+} finally {
+  handlers.session_shutdown({}, ctx);
+  clearTimeout(timeout);
+}`,
+    );
+    const handoff = z
+      .object({
+        message: z.object({
+          customType: z.literal("botlake-mail"),
+          content: z.string(),
+          display: z.literal(true),
+        }),
+        options: z.object({ triggerTurn: z.literal(true) }),
+        tool: z.object({ content: z.array(z.unknown()).length(0) }),
+      })
+      .parse(JSON.parse(await run(["bun", runner], direct)));
+    expect(handoff.message.content).toContain("Wake the terminal");
+    expect(handoff.message.content).not.toContain("Body stays");
+    expect(await status(waiting)).toBe("delivered");
   } finally {
     await host.close();
   }

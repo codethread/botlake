@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import {
   mailInstruction,
   openMailbox,
@@ -7,7 +9,12 @@ import {
   type Mailbox,
 } from "./client.ts";
 
+const IDLE_POLL_MS = 5000;
+
 interface PiContext {
+  mode: "tui" | "rpc" | "print" | "json";
+  isIdle(): boolean;
+  ui: { notify(text: string, level: "warning"): void };
   cwd: string;
   sessionManager: { getSessionId(): string };
 }
@@ -20,6 +27,7 @@ interface ToolContent {
 
 interface PiEvents {
   session_start: unknown;
+  session_shutdown: unknown;
   before_agent_start: {
     systemPrompt: string;
     systemPromptOptions?: { sections: Record<string, string> };
@@ -29,11 +37,16 @@ interface PiEvents {
 
 interface PiResults {
   session_start: void;
+  session_shutdown: void;
   before_agent_start: { systemPrompt: string };
   tool_result: { content: ToolContent[] };
 }
 
 interface PiApi {
+  sendMessage(
+    message: { customType: string; content: string; display: boolean },
+    options: { triggerTurn: true },
+  ): void;
   on<K extends keyof PiEvents>(
     event: K,
     handler: (
@@ -54,16 +67,25 @@ export default function mailExtension(pi: PiApi): void {
   // Absent outside a lake, or when the lake does not select Mail.
   let session: Session | undefined;
 
-  pi.on("session_start", async (_, ctx) => {
+  let lifetime: AbortController | undefined;
+  const stop = () => {
+    lifetime?.abort();
     session = undefined;
+  };
+  pi.on("session_shutdown", stop);
+  pi.on("session_start", async (_, ctx) => {
+    stop();
+    lifetime = new AbortController();
+    const { signal } = lifetime;
     const sessionId = ctx.sessionManager.getSessionId();
     const box = await openMailbox(
       { provider: "pi", nativeSessionId: sessionId },
       ctx.cwd,
       process.env,
     );
-    if (box === null || !(await selectsMail(box))) return;
+    if (box === null || !(await selectsMail(box)) || signal.aborted) return;
     session = { sessionId, box, queue: Promise.resolve() };
+    if (ctx.mode === "tui") void watchIdleMail(pi, ctx, session, signal);
     await traceMail(box, { event: "session-start", provider: "pi", sessionId });
   });
 
@@ -81,18 +103,56 @@ export default function mailExtension(pi: PiApi): void {
   pi.on("tool_result", (event, ctx) => {
     const current = currentSession(session, ctx);
     if (current === undefined) return;
-    // Serialize polls so overlapping tool results do not announce the same batch twice.
-    const operation = current.queue.then(
-      () => appendMailNotice(current.box, event.content),
-      () => appendMailNotice(current.box, event.content),
-    );
-    current.queue = operation.catch(() => null);
-    return operation;
+    return serialize(current, () => appendMailNotice(current.box, event.content));
   });
 }
 
-// Probe without reporting delivery; the first tool result announces pending mail. An unavailable
-// lake keeps the mailbox so tool results surface the failure instead of silently dropping mail.
+async function watchIdleMail(
+  pi: PiApi,
+  ctx: PiContext,
+  current: Session,
+  signal: AbortSignal,
+): Promise<void> {
+  let warned = false;
+  // If recording delivery failed, retry the receipt without starting another paid turn.
+  let handedOff: string[] = [];
+  const check = async () => {
+    const poll = await pollMail(current.box);
+    // The human may have submitted a prompt or switched sessions during the poll.
+    if (signal.aborted || !ctx.isIdle() || poll === null || poll.ids.length === 0) return;
+    if (poll.ids.some((id) => !handedOff.includes(id))) {
+      pi.sendMessage(
+        { customType: "botlake-mail", content: poll.notice, display: true },
+        { triggerTurn: true },
+      );
+      handedOff = poll.ids;
+      await traceMail(current.box, { event: "idle-nudge", provider: "pi", ids: poll.ids });
+    }
+    await reportDelivery(current.box, poll.ids);
+    handedOff = [];
+  };
+  while (!signal.aborted) {
+    try {
+      await delay(IDLE_POLL_MS, undefined, { signal, ref: false });
+      if (!ctx.isIdle()) continue;
+      await serialize(current, check);
+      warned = false;
+    } catch (error) {
+      if (signal.aborted) return;
+      if (!warned) ctx.ui.notify(`Mail unavailable: ${errorMessage(error)}`, "warning");
+      warned = true;
+    }
+  }
+}
+
+// The idle watcher and tool results share a lane from poll through receipt.
+function serialize<T>(session: Session, operation: () => Promise<T>): Promise<T> {
+  const result = session.queue.then(operation);
+  session.queue = result.catch(() => null);
+  return result;
+}
+
+// Probe without reporting delivery. Keep an unavailable mailbox so later checks can recover.
 async function selectsMail(box: Mailbox): Promise<boolean> {
   try {
     return (await pollMail(box)) !== null;
