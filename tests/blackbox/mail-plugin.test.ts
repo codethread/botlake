@@ -124,6 +124,32 @@ test("built mail plugin notifies Claude, Codex and Pi root sessions", async () =
       for (const hook_event_name of ["SessionStart", "PostToolUse"])
         expect(await fire("claude", { hook_event_name, session_id: "quiet", cwd })).toEqual({});
 
+    // Claude's idle hooks module ships as source beside the bundled hook it drives. Its polls
+    // leave mail eligible until the woken turn's handoff is recorded.
+    expect(
+      await Bun.file(join(marketplace, "botlake-mail/.claude-plugin/hooks.json")).json(),
+    ).toMatchObject({ modules: ["../claude.ts"] });
+    expect(await Bun.file(join(marketplace, "botlake-mail/claude.ts")).exists()).toBe(true);
+    const idleIdentity = sessionIdentity({ provider: "claude", nativeSessionId: "claude-idle" });
+    async function idleHook(event: Record<string, unknown>, cwd = subdir): Promise<unknown> {
+      const input = { session_id: "claude-idle", cwd, ...event };
+      return JSON.parse(await run(["bun", hook, "claude"], direct, JSON.stringify(input)));
+    }
+    const idleMail = await send(idleIdentity, "While Claude idles");
+    const idlePoll = z
+      .object({ ids: z.array(z.string()), notice: z.string() })
+      .parse(await idleHook({ hook_event_name: "IdleMail" }));
+    expect(idlePoll.ids).toEqual([idleMail]);
+    expect(idlePoll.notice).toContain("While Claude idles");
+    expect(idlePoll.notice).not.toContain("Body stays");
+    expect(await status(idleMail)).toBe("sent");
+    expect(await idleHook({ hook_event_name: "IdleMailDelivered", ids: [idleMail] })).toEqual({});
+    expect(await status(idleMail)).toBe("delivered");
+    expect(await idleHook({ hook_event_name: "IdleMail" })).toEqual({ ids: [], notice: "" });
+    // Without Mail the module stops polling.
+    for (const cwd of [outside, plain])
+      expect(await idleHook({ hook_event_name: "IdleMail" }, cwd)).toEqual({ inactive: true });
+
     const piSession = "pi-root";
     const piIdentity = sessionIdentity({ provider: "pi", nativeSessionId: piSession });
     const piMail = await send(piIdentity, "For Pi");

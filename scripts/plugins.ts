@@ -37,6 +37,13 @@ for (const plugin of plugins) {
   if (!built.success) throw new AggregateError(built.logs, `Failed to bundle ${plugin.name}`);
   const digest = createHash("sha256");
   for (const artifact of built.outputs) digest.update(await artifact.text());
+  // Claude loads hooks modules from source: the engine statically checks how `register` and `$`
+  // are spelled, which bundling would rewrite. They must import nothing at run time.
+  const module = Bun.file(join(source, "claude.ts"));
+  if (await module.exists()) {
+    await cp(join(source, "claude.ts"), join(target, "claude.ts"));
+    digest.update(await module.text());
+  }
   for (const host of [".claude-plugin", ".codex-plugin"]) {
     await cp(join(source, host), join(target, host), { recursive: true });
     digest.update(await Bun.file(join(source, host, "hooks.json")).text());

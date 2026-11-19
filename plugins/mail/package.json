@@ -4,6 +4,7 @@
   "private": true,
   "license": "MIT",
   "files": [
+    "claude.ts",
     "client.ts",
     "hook.ts",
     "pi.ts",
