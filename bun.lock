@@ -23,7 +23,7 @@
         "@botlake/extension-workflow": "workspace:*",
         "@botlake/native-session": "workspace:*",
         "@codethread/cli-changelog": "github:codethread/cli-changelog#c457e0a28686ce6349ce0956b1375635d53148d8",
-        "@codethread/skillbox": "0.4.0",
+        "@codethread/skillbox": "0.5.0",
         "@types/bun": "^1.4.4",
         "husky": "^9.1.7",
         "lint-staged": "^17.6.0",
@@ -336,7 +336,7 @@
 
     "@codethread/cli-changelog": ["@codethread/cli-changelog@github:codethread/cli-changelog#c457e0a", { "peerDependencies": { "zod": "^4.6.5" }, "bin": { "cli-changelog": "./src/cli.ts" } }, "codethread-cli-changelog-c457e0a", "sha512-TXlF66ztscwtNV7nUhax63y1AEnpVA1f8utblvs8+Fsd0URV9JrSXTZmSas3flpXHBTnx4N86feaRYS1t8aLnQ=="],
 
-    "@codethread/skillbox": ["@codethread/skillbox@0.4.0", "", { "bin": { "skillbox": "bin/skillbox.mjs" } }, "sha512-hKh1uZDLSa0+UcSrVIv3KFBlP78oFr5hGZVX35YlSDepzrzJwZwA6MgfCEHnGYcacQ+I8muEubNGPfi/O0ORqw=="],
+    "@codethread/skillbox": ["@codethread/skillbox@0.5.0", "", { "bin": { "skillbox": "bin/skillbox.mjs" } }, "sha512-t7kEtO4qeUkEdQ++KJLI9l8/tyhEcVJOvvq2vR6bKEV0+1OxQPrJJpepQsGvJlyDoqTlHp8pAs1kTlMAbjPjPA=="],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
 
