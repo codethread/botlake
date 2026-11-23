@@ -1,0 +1,18 @@
+{
+  "botlake-mail": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bun ./hook.ts antigravity SessionStart",
+        "timeout": 5
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "bun ./hook.ts antigravity PreInvocation",
+        "timeout": 5
+      }
+    ]
+  }
+}

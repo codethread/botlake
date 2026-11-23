@@ -1,6 +1,6 @@
 # Mail notifications
 
-Announces new [identity mail](../../extensions/mail/README.md) after tool calls in Claude Code, Codex and Pi. Claude Code and Codex also announce waiting mail at startup. Install once globally; managed and direct sessions share the plugin.
+Announces new [identity mail](../../extensions/mail/README.md) after tool calls in Claude Code, Codex and Pi. Claude Code and Codex also announce waiting mail at startup. Antigravity CLI announces waiting mail at session start and before model invocations, not while idle. Install once globally.
 
 ```sh
 mise run plugins   # builds out/plugins; rerun after updating Botlake
@@ -12,6 +12,17 @@ codex plugin marketplace add "$PWD/out/plugins" && codex plugin add botlake-mail
 // ~/.pi/agent/settings.json
 { "packages": [{ "source": "/path/to/botlake/out/plugins/botlake-mail" }] }
 ```
+
+For Antigravity CLI, install either or both built directories directly (no marketplace registration):
+
+```sh
+mise run plugins
+agy plugin install "$PWD/out/plugins/botlake-identity"
+agy plugin install "$PWD/out/plugins/botlake-mail"
+agy plugin list
+```
+
+To verify with the real CLI, run `agy plugin validate` on each directory, start a fresh `agy` conversation in a lake, and inspect `/hooks`. Send mail to that conversation’s Botlake identity from another session, then submit a prompt. The next invocation should see the sender and subject; the message should be delivered, not acknowledged. The integration follows Google's [plugin](https://antigravity.google/docs/build-plugins/) and [hook](https://antigravity.google/docs/hooks/) docs; live CLI verification is pending.
 
 Needs Bun and `bl` on `PATH` (`BL_BIN` overrides). Codex asks to trust the hooks via `/hooks`. Don't also load the adapter per run (`pi -e`, `codex --config hooks.*`): it would run twice. Sessions outside a lake that selects Mail stay silent.
 

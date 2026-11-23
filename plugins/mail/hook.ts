@@ -9,8 +9,14 @@ import {
   type Mailbox,
 } from "./client.ts";
 
-// Claude and Codex share this hook wire protocol; the provider argument selects the identity.
-const provider = z.enum(["codex", "claude"]).parse(Bun.argv[2]);
+const provider = z.enum(["codex", "claude", "antigravity"]).parse(Bun.argv[2]);
+const agySession = z.object({
+  conversationId: z.string().min(1),
+  workspacePaths: z.array(z.string().min(1)),
+});
+const agyEvent = z.enum(["SessionStart", "PreInvocation"]);
+
+// Claude and Codex share this hook wire protocol.
 const session = { session_id: z.string().min(1), cwd: z.string().min(1) };
 const hookInput = z.discriminatedUnion("hook_event_name", [
   z.object({
@@ -30,10 +36,12 @@ const hookInput = z.discriminatedUnion("hook_event_name", [
 
 let written = false;
 try {
-  const input = hookInput.parse(await Bun.stdin.json());
-  // Native subagents share the caller's session; only the root session owns the mailbox.
+  const payload: unknown = await Bun.stdin.json();
+  const input =
+    provider === "antigravity" ? antigravityInput(payload, Bun.argv[3]) : hookInput.parse(payload);
+  // Identified Claude/Codex child hooks share the caller's session but not its mailbox.
   const box =
-    "agent_id" in input && input.agent_id !== undefined
+    input.cwd === undefined || ("agent_id" in input && input.agent_id !== undefined)
       ? null
       : await openMailbox({ provider, nativeSessionId: input.session_id }, input.cwd, process.env);
   if (input.hook_event_name === "IdleMail") await idlePoll(box);
@@ -53,7 +61,11 @@ try {
         .filter((part) => part.length > 0)
         .join("\n\n");
       await traceMail(box, {
-        event: startup ? "session-start" : "tool-result",
+        event: startup
+          ? "session-start"
+          : input.hook_event_name === "PreInvocation"
+            ? "pre-invocation"
+            : "tool-result",
         nativeEvent: input.hook_event_name,
         provider,
         sessionId: input.session_id,
@@ -63,12 +75,14 @@ try {
       await output(
         context === ""
           ? {}
-          : {
-              hookSpecificOutput: {
-                hookEventName: input.hook_event_name,
-                additionalContext: context,
+          : provider === "antigravity"
+            ? { injectSteps: [{ ephemeralMessage: context }] }
+            : {
+                hookSpecificOutput: {
+                  hookEventName: input.hook_event_name,
+                  additionalContext: context,
+                },
               },
-            },
       );
       written = true;
       // Record the handoff only after the host has the notice; a failed report leaves mail eligible.
@@ -78,7 +92,16 @@ try {
 } catch (error) {
   const systemMessage = `Botlake mail hook failed: ${String(error)}`;
   process.stderr.write(`${systemMessage}\n`);
-  if (!written) await output({ systemMessage });
+  if (!written) await output(provider === "antigravity" ? {} : { systemMessage });
+}
+
+function antigravityInput(payload: unknown, name: string | undefined) {
+  const { conversationId, workspacePaths } = agySession.parse(payload);
+  return {
+    hook_event_name: agyEvent.parse(name),
+    session_id: conversationId,
+    cwd: workspacePaths[0],
+  };
 }
 
 // `inactive` tells the mod to stop polling: no lake, or a lake that does not select Mail.

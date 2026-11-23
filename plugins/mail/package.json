@@ -11,7 +11,9 @@
     "summary.ts",
     ".claude-plugin",
     ".codex-plugin",
-    "README.md"
+    "README.md",
+    ".antigravity-plugin",
+    "hooks.json"
   ],
   "type": "module",
   "exports": {

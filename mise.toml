@@ -29,6 +29,6 @@ botlake lake start --workspace "{{ config_root }}"
 '''
 
 [tasks.plugins]
-description = "Build the self-contained Claude Code, Codex and Pi plugin marketplace into out/plugins"
+description = "Build self-contained Antigravity CLI, Claude Code, Codex and Pi plugins into out/plugins"
 depends = ["bootstrap"]
 run = "bun scripts/plugins.ts"

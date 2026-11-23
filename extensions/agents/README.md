@@ -190,7 +190,7 @@ Prompts accept strings or synchronous callbacks. Context contains `provider`, `m
 
 Managed audience is always `agent`; launches scrub inherited `BL_AUDIENCE` and `BL_ACTOR`, restoring established identity only for verified resumes. Direct native sessions may use `BL_AUDIENCE=human pi` or `BL_AUDIENCE=agent pi`; absence means `unknown`. Do not export this globally: other subprocesses can inherit it. Audience describes the recipient, not UI presence.
 
-Unmanaged sessions receive only `unmanaged.systemPrompt` through native reporting and a reachable lake: Pi refreshes each turn, Claude/Codex at startup. Managed runs never receive it. Identity/task guidance and the host's base prompt remain separate.
+Unmanaged sessions receive only `unmanaged.systemPrompt` through native reporting and a reachable lake: Pi refreshes each turn, Antigravity/Claude/Codex at startup. Managed runs never receive it. Identity/task guidance and the host's base prompt remain separate.
 
 ## Provider strategies
 
@@ -234,7 +234,7 @@ bl --input '{"command":"activity","operation":"search","query":"VPN access","aft
 
 A run selects its current invocation, an identity its latest stream, and a handle that exact stream. Omit the list/search target for all retained events. `nextCursor` is a received sequence, not time/offset. Peek returns up to five recent events and five outstanding starts, with 160-character previews (`truncated` marks clipping), the stream handle, retained-stream expiry and latest scoped usage. `moreRecent` and `moreOutstandingTools` indicate omitted retained rows. Use `--show-events` for the full retained rows and `--show-stream` for session/retention metadata; set `--limit` up to 100 or page `activity list` for older events. These are snapshots; observations prove neither progress nor liveness.
 
-Optional native reporting supplies turn/tool events and visible excerpts capped at 2,048 characters (`truncated` marks clipping). Tool output/reasoning stay in the native transcript, referenced by `sessionId`/`sessionPath` when available. Stdout results are not an activity feed. Native subagents appear only as caller tool events. Pi reports harness-supplied usage/cost; Claude/Codex currently do not. Unknown values stay null; peek does not sum cumulative and incremental usage.
+Optional native reporting supplies turn/tool events and visible excerpts capped at 2,048 characters (`truncated` marks clipping). Tool output/reasoning stay in the native transcript, referenced by `sessionId`/`sessionPath` when available. Stdout results are not an activity feed. Antigravity does not report subagent parentage. Pi reports harness-supplied usage/cost; the other adapters do not. Unknown values stay null; peek does not sum cumulative and incremental usage.
 
 ```ts
 agents({ activity: { retentionMs: 7 * 24 * 60 * 60 * 1000 } }); // Default: seven days.
@@ -244,6 +244,6 @@ Retention starts at managed settlement or external session end, never mere quiet
 
 ## Native integration
 
-The private, repository-local [native plugin](../../plugins/identity/README.md) hardcodes `claude`, `codex` and `pi` namespaces. Same-namespace executable wrappers can reuse it; use aliases for named variants. Custom callbacks must match their provider's namespace. Nothing installs automatically; this is not a published plugin SDK.
+The private, repository-local [native plugin](../../plugins/identity/README.md) uses the `antigravity`, `claude`, `codex` and `pi` namespaces. Antigravity support is hook-only, not a built-in launch provider. Same-namespace executable wrappers can reuse it; use aliases for named variants. Custom callbacks must match their provider's namespace. Nothing installs automatically; this is not a published plugin SDK.
 
 `agent/integration` is `unobserved`, `native` or `output`. Missing hooks do not fail otherwise successful managed execution. Output-based identity does not fabricate activity or model metadata; direct/unmanaged observation requires native reporting. Native sessions supply their own IDs—Botlake does not allocate fresh ones.

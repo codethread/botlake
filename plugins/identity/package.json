@@ -10,7 +10,9 @@
     "pi.ts",
     "adapters",
     ".codex-plugin",
-    ".claude-plugin"
+    ".claude-plugin",
+    ".antigravity-plugin",
+    "hooks.json"
   ],
   "type": "module",
   "exports": {

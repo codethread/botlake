@@ -1,0 +1,49 @@
+{
+  "botlake-identity": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bun ./hook.ts antigravity SessionStart",
+        "timeout": 20
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "bun ./hook.ts antigravity PreInvocation",
+        "timeout": 20
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ./hook.ts antigravity PreToolUse",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ./hook.ts antigravity PostToolUse",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bun ./hook.ts antigravity Stop",
+        "timeout": 20
+      }
+    ]
+  }
+}

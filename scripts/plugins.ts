@@ -44,13 +44,17 @@ for (const plugin of plugins) {
     await cp(join(source, "claude.ts"), join(target, "claude.ts"));
     digest.update(await module.text());
   }
-  for (const host of [".claude-plugin", ".codex-plugin"]) {
+  // Antigravity discovers hooks.json at the plugin root; Claude/Codex use manifest-relative files.
+  await cp(join(source, "hooks.json"), join(target, "hooks.json"));
+  const hosts = [".antigravity-plugin", ".claude-plugin", ".codex-plugin"];
+  for (const host of hosts) {
     await cp(join(source, host), join(target, host), { recursive: true });
-    digest.update(await Bun.file(join(source, host, "hooks.json")).text());
+    const hooks = host === ".antigravity-plugin" ? "hooks.json" : join(host, "hooks.json");
+    digest.update(await Bun.file(join(target, hooks)).text());
   }
   const version = digest.digest("hex").slice(0, 12);
   let description = "";
-  for (const host of [".claude-plugin", ".codex-plugin"]) {
+  for (const host of hosts) {
     const file = join(target, host, "plugin.json");
     const parsed = manifest.parse(await Bun.file(file).json());
     description = parsed.description ?? "";
