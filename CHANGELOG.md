@@ -2,6 +2,10 @@
 
 This history covers the npm runtime packages. The [Go CLI changelog](cli/CHANGELOG.md) is separate.
 
+## 0.7.2 — Model roster updates
+
+The `ct-config` preset adds a Claude Haiku seat and routes `grunt` through DeepSeek, then Haiku, then Luna. Astra and Sol now use GPT‑6.2.
+
 ## 0.7.1 — Fable for Oracle
 
 The `ct-config` preset enables Claude by default and uses Claude Code's `fable` model alias. The `oracle` seat selects Fable when available and Astra otherwise. This fallback happens before launch; it does not retry failed runs.
