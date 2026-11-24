@@ -2,6 +2,10 @@
 
 This history covers the npm runtime packages. The [Go CLI changelog](cli/CHANGELOG.md) is separate.
 
+## 0.7.1 — Fable for Oracle
+
+The `ct-config` preset enables Claude by default and uses Claude Code's `fable` model alias. The `oracle` seat selects Fable when available and Astra otherwise. This fallback happens before launch; it does not retry failed runs.
+
 ## 0.7.0 — Work and Agent read APIs
 
 **Breaking for readers upgrading from 0.6.x:** four operations now return summaries instead of full records by default. An omitted field does **not** mean its stored value is empty. Mutations, `work list`, `agent activity list/search`, and Mail inbox behavior are unchanged. No database migration or Go CLI upgrade is required.
