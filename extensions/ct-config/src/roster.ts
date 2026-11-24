@@ -82,18 +82,25 @@ export const roster = {
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
+    haiku: {
+      doc: `Claude Haiku, fast cheap model, use for mechanical changes, not autonomous thinking or testing claude harness configurations`,
+      parent: "claude",
+      model: "haiku",
+      effort: "high",
+      systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
+    },
 
     astra: {
       doc: `GPT Astra. Extreme diagnosis, top-level coordination, architecture and high-stakes user-facing prose.`,
       parent: "pi",
-      model: "openai-codex/gpt-6-astra",
+      model: "openai-codex/gpt-6.2-astra",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
     sol: {
       doc: `GPT Sol. Complex implementation, hostile-environment debugging and delegated coordination.`,
       parent: "pi",
-      model: "openai-codex/gpt-6.1-sol",
+      model: "openai-codex/gpt-6.2-sol",
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
     },
@@ -127,6 +134,7 @@ Good for handling larger data sets to that might otherwise consume working agent
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
+
     researcher: {
       doc: `Online researcher agent, has access to powerful search tools.
 Cheap enough to spawn multiple for split stream research instead of a single deep research task`,
@@ -135,6 +143,7 @@ Cheap enough to spawn multiple for split stream research instead of a single dee
       effort: "high",
       systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
+
     reviewer: [
       {
         doc: `Strong code review agent, very thorough, can be over sensitive, take steer but do not see all feedback as required, find pragmatic balance`,
@@ -147,6 +156,7 @@ Cheap enough to spawn multiple for split stream research instead of a single dee
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
+
     prose: [
       {
         doc: `Dedicated prose writer/editor/reviewer. Do not allow other agents to make large prose based changes`,
@@ -159,6 +169,7 @@ Cheap enough to spawn multiple for split stream research instead of a single dee
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
+
     worker: [
       {
         doc: `Primary worker agent to recieve bounded work as delegate`,
@@ -171,10 +182,16 @@ Cheap enough to spawn multiple for split stream research instead of a single dee
         systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
       },
     ],
+
     grunt: [
       {
         doc: `Mechanical implementation, exploration and context-heavy file/log searching`,
         parent: "deepseek",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
+      },
+      {
+        doc: `Mechanical implementation, exploration and context-heavy file/log searching`,
+        parent: "haiku",
         systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
       },
       {
