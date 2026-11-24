@@ -63,7 +63,7 @@ export const roster = {
     fable: {
       doc: `Claude Fable. Extreme diagnosis, top-level coordination and user-facing prose where writing is the product.`,
       parent: "claude",
-      model: "claude-fable-5",
+      model: "fable",
       effort: "high",
       when: rosterFlags.fable.name,
       systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
@@ -113,12 +113,20 @@ Good for handling larger data sets to that might otherwise consume working agent
       systemPrompt: [communicationPrompts.agent, botlakePrompt].join("\n"),
     },
 
-    oracle: {
-      doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
-      parent: "astra",
-      effort: "high",
-      systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
-    },
+    oracle: [
+      {
+        doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
+        parent: "fable",
+        effort: "high",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+      {
+        doc: `Default seat for high-stakes guidance, diagnosis and architecture.`,
+        parent: "astra",
+        effort: "high",
+        systemPrompt: [communicationPrompts.agent, botlakePrompt, agentBrief].join("\n"),
+      },
+    ],
     researcher: {
       doc: `Online researcher agent, has access to powerful search tools.
 Cheap enough to spawn multiple for split stream research instead of a single deep research task`,

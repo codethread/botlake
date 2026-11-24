@@ -27,7 +27,7 @@ export { agentPrimer, roster, rosterFlags } from "./roster.ts";
 export const flags = configureFlags([
   [agentFlags.codex, true],
   [agentFlags.pi, true],
-  [agentFlags.claude, false],
+  [agentFlags.claude, true],
   [rosterFlags.deepseek, true],
   [rosterFlags.fable, true],
 ]);

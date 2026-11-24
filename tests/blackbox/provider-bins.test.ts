@@ -74,11 +74,22 @@ else if (provider === "codex") {
     await host.botlake(["lake", "start", "--workspace", workspace]);
     expect(
       catalogSchema.parse(await host.bl(workspace, "agent", { command: "catalog" })).providers,
-    ).toEqual(["codex", "pi"]);
-    await host.bl(workspace, "flag", { command: "set", name: "agent/claude", value: true });
-    expect(
-      catalogSchema.parse(await host.bl(workspace, "agent", { command: "catalog" })).providers,
     ).toEqual(["codex", "pi", "claude"]);
+    expect(await host.bl(workspace, "agent", { command: "catalog", name: "oracle" })).toMatchObject(
+      {
+        available: true,
+        selectedParent: "fable",
+        settings: { provider: "claude" },
+      },
+    );
+    await host.bl(workspace, "flag", { command: "set", name: "agents/fable", value: false });
+    expect(await host.bl(workspace, "agent", { command: "catalog", name: "oracle" })).toMatchObject(
+      {
+        available: true,
+        selectedParent: "astra",
+        settings: { provider: "pi" },
+      },
+    );
     for (const [bin, provider, seat] of [
       ["co", "codex", "codex"],
       ["cl", "claude", "claude"],
@@ -109,8 +120,8 @@ else if (provider === "codex") {
       expect(launch.command).toContain(bin);
       expect(launch.command).not.toContain(join(dirname(host.blBin), bin));
     }
-    await host.bl(workspace, "flag", { command: "set", name: "agent/pi", value: false });
-    expect(await host.bl(workspace, "agent", { command: "catalog", name: "luna" })).toMatchObject({
+    await host.bl(workspace, "flag", { command: "set", name: "agent/claude", value: false });
+    expect(await host.bl(workspace, "agent", { command: "catalog", name: "opus" })).toMatchObject({
       available: false,
     });
   } finally {
