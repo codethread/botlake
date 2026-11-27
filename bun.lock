@@ -290,6 +290,18 @@
         "zod": "^4.6.7",
       },
     },
+    "plugins/paseo-mail": {
+      "name": "@botlake/paseo-mail",
+      "dependencies": {
+        "@botlake/mail": "workspace:*",
+        "@botlake/native-session": "workspace:*",
+        "@botlake/paseo-identity": "workspace:*",
+      },
+      "devDependencies": {
+        "@getpaseo/client": "0.16.2",
+        "@getpaseo/plugin": "0.16.2",
+      },
+    },
   },
   "patchedDependencies": {
     "xstate@5.33.3": "patches/xstate@5.33.3.patch",
@@ -414,6 +426,8 @@
     "@botlake/native-session": ["@botlake/native-session@workspace:packages/native-session"],
 
     "@botlake/paseo-identity": ["@botlake/paseo-identity@workspace:plugins/paseo"],
+
+    "@botlake/paseo-mail": ["@botlake/paseo-mail@workspace:plugins/paseo-mail"],
 
     "@codethread/cli-changelog": ["@codethread/cli-changelog@github:codethread/cli-changelog#c457e0a", { "peerDependencies": { "zod": "^4.6.5" }, "bin": { "cli-changelog": "./src/cli.ts" } }, "codethread-cli-changelog-c457e0a", "sha512-TXlF66ztscwtNV7nUhax63y1AEnpVA1f8utblvs8+Fsd0URV9JrSXTZmSas3flpXHBTnx4N86feaRYS1t8aLnQ=="],
 

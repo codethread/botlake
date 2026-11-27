@@ -30,3 +30,5 @@ bl --identity sender mail send RECIPIENT 'Review ready' 'Please check the revise
 ```
 
 There is no idle-age cutoff. A turn can still run after the provider’s prompt cache expires, at the cost of processing uncached input. Headless sessions (`claude -p`, `pi -p`, managed runs) do not start turns this way. Once the terminal closes, the plugin stops; resuming a stopped managed run is a separate [Mail–Agents policy](../../extensions/mail-agents/README.md).
+
+For idle chats hosted by Paseo rather than a terminal, use the separate [Paseo Mail daemon plugin](../paseo-mail/README.md).

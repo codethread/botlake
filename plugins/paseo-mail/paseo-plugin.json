@@ -1,0 +1,5 @@
+{
+  "id": "botlake-mail",
+  "name": "Botlake Mail",
+  "requirements": { "paseo": ">=0.17.1" }
+}

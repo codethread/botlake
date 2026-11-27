@@ -18,3 +18,5 @@ The daemon needs `bl` on its PATH and a running lake with Identity and Batteries
 - **Unavailable:** The lookup failed. Check the lake and `bl` on the daemon host, then tap to retry.
 
 Disable with `paseo plugin disable botlake-identity`.
+
+To wake idle agents on incoming messages, install [Botlake Mail for Paseo](../paseo-mail/README.md) separately.

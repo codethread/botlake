@@ -2,6 +2,9 @@
   "name": "@botlake/paseo-identity",
   "private": true,
   "type": "module",
+  "exports": {
+    "./server/identity": "./server/identity.ts"
+  },
   "devDependencies": {
     "@getpaseo/client": "0.16.2",
     "@getpaseo/plugin": "0.16.2",

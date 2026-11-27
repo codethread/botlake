@@ -15,6 +15,7 @@
   ],
   "type": "module",
   "exports": {
+    "./client": "./client.ts",
     "./pi": "./pi.ts"
   },
   "dependencies": {

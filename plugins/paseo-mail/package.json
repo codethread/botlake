@@ -1,0 +1,14 @@
+{
+  "name": "@botlake/paseo-mail",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@botlake/mail": "workspace:*",
+    "@botlake/native-session": "workspace:*",
+    "@botlake/paseo-identity": "workspace:*"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.16.2",
+    "@getpaseo/plugin": "0.16.2"
+  }
+}
