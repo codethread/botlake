@@ -42,6 +42,11 @@ import {agents, flags, references, mail, mailIdentity, mailAgents} from "@botlak
 export const lake=createLake({name:"ct-mail", extensions:[identity, batteries, agents, flags, references, mail, mailIdentity, mailAgents]});`,
     );
     await host.botlake(["lake", "start", "--workspace", workspace]);
+    for (const [provider, seconds] of Object.entries({ codex: 43200, claude: 3600, pi: 300 })) {
+      expect(await host.bl(workspace, "mail", { command: "idle-window", provider })).toEqual({
+        seconds,
+      });
+    }
     const observed = z.object({ identity: z.string() }).parse(
       await host.bl(workspace, "agent", {
         command: "native",

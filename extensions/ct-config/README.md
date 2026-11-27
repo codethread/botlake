@@ -33,6 +33,8 @@ import { workAutoBot } from "@botlake/extension-work-auto-bot";
 export default workAutoBot({ agents, work });
 ```
 
+The exported `mail` sets the [idle wake window](../mail/README.md#idle-wake-windows) after a completed turn to 12 hours for Codex and 1 hour for Claude. Pi and unlisted providers use Mail’s 5-minute default.
+
 In-session notifications come from the global [Mail plugin](../../plugins/mail/README.md). Add `mailIdentity` alongside Identity for registered identity links. Select `mailAgents` alongside the exact exported `agents`, `flags`, `references` and Identity descriptors for automatic live-agent delivery and a five-minute post-stop resumption window. Selecting Mail alone does not enable resumption. No per-turn arming is needed.
 
 ```ts

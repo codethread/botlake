@@ -36,7 +36,9 @@ export const references = createReferences({
   projections: [...workReferenceProjections, ...agentReferenceProjections],
 });
 
-export const mail = createMail();
+export const mail = createMail({
+  idleWake: { byProvider: { codex: 12 * 60 * 60, claude: 60 * 60 } },
+});
 
 export const agents = configureAgents();
 
