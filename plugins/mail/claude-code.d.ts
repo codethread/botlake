@@ -5,7 +5,10 @@ declare module "claude-code" {
   interface Events {
     "session.start": [{ isInteractive: boolean }, { cwd: string }];
     "turn.start": [{ agentId?: string }, unknown];
-    "turn.complete": [{ agentId?: string }, unknown];
+    "turn.complete": [
+      { agentId?: string; reason: "answer" | "refusal" | "aborted" | "error" },
+      unknown,
+    ];
     "tool.call": [unknown, unknown];
   }
 
@@ -21,7 +24,11 @@ declare module "claude-code" {
 
   export interface EngineInterface {
     plugin: { root: string };
-    clock: { after(ms: number, fn: () => void): { cancel(): void } };
+    clock: {
+      now(): Promise<number>;
+      sleep(ms: number): Promise<void>;
+      after(ms: number, fn: () => void): { cancel(): void };
+    };
     process: {
       run(
         argv: readonly string[],
