@@ -14,7 +14,7 @@
     "format:check": "oxfmt --check . .botlake",
     "lint": "oxlint --deny-warnings . .botlake",
     "lint:fix": "oxlint --fix --deny-warnings . .botlake",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p plugins/paseo/tsconfig.json",
     "check": "bun run changelog:check && bun run typecheck && bun run lint && bun run format:check",
     "changelog": "bun scripts/changelog.ts query",
     "changelog:generate": "bun scripts/changelog.ts generate",
@@ -62,7 +62,7 @@
     "@botlake/native-session@0.3.1": "0.3.1"
   },
   "lint-staged": {
-    "*.{ts,mts,cts,js,mjs,cjs}": [
+    "*.{ts,tsx,mts,cts,js,mjs,cjs}": [
       "oxlint --fix --deny-warnings",
       "oxfmt --write"
     ],

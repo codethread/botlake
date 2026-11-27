@@ -93,7 +93,7 @@
       }
     },
     {
-      "files": ["plugins/*/*.{ts,mts,cts,js,mjs,cjs}"],
+      "files": ["plugins/*/*.{ts,tsx,mts,cts,js,mjs,cjs}"],
       "rules": {
         "no-restricted-imports": [
           "error",

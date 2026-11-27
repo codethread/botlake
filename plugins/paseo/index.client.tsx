@@ -1,5 +1,6 @@
 import type { PaseoAgent } from "@getpaseo/client";
 import type { PluginButtonRegistration, PluginClientContext } from "@getpaseo/plugin/client";
+import { Text } from "react-native";
 
 import { lookup } from "./shared/lookup.ts";
 
@@ -45,13 +46,26 @@ export default function contribute(client: PluginClientContext) {
       pending = true;
       try {
         const result = await client.rpc(lookup, { agentId: id });
-        const label =
-          result.status === "registered"
-            ? result.identity
-            : result.status === "no-session"
-              ? "Botlake: no session"
-              : "Botlake: not registered";
-        pill.update({ label });
+        if (result.status === "registered") {
+          const { identity } = result;
+          pill.update({
+            title: "Botlake identity",
+            label: identity,
+            behavior: {
+              kind: "popover",
+              Content: ({ theme }) => (
+                <Text selectable style={{ color: theme.colors.foreground, fontSize: 18 }}>
+                  {identity}
+                </Text>
+              ),
+            },
+          });
+        } else {
+          pill.update({
+            label:
+              result.status === "no-session" ? "Botlake: no session" : "Botlake: not registered",
+          });
+        }
       } catch (error) {
         pill.update({ label: "Botlake: unavailable" });
         console.error("Botlake identity lookup failed", id, error);

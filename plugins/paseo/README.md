@@ -1,6 +1,6 @@
 # Botlake Identity for Paseo
 
-See an agent’s registered Botlake name beside its message box on mobile or desktop. Tap the fingerprint pill to check again. It does not rename the chat, set an identity, or read the conversation.
+See an agent’s registered Botlake name beside its message box on mobile or desktop. Tap the fingerprint pill to see the full, selectable name in a bottom sheet on mobile or a popover on desktop. If there’s no name yet, tap to check again. It does not rename the chat, set an identity, or read the conversation.
 
 Install once on the Paseo daemon machine, from the root of this checkout:
 
