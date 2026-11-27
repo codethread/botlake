@@ -140,9 +140,11 @@ test("built mail plugin notifies Claude, Codex and Pi root sessions", async () =
       const input = { session_id: "claude-idle", cwd, ...event };
       return JSON.parse(await run(["bun", hook, "claude"], env, JSON.stringify(input)));
     }
-    const quick = { hook_event_name: "IdleMail", hold: false };
-    const held = { hook_event_name: "IdleMail", hold: true };
-    expect(await idleHook(quick)).toEqual({ ids: [], notice: "" });
+    const turnEndedAt = Date.now();
+    const deadline = { hook_event_name: "IdleMailDeadline", turnEndedAt };
+    const { expiresAt } = z.object({ expiresAt: z.number() }).parse(await idleHook(deadline));
+    expect(expiresAt).toBe(turnEndedAt + 300_000);
+    const held = { hook_event_name: "IdleMail", expiresAt };
     // A held wait answers when the mail is sent, not on a polling interval.
     const parked = idleHook(held);
     await Bun.sleep(1500);
@@ -154,24 +156,22 @@ test("built mail plugin notifies Claude, Codex and Pi root sessions", async () =
     expect(await status(idleMail)).toBe("sent");
     expect(idleReply.parse(await idleHook(held)).ids).toEqual([idleMail]);
 
-    // A lake whose Mail predates wait is polled inside the same held request.
+    const expired = { ...held, expiresAt: turnEndedAt };
+    expect(await idleHook(expired)).toEqual({ ids: [], notice: "" });
+    expect(await status(idleMail)).toBe("sent");
+
     const shims = join(host.dir, "shims");
     await mkdir(shims);
     async function shim(name: string, body: string): Promise<Record<string, string | undefined>> {
       const path = join(shims, name);
-      await Bun.write(path, `#!/bin/sh\n${body}\nexec ${host.blBin} "$@"\n`);
+      await Bun.write(path, `#!/bin/sh\n${body}\nexec ${JSON.stringify(host.blBin)} "$@"\n`);
       await chmod(path, 0o755);
       return { ...direct, BL_BIN: path };
     }
-    const legacy = await shim(
-      "legacy-bl",
-      `case "$*" in *'"command":"wait"'*) echo 'error [validation]: input schema validation failed' >&2; exit 1;; esac`,
-    );
-    expect(idleReply.parse(await idleHook(held, subdir, legacy)).ids).toEqual([idleMail]);
 
     // A lake too busy to answer is not an outage: tool results stay quiet and the mod retries.
     const stalled = await shim("stalled-bl", "sleep 4");
-    expect(await idleHook(quick, subdir, stalled)).toEqual({ busy: true });
+    expect(await idleHook(deadline, subdir, stalled)).toEqual({ busy: true });
     expect(
       await fire(
         "claude",
@@ -183,10 +183,9 @@ test("built mail plugin notifies Claude, Codex and Pi root sessions", async () =
 
     expect(await idleHook({ hook_event_name: "IdleMailDelivered", ids: [idleMail] })).toEqual({});
     expect(await status(idleMail)).toBe("delivered");
-    expect(await idleHook(quick)).toEqual({ ids: [], notice: "" });
     // Without Mail the module stops.
     for (const cwd of [outside, plain])
-      expect(await idleHook(quick, cwd)).toEqual({ inactive: true });
+      expect(await idleHook(deadline, cwd)).toEqual({ inactive: true });
 
     const piSession = "pi-root";
     const piIdentity = sessionIdentity({ provider: "pi", nativeSessionId: piSession });
@@ -226,6 +225,19 @@ console.log(JSON.stringify(results));`,
     // The TUI receives one native turn trigger without any tool call. A tool result fired
     // by that turn must wait for the idle handoff receipt, not announce the same batch.
     const waiting = await send(piIdentity, "Wake the terminal");
+    const repoll = join(shims, "repoll");
+    const release = join(shims, "release");
+    const pauseRepoll = await shim(
+      "pause-repoll",
+      `case "$*" in
+        *'"command":"wait"'*) touch "${repoll}.armed";;
+        *'"command":"list"'*)
+          if [ -e "${repoll}.armed" ] && [ ! -e "${release}" ]; then
+            touch "${repoll}"
+            while [ ! -e "${release}" ]; do sleep 0.02; done
+          fi;;
+      esac`,
+    );
     await Bun.write(
       runner,
       `import adapter from ${JSON.stringify(piAdapter)};
@@ -233,17 +245,50 @@ const handlers = {};
 const ctx = {mode: "tui", cwd: ${JSON.stringify(subdir)}, isIdle: () => true,
   sessionManager: {getSessionId: () => ${JSON.stringify(piSession)}}};
 const received = Promise.withResolvers();
-const timeout = setTimeout(() => received.reject(new Error("No idle mail turn")), 15000);
+let wakes = 0;
+let offset = 0;
+const now = Date.now;
+Date.now = () => now() + offset;
+const repoll = ${JSON.stringify(repoll)};
+const repollArmed = Bun.file(${JSON.stringify(`${repoll}.armed`)});
+const release = ${JSON.stringify(release)};
+const complete = {messages: [{role: "assistant", stopReason: "stop"}]};
 adapter({on(event, handler) { handlers[event] = handler; }, sendMessage(message, options) {
+  wakes++;
+  handlers.agent_start({}, ctx);
   const tool = handlers.tool_result({content: []}, ctx);
   received.resolve(Promise.resolve(tool).then(result => ({message, options, tool: result})));
 }});
 try {
   await handlers.session_start({}, ctx);
-  console.log(JSON.stringify(await received.promise));
+  // Resuming a session, or ending a run with no model answer, must not open a window.
+  handlers.agent_start({}, ctx);
+  handlers.agent_end({messages: [{role: "assistant", stopReason: "aborted"}]}, ctx);
+  await Bun.sleep(5250);
+  if (wakes !== 0 || await repollArmed.exists()) throw new Error("Wait started before a completed turn");
+  handlers.agent_start({}, ctx);
+  handlers.agent_end(complete, ctx);
+  for (let i = 0; !(await Bun.file(repoll).exists()); ++i) {
+    if (i === 250) throw new Error("Did not repoll after the held wait");
+    await Bun.sleep(20);
+  }
+  // Expire after the wait answered but while the final poll is still in flight.
+  offset = 301000;
+  await Bun.write(release, "");
+  await Bun.sleep(500);
+  if (wakes !== 0) throw new Error("Handed off a poll that crossed the deadline");
+  offset = 0;
+  handlers.agent_start({}, ctx);
+  handlers.agent_end(complete, ctx);
+  const timeout = setTimeout(() => received.reject(new Error("No idle mail turn")), 8000);
+  try {
+    console.log(JSON.stringify(await received.promise));
+  } finally {
+    clearTimeout(timeout);
+  }
 } finally {
   handlers.session_shutdown({}, ctx);
-  clearTimeout(timeout);
+  await Bun.write(release, "");
 }`,
     );
     const handoff = z
@@ -256,7 +301,7 @@ try {
         options: z.object({ triggerTurn: z.literal(true) }),
         tool: z.object({ content: z.array(z.unknown()).length(0) }),
       })
-      .parse(JSON.parse(await run(["bun", runner], direct)));
+      .parse(JSON.parse(await run(["bun", runner], pauseRepoll)));
     expect(handoff.message.content).toContain("Wake the terminal");
     expect(handoff.message.content).not.toContain("Body stays");
     expect(await status(waiting)).toBe("delivered");

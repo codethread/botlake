@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  idleWakeDeadline,
   mailInstruction,
   MailTimeout,
   openMailbox,
@@ -34,6 +35,8 @@ interface ToolContent {
 interface PiEvents {
   session_start: unknown;
   session_shutdown: unknown;
+  agent_start: unknown;
+  agent_end: { messages: { role: string; stopReason?: string }[] };
   before_agent_start: {
     systemPrompt: string;
     systemPromptOptions?: { sections: Record<string, string> };
@@ -44,6 +47,8 @@ interface PiEvents {
 interface PiResults {
   session_start: void;
   session_shutdown: void;
+  agent_start: void;
+  agent_end: void;
   before_agent_start: { systemPrompt: string };
   tool_result: { content: ToolContent[] };
 }
@@ -66,6 +71,9 @@ interface Session {
   sessionId: string;
   box: Mailbox;
   queue: Promise<unknown>;
+  idle?: AbortController;
+  // If recording delivery failed, retry the receipt without starting another paid turn.
+  handedOff: string[];
 }
 
 export default function mailExtension(pi: PiApi): void {
@@ -76,6 +84,7 @@ export default function mailExtension(pi: PiApi): void {
   let lifetime: AbortController | undefined;
   const stop = () => {
     lifetime?.abort();
+    session?.idle?.abort();
     session = undefined;
   };
   pi.on("session_shutdown", stop);
@@ -90,9 +99,19 @@ export default function mailExtension(pi: PiApi): void {
       process.env,
     );
     if (box === null || !(await selectsMail(box)) || signal.aborted) return;
-    session = { sessionId, box, queue: Promise.resolve() };
-    if (ctx.mode === "tui") void watchIdleMail(pi, ctx, session, signal);
+    session = { sessionId, box, queue: Promise.resolve(), handedOff: [] };
     await traceMail(box, { event: "session-start", provider: "pi", sessionId });
+  });
+  pi.on("agent_start", (_, ctx) => currentSession(session, ctx)?.idle?.abort());
+  pi.on("agent_end", (event, ctx) => {
+    const current = currentSession(session, ctx);
+    if (current === undefined || ctx.mode !== "tui") return;
+    // This event also fires for aborted or failed runs. Only an actual model response arms Mail.
+    const response = event.messages.findLast((message) => message.role === "assistant");
+    if (response?.stopReason !== "stop" && response?.stopReason !== "length") return;
+    current.idle?.abort();
+    current.idle = new AbortController();
+    void watchIdleMail(pi, ctx, current, current.idle.signal, Date.now());
   });
 
   pi.on("before_agent_start", (event, ctx) => {
@@ -118,42 +137,61 @@ async function watchIdleMail(
   ctx: PiContext,
   current: Session,
   signal: AbortSignal,
+  turnEndedAt: number,
 ): Promise<void> {
   let misses = 0;
-  // If recording delivery failed, retry the receipt without starting another paid turn.
-  let handedOff: string[] = [];
-  const handOff = async () => {
-    const poll = await pollMail(current.box);
-    // The human may have submitted a prompt or switched sessions since the wait answered.
-    if (signal.aborted || !ctx.isIdle() || poll === null || poll.ids.length === 0) return;
-    if (poll.ids.some((id) => !handedOff.includes(id))) {
-      pi.sendMessage(
-        { customType: "botlake-mail", content: poll.notice, display: true },
-        { triggerTurn: true },
-      );
-      handedOff = poll.ids;
-      await traceMail(current.box, { event: "idle-nudge", provider: "pi", ids: poll.ids });
-    }
-    await reportDelivery(current.box, poll.ids);
-    handedOff = [];
-  };
-  while (!signal.aborted) {
+  let expiresAt: number | undefined;
+  const isCurrent = () =>
+    !signal.aborted && current.sessionId === ctx.sessionManager.getSessionId();
+  const canWake = (deadline: number) => isCurrent() && ctx.isIdle() && Date.now() < deadline;
+  while (isCurrent()) {
     try {
-      await delay(Math.min(RETRY_MS * 2 ** misses, MAX_RETRY_MS), undefined, {
-        signal,
-        ref: false,
-      });
-      // A wait already held when a turn starts simply ends unused; none begins during a turn.
-      if (!ctx.isIdle()) continue;
-      // Held outside the lane, so tool results never queue behind it.
-      const waited = await waitMail(current.box, signal);
-      if (waited !== null && waited.ids.length > 0) await serialize(current, handOff);
-      misses = 0;
+      if (expiresAt === undefined) {
+        const deadline = await idleWakeDeadline(current.box, "pi", turnEndedAt);
+        if (deadline === null || !isCurrent()) return;
+        expiresAt = deadline;
+      }
+      const deadline = expiresAt;
+      if (Date.now() >= deadline) return;
+      if (canWake(deadline)) {
+        // Hold outside the lane, so active tool results never queue behind the wait.
+        const waited = await waitMail(current.box, signal, deadline);
+        if (waited === null) return;
+        if (waited.ids.length > 0 && canWake(deadline))
+          await serialize(current, async () => {
+            if (!canWake(deadline)) return;
+            const poll = await pollMail(current.box);
+            // Mail may already have been delivered via a tool, or this window may be stale.
+            if (poll === null || poll.ids.length === 0 || !canWake(deadline)) return;
+            if (poll.ids.some((id) => !current.handedOff.includes(id))) {
+              pi.sendMessage(
+                { customType: "botlake-mail", content: poll.notice, display: true },
+                { triggerTurn: true },
+              );
+              current.handedOff = poll.ids;
+              await traceMail(current.box, { event: "idle-nudge", provider: "pi", ids: poll.ids });
+            }
+            await reportDelivery(current.box, poll.ids);
+            current.handedOff = [];
+          });
+        misses = 0;
+      }
     } catch (error) {
-      if (signal.aborted) return;
+      if (!isCurrent()) return;
       misses += 1;
       if (misses === WARN_AFTER)
         ctx.ui.notify(`Mail unavailable: ${errorMessage(error)}`, "warning");
+    }
+    const pause = Math.min(
+      RETRY_MS * 2 ** misses,
+      MAX_RETRY_MS,
+      (expiresAt ?? Infinity) - Date.now(),
+    );
+    if (!isCurrent() || pause <= 0) return;
+    try {
+      await delay(pause, undefined, { signal, ref: false });
+    } catch (error) {
+      if (!signal.aborted) throw error;
     }
   }
 }

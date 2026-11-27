@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  idleWakeDeadline,
   mailInstruction,
   MailTimeout,
   openMailbox,
@@ -20,10 +21,18 @@ const hookInput = z.discriminatedUnion("hook_event_name", [
     ...session,
     agent_id: z.string().optional(),
   }),
-  // Private events from the Claude idle mod (claude.ts): find unannounced mail without recording
-  // delivery, holding the request open when asked, then record the handoff once the woken turn
-  // has started.
-  z.object({ hook_event_name: z.literal("IdleMail"), ...session, hold: z.boolean() }),
+  // Private events from the Claude idle mod (claude.ts): resolve the wake window, wait for
+  // unannounced mail, then record the handoff once the woken turn has started.
+  z.object({
+    hook_event_name: z.literal("IdleMailDeadline"),
+    ...session,
+    turnEndedAt: z.number().int().nonnegative(),
+  }),
+  z.object({
+    hook_event_name: z.literal("IdleMail"),
+    ...session,
+    expiresAt: z.number().int().nonnegative(),
+  }),
   z.object({
     hook_event_name: z.literal("IdleMailDelivered"),
     ...session,
@@ -41,7 +50,11 @@ try {
     "agent_id" in input && input.agent_id !== undefined
       ? null
       : await openMailbox({ provider, nativeSessionId: input.session_id }, input.cwd, process.env);
-  if (input.hook_event_name === "IdleMail") await idleMail(box, input.hold);
+  if (input.hook_event_name === "IdleMailDeadline") {
+    const expiresAt =
+      box === null ? null : await idleWakeDeadline(box, provider, input.turnEndedAt);
+    await output(expiresAt === null ? { inactive: true } : { expiresAt });
+  } else if (input.hook_event_name === "IdleMail") await idleMail(box, input.expiresAt);
   else if (input.hook_event_name === "IdleMailDelivered") {
     if (box !== null) {
       await reportDelivery(box, input.ids);
@@ -90,22 +103,26 @@ try {
 // tool. Startup still reports it, because the identity instruction went unsaid.
 function busy(error: unknown): object | undefined {
   if (!(error instanceof MailTimeout) || event === "SessionStart") return undefined;
-  return event === "IdleMail" || event === "IdleMailDelivered" ? { busy: true } : {};
+  return event?.startsWith("IdleMail") === true ? { busy: true } : {};
 }
 
 // `inactive` tells the mod to stop: no lake, or a lake that does not select Mail.
-async function idleMail(box: Mailbox | null, hold: boolean): Promise<void> {
+async function idleMail(box: Mailbox | null, expiresAt: number): Promise<void> {
   const started = performance.now();
-  const poll = box === null ? null : await (hold ? waitMail(box) : pollMail(box));
-  if (box !== null && poll !== null)
-    await traceMail(box, {
-      event: "idle-wait",
-      provider,
-      hold,
-      ids: poll.ids,
-      durationMs: performance.now() - started,
-    });
-  await output(poll === null ? { inactive: true } : { ids: poll.ids, notice: poll.notice });
+  const poll = box === null ? null : await waitMail(box, undefined, expiresAt);
+  if (box === null || poll === null) {
+    await output({ inactive: true });
+    return;
+  }
+  const { ids, notice } = Date.now() < expiresAt ? poll : { ids: [], notice: "" };
+  await traceMail(box, {
+    event: "idle-wait",
+    provider,
+    expiresAt,
+    ids,
+    durationMs: performance.now() - started,
+  });
+  await output({ ids, notice });
 }
 
 function output(value: unknown): Promise<void> {
