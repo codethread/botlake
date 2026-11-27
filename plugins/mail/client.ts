@@ -92,8 +92,8 @@ export async function idleWakeDeadline(
 /** Wait at most one budget within the wake window. Callers recheck expiry at handoff. */
 export async function waitMail(
   box: Mailbox,
-  signal?: AbortSignal,
-  expiresAt = Infinity,
+  signal: AbortSignal | undefined,
+  expiresAt: number,
 ): Promise<MailPoll | null> {
   const remaining = expiresAt - Date.now();
   if (remaining <= 0) return { ids: [], notice: "" };
