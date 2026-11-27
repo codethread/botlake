@@ -1,0 +1,5 @@
+{
+  "id": "botlake-identity",
+  "name": "Botlake Identity",
+  "requirements": { "paseo": ">=0.17.1" }
+}
