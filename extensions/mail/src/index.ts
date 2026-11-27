@@ -40,6 +40,16 @@ export const mailChanged = defineEvent({
 
 const authority = Symbol("mail");
 const text = z.string().trim().min(1);
+const seconds = z.number().int().nonnegative();
+const optionsSchema = z.strictObject({
+  idleWake: z
+    .strictObject({
+      defaultSecs: seconds.default(300),
+      byProvider: z.record(text, seconds).default({}),
+    })
+    .prefault({}),
+});
+export type MailOptions = z.input<typeof optionsSchema>;
 const status = z.enum(["sent", "delivered", "acknowledged", "undeliverable"]);
 const paging = {
   offset: z.number().int().nonnegative().default(0),
@@ -59,6 +69,7 @@ const listSchema = z.strictObject({
   ...paging,
 });
 const input = z.discriminatedUnion("command", [
+  z.strictObject({ command: z.literal("idle-window"), provider: text }),
   z.strictObject({
     command: z.literal("send"),
     to: text,
@@ -167,7 +178,9 @@ export class Mail {
 }
 
 /** Message attributes and edges are the only storage; no mail-specific tables. */
-export function mail(): RuntimeExtension<Mail> {
+export function mail(options: MailOptions = {}): RuntimeExtension<Mail> {
+  const { idleWake } = optionsSchema.parse(options);
+  const windows = new Map(Object.entries(idleWake.byProvider));
   return runtimeExtension({
     name: "mail",
     source: import.meta.url,
@@ -216,6 +229,18 @@ export function mail(): RuntimeExtension<Mail> {
           cli: {
             description: "Graph-native identity mail",
             commands: {
+              "idle-window": {
+                description:
+                  "Automatic wake window after a completed turn, in seconds (0 disables idle wakes)",
+                positionals: [
+                  {
+                    name: "provider",
+                    type: "string",
+                    required: true,
+                    description: "Native session provider (e.g. pi, claude, codex)",
+                  },
+                ],
+              },
               send: {
                 description: "Send: mail send RECIPIENT SUBJECT BODY [--urgent]",
                 examples: ["bl mail send neo 'Review' 'Please review the patch'"],
@@ -305,6 +330,8 @@ export function mail(): RuntimeExtension<Mail> {
             },
           },
           handler(request, _context, invocation) {
+            if (request.command === "idle-window")
+              return { seconds: windows.get(request.provider) ?? idleWake.defaultSecs };
             if (invocation.identity === null)
               throw new Fault("mail", "Pass --identity before mail");
             const identity = invocation.identity;

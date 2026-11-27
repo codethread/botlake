@@ -1,4 +1,4 @@
-import { pollMail, reportDelivery, waitMail } from "@botlake/mail/client";
+import { idleWakeDeadline, pollMail, reportDelivery, waitMail } from "@botlake/mail/client";
 import { nativeWorkspace } from "@botlake/native-session";
 import { registeredIdentity } from "@botlake/paseo-identity/server/identity";
 import type { PaseoAgentHandle } from "@getpaseo/client";
@@ -16,7 +16,7 @@ export default function contribute(server: PluginServerContext) {
       if (outcome.kind !== "completed" || agent.background || agent.parentAgentId !== null) return;
       const controller = new AbortController();
       watchers.set(agent.id, controller);
-      void watch(paseo.agents.ref(agent.id), controller.signal)
+      void watch(paseo.agents.ref(agent.id), Date.now(), controller.signal)
         .catch((error: unknown) => {
           console.error("Idle mail watcher stopped", agent.id, error);
         })
@@ -40,7 +40,7 @@ export default function contribute(server: PluginServerContext) {
   };
 }
 
-async function watch(agent: PaseoAgentHandle, signal: AbortSignal) {
+async function watch(agent: PaseoAgentHandle, turnEndedAt: number, signal: AbortSignal) {
   const first = (await agent.refresh())?.agent;
   if (first?.persistence?.sessionId === undefined) return;
   const { provider, sessionId } = first.persistence;
@@ -51,12 +51,14 @@ async function watch(agent: PaseoAgentHandle, signal: AbortSignal) {
   const identity = await registeredIdentity(workspace, provider, sessionId);
   if (identity === undefined) return;
   const box = { identity, workspace, env };
-  while (!signal.aborted) {
-    const waited = await waitMail(box, signal).catch((error: unknown) => {
+  const expiresAt = await idleWakeDeadline(box, provider, turnEndedAt);
+  if (expiresAt === null) return;
+  while (!signal.aborted && Date.now() < expiresAt) {
+    const waited = await waitMail(box, signal, expiresAt).catch((error: unknown) => {
       if (signal.aborted) return null;
       throw error;
     });
-    if (waited === null) return;
+    if (waited === null || Date.now() >= expiresAt) return;
     if (waited.ids.length === 0) continue;
     const pending = await pollMail(box);
     if (pending === null) return;
@@ -64,6 +66,7 @@ async function watch(agent: PaseoAgentHandle, signal: AbortSignal) {
     const current = (await agent.refresh())?.agent;
     if (
       signal.aborted ||
+      Date.now() >= expiresAt ||
       current?.status !== "idle" ||
       current.activeTurn?.turnId !== undefined ||
       current.pendingPermissions.length > 0 ||

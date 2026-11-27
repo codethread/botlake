@@ -24,6 +24,27 @@ Reading does not mutate state. Acknowledgement means seen, not agreement, comple
 
 `reply ID BODY` addresses the original sender, preserves the subject, and links the new message to its parent through `mail/replies-to`. Correlate replies by parent ID, not a special subject. Branches are possible, with one parent per reply. There is no thread entity, CC, membership or group-delivery policy.
 
+## Idle wake windows
+
+Automatic mail turns can cost tokens even if the provider has evicted the session's prompt cache. The default wake window is **300 seconds after the last completed turn**. A new mail, a renewed wait, or reopening a chat does not extend it. After expiry, mail stays pending: a user-started turn can still discover, read and acknowledge it.
+
+Set the policy on the `mail()` binding selected in your lake config. Durations are nonnegative whole seconds; `0` disables automatic idle wakes for that provider. Unlisted providers use `defaultSecs`.
+
+```ts
+import { mail } from "@botlake/extension-mail";
+
+const mailbox = mail({
+  idleWake: {
+    defaultSecs: 300,
+    byProvider: { codex: 12 * 60 * 60, claude: 60 * 60 },
+  },
+});
+```
+
+Pass this same binding to `mailAgents({ agents, mail: mailbox })` if you select Mail–Agents. Restart the lake to load edits; idle adapters use the policy for new turns. Inspect the effective window with `bl mail idle-window pi`.
+
+The key is the **native session provider** (`pi`, `claude`, `codex`, etc.), supplied by the adapter. Paseo uses the provider from the native session handle, not `paseo`, the seat name, or the model routed through Pi. These are spending limits, not guarantees of cache retention. Raw `mail wait` and [stopped-run resumption](../mail-agents/README.md) have separate semantics.
+
 ## Graph model
 
 One node stores one message: title is the subject, with `mail/message`, `mail/from`, `mail/to`, `mail/body`, `mail/urgent` and `mail/delivery` attributes. Delivery is a discriminated union:

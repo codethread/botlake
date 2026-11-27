@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { appendFile } from "node:fs/promises";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { nativeWorkspace, sessionIdentity, type NativeSession } from "@botlake/native-session";
 import { z } from "zod";
@@ -36,6 +35,7 @@ export interface MailPoll {
 }
 
 type MailRequest =
+  | { command: "idle-window"; provider: string }
   | { command: "list"; to: string; status: string[]; limit: number }
   | { command: "delivered"; ids: string[] }
   | { command: "wait"; timeoutSecs: number };
@@ -45,8 +45,7 @@ const PROMPT_MS = 2000;
 // One held request replaces this many seconds of polling. Kept short because a host that cannot
 // cancel the wait (Claude after /clear, any host after a crash) is stuck with it until it ends.
 const WAIT_SECS = 120;
-const LEGACY_POLL_MS = 5000;
-const unsupported = Symbol("unsupported");
+const windowSchema = z.object({ seconds: z.number().int().nonnegative() });
 
 /** `bl` gave no answer in time. The lake may only be busy; mail stays eligible. */
 export class MailTimeout extends Error {}
@@ -80,27 +79,33 @@ export async function pollMail(box: Mailbox): Promise<MailPoll | null> {
   );
 }
 
-/**
- * Hold one request until the lake has unannounced mail for this mailbox, or the wait budget ends
- * with an empty poll. Like pollMail, it changes no delivery state and is null without Mail.
- */
-export async function waitMail(box: Mailbox, signal?: AbortSignal): Promise<MailPoll | null> {
+/** Query the session's lake; the window starts at turn completion, not at this request. */
+export async function idleWakeDeadline(
+  box: Mailbox,
+  provider: string,
+  turnEndedAt: number,
+): Promise<number | null> {
+  const result = await invokeMail(box, { command: "idle-window", provider }, PROMPT_MS);
+  return result === null ? null : turnEndedAt + windowSchema.parse(result).seconds * 1000;
+}
+
+/** Wait at most one budget within the wake window. Callers recheck expiry at handoff. */
+export async function waitMail(
+  box: Mailbox,
+  signal?: AbortSignal,
+  expiresAt = Infinity,
+): Promise<MailPoll | null> {
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) return { ids: [], notice: "" };
+  const timeoutSecs = Math.min(WAIT_SECS, Math.ceil(remaining / 1000));
   const response = await invokeMail(
     box,
-    { command: "wait", timeoutSecs: WAIT_SECS },
-    (WAIT_SECS + 15) * 1000,
-    // Past the lake's own budget, so the wait ends as data before bl's deadline ends it as an error.
-    ["--timeout", `${WAIT_SECS + 10}s`],
+    { command: "wait", timeoutSecs },
+    (timeoutSecs + 15) * 1000,
+    ["--timeout", `${timeoutSecs + 10}s`],
     signal,
   );
-  if (response !== unsupported) return summarize(box, response);
-  // A lake whose Mail predates wait: poll within the same budget.
-  const until = Date.now() + WAIT_SECS * 1000;
-  for (;;) {
-    const poll = await pollMail(box);
-    if (poll === null || poll.ids.length > 0 || Date.now() >= until) return poll;
-    await delay(LEGACY_POLL_MS, undefined, { signal });
-  }
+  return summarize(box, response);
 }
 
 export async function reportDelivery(box: Mailbox, ids: string[]): Promise<void> {
@@ -130,7 +135,7 @@ function summarize(box: Mailbox, response: unknown): MailPoll | null {
   };
 }
 
-/** Null when the lake does not select Mail; `unsupported` when its Mail predates wait. */
+/** Null when the lake does not select Mail. */
 function invokeMail(
   box: Mailbox,
   request: MailRequest,
@@ -155,8 +160,6 @@ function invokeMail(
       (error, stdout, stderr) => {
         if (error !== null) {
           if (stderr.includes("Unknown op: mail")) resolve(null);
-          else if (request.command === "wait" && stderr.includes("error [validation]"))
-            resolve(unsupported);
           // Node reports its own timeout kill as a bare "Command failed" with no output.
           else if (error.killed === true)
             reject(

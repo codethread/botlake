@@ -12,7 +12,7 @@ paseo plugin ls botlake-mail
 
 Use a Git checkout with a running lake that selects Batteries, Identity and Mail, and a provider integration that registers native sessions. The daemon needs `bl` and `git` on its PATH. There’s no mobile install or inbox UI.
 
-After installation or reload, let the agent **finish one turn**. A completed turn in a top-level, non-background chat arms a wait in that checkout’s lake. Previously idle chats aren’t enrolled retroactively. Waiting uses one `bl mail wait` process per idle chat and no model tokens.
+After installation or reload, let the agent **finish one turn**. A completed turn in a top-level, non-background chat arms a wait in that checkout’s lake. The [lake’s idle wake window](../../extensions/mail/README.md#idle-wake-windows) is measured from that turn, keyed by native provider (not `paseo`), and defaults to five minutes. After expiry incoming mail stays in the inbox until a later turn. Previously idle chats aren’t enrolled retroactively. Waiting uses one `bl mail wait` process per idle chat and no model tokens.
 
 Send a message to the agent’s registered identity in the same lake. The plugin sends a sender/subject summary and an inbox command into the existing chat, then reports delivery. It does not inject bodies, acknowledge mail, create another session, or resume closed agents. During turns, the native mail adapters can still announce mail after tools.
 
