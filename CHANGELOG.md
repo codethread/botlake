@@ -2,6 +2,10 @@
 
 This history covers the npm runtime packages. The [Go CLI changelog](cli/CHANGELOG.md) is separate.
 
+## 0.7.3 — Event-driven idle mail
+
+The Mail extension adds `mail wait`, which holds a request until new mail is ready or the wait times out. Rebuild and reinstall the [mail plugin](plugins/mail/README.md) to let idle Claude Code and Pi sessions use it instead of polling every five seconds. The updated plugin reports an outage only after repeated failures.
+
 ## 0.7.2 — Model roster updates
 
 The `ct-config` preset adds a Claude Haiku seat and routes `grunt` through DeepSeek, then Haiku, then Luna. Astra and Sol now use GPT‑6.2.
