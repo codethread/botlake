@@ -1,10 +1,12 @@
 import {
+  defineEvent,
   defineOp,
   Fault,
   jsonSchema,
   runtimeExtension,
   q,
   type Context,
+  type Invocation,
   type RuntimeExtension,
   type Node,
   type Predicate,
@@ -28,6 +30,13 @@ export {
   mailPredicate,
   pendingPredicate,
 } from "./node-model.ts";
+
+/** A message was sent or its delivery state changed; read it again. */
+export const mailChanged = defineEvent({
+  name: "mail.changed",
+  phase: "afterCommit",
+  schema: z.object({ id: z.string(), from: z.string(), to: z.string() }),
+});
 
 const authority = Symbol("mail");
 const text = z.string().trim().min(1);
@@ -69,6 +78,10 @@ const input = z.discriminatedUnion("command", [
   z.strictObject({ command: z.literal("read"), id: text }),
   z.strictObject({ command: z.literal("ack"), id: text }),
   z.strictObject({ command: z.literal("delivered"), ids: z.array(text).min(1).max(100) }),
+  z.strictObject({
+    command: z.literal("wait"),
+    timeoutSecs: z.number().int().nonnegative().max(2_147_483).default(20),
+  }),
 ]);
 const pageFlags = {
   offset: {
@@ -178,6 +191,19 @@ export function mail(): RuntimeExtension<Mail> {
         }
       });
       registerQueries(ctx);
+      ctx.registerEvent(mailChanged);
+      ctx.subscribe((event) => {
+        const messages = new Map<string, Node>();
+        for (const change of event.changes) {
+          if (change.kind !== "node") continue;
+          const node = change.after ?? change.before;
+          if (node?.attributes[a.message] === true) messages.set(node.id, node);
+        }
+        for (const node of messages.values()) {
+          const data = mailData(node);
+          ctx.emit(mailChanged, { id: node.id, from: data[a.from], to: data[a.to] });
+        }
+      });
       ctx.register(
         defineOp({
           name: "mail",
@@ -264,6 +290,18 @@ export function mail(): RuntimeExtension<Mail> {
                   },
                 },
               },
+              wait: {
+                description:
+                  "Plugin idle wait: hold until the caller has unannounced mail; returns reason=mail|timeout and its summaries (both exit 0)",
+                flags: {
+                  "timeout-secs": {
+                    key: "timeoutSecs",
+                    type: "number",
+                    description:
+                      "Wait budget in seconds (default 20; 0 probes once); beyond the 30s request deadline also raise bl --timeout",
+                  },
+                },
+              },
             },
           },
           handler(request, _context, invocation) {
@@ -333,6 +371,9 @@ export function mail(): RuntimeExtension<Mail> {
                   }
                   return { ids, recorded: true };
                 }, authority),
+              )
+              .with({ command: "wait" }, ({ timeoutSecs }) =>
+                wait(ctx, identity, timeoutSecs, invocation),
               )
               .exhaustive();
           },
@@ -465,6 +506,43 @@ function list(ctx: Context, request: z.infer<typeof listSchema>) {
     messages: nodes.slice(0, request.limit).map((node) => present(ctx, node, request.lean)),
     nextOffset: nodes.length > request.limit ? request.offset + request.limit : null,
   };
+}
+
+/** Answers from committed state on entry, so mail sent before the wait is never missed. */
+async function wait(ctx: Context, recipient: string, timeoutSecs: number, invocation: Invocation) {
+  const until = ctx.clock.now() + timeoutSecs * 1000;
+  if (invocation.deadline !== null && until >= invocation.deadline)
+    throw new Fault("mail", "Wait budget reaches the request deadline; raise bl --timeout");
+  for (;;) {
+    invocation.signal.throwIfAborted();
+    const page = list(
+      ctx,
+      listSchema.parse({ command: "list", to: recipient, status: ["sent"], limit: 100 }),
+    );
+    const arrived = page.messages.length > 0;
+    if (arrived || ctx.clock.now() >= until)
+      return { reason: arrived ? "mail" : "timeout", ...page };
+    await new Promise<void>((resolve, reject) => {
+      const settle = (finish: () => void) => {
+        unsubscribe();
+        disarm();
+        invocation.signal.removeEventListener("abort", abort);
+        finish();
+      };
+      const abort = () => {
+        settle(() => {
+          reject(new Fault("cancelled", "Wait aborted"));
+        });
+      };
+      const unsubscribe = ctx.on(mailChanged, (event) => {
+        if (event.to === recipient) settle(resolve);
+      });
+      const disarm = ctx.clock.arm(until, () => {
+        settle(resolve);
+      });
+      invocation.signal.addEventListener("abort", abort, { once: true });
+    });
+  }
 }
 
 function message(ctx: Context, id: string): Node {

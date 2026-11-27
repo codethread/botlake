@@ -21,6 +21,10 @@ const message = z.object({
 const page = z.object({ messages: z.array(message), nextOffset: z.number().nullable() });
 const startup = z.object({ identity: z.string(), nodeId: z.string() });
 const waiting = z.object({ reason: z.enum(["satisfied", "timeout"]), count: z.number() });
+const held = z.object({
+  reason: z.enum(["mail", "timeout"]),
+  messages: z.array(z.object({ id: z.string() })),
+});
 const output = join(root, "out/mail-graph/smoke");
 await mkdir(output, { recursive: true });
 const fixture = await system();
@@ -45,8 +49,27 @@ try {
     waiting.parse(await observe("mail-pending", { recipient: bobId }, 1)).reason,
     "timeout",
   );
+  assert.deepEqual(held.parse(await invoke(bobId, { command: "wait", timeoutSecs: 0 })), {
+    reason: "timeout",
+    messages: [],
+  });
+  const refused = await fixture.cli(
+    [
+      "--workspace",
+      workspace,
+      "--identity",
+      bobId,
+      "--input",
+      JSON.stringify({ command: "wait", timeoutSecs: 60 }),
+      "mail",
+    ],
+    false,
+  );
+  assert.match(String(refused), /raise bl --timeout/u);
   const inFlight = observe("mail-pending", { recipient: bobId }, 1, 4);
+  const parked = invoke(bobId, { command: "wait", timeoutSecs: 20 });
   await Bun.sleep(150);
+  const sentAt = performance.now();
   const sent = message.parse(
     await invoke(alice.identity, {
       command: "send",
@@ -57,6 +80,10 @@ try {
     }),
   );
   assert.equal(waiting.parse(await inFlight).reason, "satisfied");
+  // The held wait answers on the send's commit, well inside its budget, without consuming mail.
+  assert.deepEqual(held.parse(await parked), { reason: "mail", messages: [{ id: sent.id }] });
+  assert.ok(performance.now() - sentAt < 5000);
+  assert.equal(held.parse(await invoke(bobId, { command: "wait" })).reason, "mail");
   assert.equal(message.parse(await invoke(bobId, { command: "read", id: sent.id })).status, "sent");
   const bob = startup.parse(
     await call(fixture, workspace, "seed", "identity", {
@@ -198,6 +225,7 @@ try {
     edges,
     checks: [
       "await arrival and timeout",
+      "held mail wait arrival, probe and deadline refusal",
       "await acknowledgement",
       "late identity registration and restart links",
       "derived edge ownership",

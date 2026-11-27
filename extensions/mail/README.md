@@ -56,4 +56,12 @@ Inspect `reason`: `satisfied` permits reading the matching inbox; timeout means 
 
 Queries return graph nodes, whose attributes include bodies; use lean Mail operations for concise agent output. `mail-replies` selects direct children, not recursive conversation history.
 
+`mail wait` is the event-driven form used by the [harness adapters](../../plugins/mail/README.md): it holds until the caller has mail with status `sent`, then returns `reason` (`mail` or `timeout`) with the same lean page as `list`. It answers from stored state on entry, so mail sent before the wait is not missed, and it changes no delivery state. The budget defaults to 20 seconds; a longer `--timeout-secs` also needs a larger `bl --timeout`, because the request deadline is 30 seconds.
+
+```sh
+bl --identity trinity --timeout 130s mail wait --timeout-secs 120
+```
+
+Every committed send or delivery change also emits the after-commit `mail.changed` event with the message `id`, `from` and `to`. Follow it with `bl events stream --event mail.changed` and read the message again; the stream is live only.
+
 [Harness adapters](../../plugins/mail/README.md) supply summary notifications. [Measurements and reproduction](../../docs/engdocs/mail-graph.md) cover disposable databases, cross-harness waiting and the UI consumer.

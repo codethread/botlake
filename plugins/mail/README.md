@@ -17,9 +17,11 @@ Needs Bun and `bl` on `PATH` (`BL_BIN` overrides). Codex asks to trust the hooks
 
 ## Mail at an idle prompt
 
-Leave the Claude Code or Pi terminal open. Every five seconds while idle, the plugin checks for unannounced mail. A nonempty batch starts one turn in the same session, with sender and subject summaries and the inbox command. Empty checks do not call the model. Delivery records the handoff to the session; it does not acknowledge the mail.
+Leave the Claude Code or Pi terminal open. While idle, the plugin holds one `mail wait` request open; the lake answers it when mail for the session is sent. A nonempty batch starts one turn in the same session, with sender and subject summaries and the inbox command. Waiting does not call the model. Delivery records the handoff to the session; it does not acknowledge the mail.
 
-Claude Code shows the turn as a prompt from the botlake-mail plugin. Claude runs the idle check from the plugin’s hooks module (`claude.ts`), an early-access Claude Code API verified on 2.1.327.
+Each wait lasts up to two minutes and is renewed five seconds after it ends. A lake whose Mail predates `mail wait` is polled every five seconds instead. A busy machine or a restarting lake only delays the next wait: the plugin retries with a growing pause of up to a minute, and prints `Mail unavailable` once after three failures in a row. Mail sent meanwhile stays eligible.
+
+Claude Code shows the turn as a prompt from the botlake-mail plugin. Claude runs the idle check from the plugin’s hooks module (`claude.ts`), an early-access Claude Code API verified on 2.1.331.
 
 To try it, let the session finish a turn. From another session in the same lake, send mail to its Botlake identity and leave its prompt untouched:
 

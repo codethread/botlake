@@ -2,14 +2,20 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import {
   mailInstruction,
+  MailTimeout,
   openMailbox,
   pollMail,
   reportDelivery,
   traceMail,
+  waitMail,
   type Mailbox,
 } from "./client.ts";
 
-const IDLE_POLL_MS = 5000;
+// The pause between waits, and the first step of the backoff after a failed one.
+const RETRY_MS = 5000;
+const MAX_RETRY_MS = 60_000;
+// A lake restart or a busy machine costs a wait or two; only a lasting failure is worth a notice.
+const WARN_AFTER = 3;
 
 interface PiContext {
   mode: "tui" | "rpc" | "print" | "json";
@@ -113,12 +119,12 @@ async function watchIdleMail(
   current: Session,
   signal: AbortSignal,
 ): Promise<void> {
-  let warned = false;
+  let misses = 0;
   // If recording delivery failed, retry the receipt without starting another paid turn.
   let handedOff: string[] = [];
-  const check = async () => {
+  const handOff = async () => {
     const poll = await pollMail(current.box);
-    // The human may have submitted a prompt or switched sessions during the poll.
+    // The human may have submitted a prompt or switched sessions since the wait answered.
     if (signal.aborted || !ctx.isIdle() || poll === null || poll.ids.length === 0) return;
     if (poll.ids.some((id) => !handedOff.includes(id))) {
       pi.sendMessage(
@@ -133,19 +139,26 @@ async function watchIdleMail(
   };
   while (!signal.aborted) {
     try {
-      await delay(IDLE_POLL_MS, undefined, { signal, ref: false });
+      await delay(Math.min(RETRY_MS * 2 ** misses, MAX_RETRY_MS), undefined, {
+        signal,
+        ref: false,
+      });
+      // A wait already held when a turn starts simply ends unused; none begins during a turn.
       if (!ctx.isIdle()) continue;
-      await serialize(current, check);
-      warned = false;
+      // Held outside the lane, so tool results never queue behind it.
+      const waited = await waitMail(current.box, signal);
+      if (waited !== null && waited.ids.length > 0) await serialize(current, handOff);
+      misses = 0;
     } catch (error) {
       if (signal.aborted) return;
-      if (!warned) ctx.ui.notify(`Mail unavailable: ${errorMessage(error)}`, "warning");
-      warned = true;
+      misses += 1;
+      if (misses === WARN_AFTER)
+        ctx.ui.notify(`Mail unavailable: ${errorMessage(error)}`, "warning");
     }
   }
 }
 
-// The idle watcher and tool results share a lane from poll through receipt.
+// The idle watcher's handoff and tool results share a lane from poll through receipt.
 function serialize<T>(session: Session, operation: () => Promise<T>): Promise<T> {
   const result = session.queue.then(operation);
   session.queue = result.catch(() => null);
@@ -176,9 +189,11 @@ async function appendMailNotice(
     notice = poll?.notice ?? "";
     if (poll !== null && poll.ids.length > 0) await reportDelivery(box, poll.ids);
   } catch (error) {
-    notice = [notice, `Mail unavailable: ${errorMessage(error)}`]
-      .filter((part) => part.length > 0)
-      .join("\n");
+    // A busy lake is not an outage; the mail stays eligible for the next tool result.
+    if (!(error instanceof MailTimeout))
+      notice = [notice, `Mail unavailable: ${errorMessage(error)}`]
+        .filter((part) => part.length > 0)
+        .join("\n");
   }
   await traceMail(box, {
     event: "tool-result",

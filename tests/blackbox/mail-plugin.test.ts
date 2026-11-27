@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sessionIdentity } from "@botlake/native-session";
@@ -124,31 +124,69 @@ test("built mail plugin notifies Claude, Codex and Pi root sessions", async () =
       for (const hook_event_name of ["SessionStart", "PostToolUse"])
         expect(await fire("claude", { hook_event_name, session_id: "quiet", cwd })).toEqual({});
 
-    // Claude's idle hooks module ships as source beside the bundled hook it drives. Its polls
+    // Claude's idle hooks module ships as source beside the bundled hook it drives. Its checks
     // leave mail eligible until the woken turn's handoff is recorded.
     expect(
       await Bun.file(join(marketplace, "botlake-mail/.claude-plugin/hooks.json")).json(),
     ).toMatchObject({ modules: ["../claude.ts"] });
     expect(await Bun.file(join(marketplace, "botlake-mail/claude.ts")).exists()).toBe(true);
     const idleIdentity = sessionIdentity({ provider: "claude", nativeSessionId: "claude-idle" });
-    async function idleHook(event: Record<string, unknown>, cwd = subdir): Promise<unknown> {
+    const idleReply = z.object({ ids: z.array(z.string()), notice: z.string() });
+    async function idleHook(
+      event: Record<string, unknown>,
+      cwd = subdir,
+      env: Record<string, string | undefined> = direct,
+    ): Promise<unknown> {
       const input = { session_id: "claude-idle", cwd, ...event };
-      return JSON.parse(await run(["bun", hook, "claude"], direct, JSON.stringify(input)));
+      return JSON.parse(await run(["bun", hook, "claude"], env, JSON.stringify(input)));
     }
+    const quick = { hook_event_name: "IdleMail", hold: false };
+    const held = { hook_event_name: "IdleMail", hold: true };
+    expect(await idleHook(quick)).toEqual({ ids: [], notice: "" });
+    // A held wait answers when the mail is sent, not on a polling interval.
+    const parked = idleHook(held);
+    await Bun.sleep(1500);
     const idleMail = await send(idleIdentity, "While Claude idles");
-    const idlePoll = z
-      .object({ ids: z.array(z.string()), notice: z.string() })
-      .parse(await idleHook({ hook_event_name: "IdleMail" }));
-    expect(idlePoll.ids).toEqual([idleMail]);
-    expect(idlePoll.notice).toContain("While Claude idles");
-    expect(idlePoll.notice).not.toContain("Body stays");
+    const woken = idleReply.parse(await parked);
+    expect(woken.ids).toEqual([idleMail]);
+    expect(woken.notice).toContain("While Claude idles");
+    expect(woken.notice).not.toContain("Body stays");
     expect(await status(idleMail)).toBe("sent");
+    expect(idleReply.parse(await idleHook(held)).ids).toEqual([idleMail]);
+
+    // A lake whose Mail predates wait is polled inside the same held request.
+    const shims = join(host.dir, "shims");
+    await mkdir(shims);
+    async function shim(name: string, body: string): Promise<Record<string, string | undefined>> {
+      const path = join(shims, name);
+      await Bun.write(path, `#!/bin/sh\n${body}\nexec ${host.blBin} "$@"\n`);
+      await chmod(path, 0o755);
+      return { ...direct, BL_BIN: path };
+    }
+    const legacy = await shim(
+      "legacy-bl",
+      `case "$*" in *'"command":"wait"'*) echo 'error [validation]: input schema validation failed' >&2; exit 1;; esac`,
+    );
+    expect(idleReply.parse(await idleHook(held, subdir, legacy)).ids).toEqual([idleMail]);
+
+    // A lake too busy to answer is not an outage: tool results stay quiet and the mod retries.
+    const stalled = await shim("stalled-bl", "sleep 4");
+    expect(await idleHook(quick, subdir, stalled)).toEqual({ busy: true });
+    expect(
+      await fire(
+        "claude",
+        { hook_event_name: "PostToolUse", session_id: "claude-idle", cwd: subdir },
+        stalled,
+      ),
+    ).toEqual({});
+    expect(await status(idleMail)).toBe("sent");
+
     expect(await idleHook({ hook_event_name: "IdleMailDelivered", ids: [idleMail] })).toEqual({});
     expect(await status(idleMail)).toBe("delivered");
-    expect(await idleHook({ hook_event_name: "IdleMail" })).toEqual({ ids: [], notice: "" });
-    // Without Mail the module stops polling.
+    expect(await idleHook(quick)).toEqual({ ids: [], notice: "" });
+    // Without Mail the module stops.
     for (const cwd of [outside, plain])
-      expect(await idleHook({ hook_event_name: "IdleMail" }, cwd)).toEqual({ inactive: true });
+      expect(await idleHook(quick, cwd)).toEqual({ inactive: true });
 
     const piSession = "pi-root";
     const piIdentity = sessionIdentity({ provider: "pi", nativeSessionId: piSession });
